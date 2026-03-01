@@ -13,6 +13,7 @@ jobs:
     env:
       CARGO_TERM_COLOR: always
       BUILD_PROFILE: debug
+      WHITAKER_INSTALLER_VERSION: '0.2.1'
     steps:
       - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
       - name: Setup Rust
@@ -32,10 +33,10 @@ jobs:
           path: |
             ~/.cargo/bin/whitaker-installer
             ~/.cache/cargo-binstall
-          key: whitaker-installer-${{ runner.os }}-${{ hashFiles('.github/workflows/ci.yml') }}
+          key: whitaker-installer-${{ runner.os }}-${{ env.WHITAKER_INSTALLER_VERSION }}
       - name: Install Whitaker
         run: |
-          cargo binstall --no-confirm whitaker-installer
+          cargo binstall --no-confirm whitaker-installer@${{ env.WHITAKER_INSTALLER_VERSION }}
           whitaker-installer
       - name: Lint
         run: make lint
