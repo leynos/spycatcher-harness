@@ -26,6 +26,13 @@ jobs:
             **/*.md
             !**/target/**
             !**/dist/**
+      - name: Cache Whitaker installer
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830
+        with:
+          path: |
+            ~/.cargo/bin/whitaker-installer
+            ~/.cache/cargo-binstall
+          key: whitaker-installer-${{ runner.os }}-${{ hashFiles('.github/workflows/ci.yml') }}
       - name: Install Whitaker
         run: |
           cargo binstall --no-confirm whitaker-installer
