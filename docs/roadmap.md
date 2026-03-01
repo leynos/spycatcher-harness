@@ -52,6 +52,8 @@ units with explicit dependencies and completion criteria.
 - [ ] 1.2.2. Implement canonical request generation and stable hashing.
   - Depends on: 1.2.1.
   - Success criteria:
+    - [ ] Canonicalization includes query parameter normalization in addition
+          to request body normalization.
     - [ ] Canonicalization normalizes JSON key ordering and insignificant
           whitespace.
     - [ ] Ignore-path configuration supports metadata drift without affecting

@@ -239,13 +239,18 @@ those fields must participate in the canonical form. citeturn7search1
 
 Recommended approach:
 
+- Canonicalize query parameters into a stable representation:
+  - Parse query pairs from the URL.
+  - Sort by key, then value, preserving repeated keys.
+  - Re-encode in a consistent form for hashing.
 - Parse JSON into a `serde_json::Value`.
 - Apply a protocol-specific “normalization pass”:
   - Drop configured paths (example: `metadata.run_id`).
   - Optionally coerce numeric types (avoid `1` vs `1.0` drift).
 - Serialize with a canonical serializer (sorted object keys, stable float
   formatting).
-- Hash (SHA-256) over: `method + path + canonical_json`.
+- Hash (SHA-256) over:
+  `method + path + canonical_query + canonical_json`.
 
 ### Streaming capture and replay
 
