@@ -14,6 +14,8 @@ units with explicit dependencies and completion criteria.
   - Success criteria:
     - [ ] `spycatcher_harness` exposes `start_harness(cfg)` and
           `RunningHarness::shutdown()` as compile-checked public APIs.
+    - [ ] Public library entry points return typed error enums and do not
+          export opaque error types.
     - [ ] `spycatcher-harness` CLI binary delegates all startup and shutdown
           behaviour to library entry points.
     - [ ] `cargo test --workspace` passes with baseline smoke tests for startup

@@ -540,6 +540,23 @@ The library API should allow both:
 
 ```rust,no_run
 use std::net::SocketAddr;
+use thiserror::Error;
+
+pub type HarnessResult<T> = std::result::Result<T, HarnessError>;
+
+#[derive(Debug, Error)]
+pub enum HarnessError {
+    #[error("invalid configuration: {message}")]
+    InvalidConfig { message: String },
+    #[error("cassette not found: {cassette_name}")]
+    CassetteNotFound { cassette_name: String },
+    #[error("request mismatch at interaction {interaction_id}")]
+    RequestMismatch { interaction_id: usize },
+    #[error("upstream request failed")]
+    UpstreamRequestFailed,
+    #[error("io failure")]
+    Io,
+}
 
 pub struct RunningHarness {
     pub addr: SocketAddr,
@@ -547,11 +564,16 @@ pub struct RunningHarness {
 }
 
 impl RunningHarness {
-    pub async fn shutdown(self) -> anyhow::Result<()>;
+    pub async fn shutdown(self) -> HarnessResult<()>;
 }
 
-pub async fn start_harness(cfg: HarnessConfig) -> anyhow::Result<RunningHarness>;
+pub async fn start_harness(cfg: HarnessConfig) -> HarnessResult<RunningHarness>;
 ```
+
+Library-facing APIs should return typed error enums, so callers can branch on
+retryability, map failures to HTTP status codes, and preserve semantic handling
+without string matching. Opaque reports (`eyre::Report` or `anyhow::Error`)
+should be reserved for the CLI binary entrypoint and other app-layer boundaries.
 
 Recommended additions for regression suite integration:
 
