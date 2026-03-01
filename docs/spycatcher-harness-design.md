@@ -604,7 +604,9 @@ TOML is the default supported file format for OrthoConfig.
 
 In replay configuration, `ttft_ms` is the time-to-first-token (TTFT) delay in
 milliseconds, and `tps` is tokens per second (TPS). In upstream configuration,
-`extra_headers` is a map of HTTP header names to header values.
+`extra_headers` is a map of HTTP header names to header values. This uses TOML
+table syntax so it deserializes directly into `BTreeMap<String, String>` in
+`UpstreamConfig`.
 
 ```toml
 listen = "127.0.0.1:8787"
