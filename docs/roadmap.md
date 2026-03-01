@@ -103,6 +103,46 @@ units with explicit dependencies and completion criteria.
     [Goals and non-goals](spycatcher-harness-design.md#goals-and-non-goals),
     [Recording and replay semantics](spycatcher-harness-design.md#recording-and-replay-semantics).
 
+### 1.4. Localization foundation
+
+- [ ] 1.4.1. Embed library Fluent resources and expose loader-injected message
+      rendering.
+  - Depends on: 1.1.1.
+  - Success criteria:
+    - [ ] Library-owned FTL assets are embedded in the library crate and
+          versioned with the API.
+    - [ ] Localized message rendering APIs accept an application-provided
+          `FluentLanguageLoader`.
+    - [ ] Library components do not create process-global language loaders.
+  - Design references:
+    [Localization architecture](spycatcher-harness-design.md#localization-architecture),
+    [Core traits and types](spycatcher-harness-design.md#core-traits-and-types).
+
+- [ ] 1.4.2. Add localization configuration layering for the binary application.
+  - Depends on: 1.1.2.
+  - Success criteria:
+    - [ ] `locale` and `fallback_locale` are loadable through
+          `CLI > env > config files > defaults`.
+    - [ ] Startup locale negotiation is deterministic and tested for fallback
+          behaviour.
+    - [ ] One authoritative language loader is created at startup and reused.
+  - Design references:
+    [Localization architecture](spycatcher-harness-design.md#localization-architecture),
+    [Configuration via OrthoConfig](spycatcher-harness-design.md#configuration-via-orthoconfig).
+
+- [ ] 1.4.3. Localize CLI help and parse errors via OrthoConfig localizer hooks.
+  - Depends on: 1.4.2.
+  - Success criteria:
+    - [ ] CLI help output uses `Command::localize(&localizer)` with a Fluent
+          localizer implementation.
+    - [ ] `clap` parsing failures are rendered via
+          `localize_clap_error_with_command(..)`.
+    - [ ] Binary falls back to `NoOpLocalizer` when localization assets fail to
+          load.
+  - Design references:
+    [Localization architecture](spycatcher-harness-design.md#localization-architecture),
+    [CLI shape](spycatcher-harness-design.md#cli-shape).
+
 ## 2. Streaming fidelity and cassette verification
 
 ### 2.1. OpenAI and OpenRouter streaming support
@@ -294,6 +334,8 @@ units with explicit dependencies and completion criteria.
 
 ## Dependency checkpoints
 
+- Tasks 1.4.1 to 1.4.3 should complete before shipping user-facing CLI workflows
+  that surface localized messages.
 - Completion of phase 2 is required before phase 4 protocol expansion tasks are
   started in parallel.
 - Task 3.3.2 is blocked until authoritative VidaiMock fixture schema

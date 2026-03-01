@@ -59,6 +59,10 @@ SSE and multi-protocol evolution. [^12][^13]
     [^5][^6][^7]
 - Provide a stable on-disk format for recorded sessions with explicit
   versioning and forward-compatibility.
+- Ensure the library and binary remain localizable:
+  - Library messages render from application-injected Fluent language loaders.
+  - Binary command help and parse errors localize via OrthoConfig localizer
+    integration.
 
 ### Non-goals
 
@@ -349,6 +353,7 @@ A practical compromise:
 
 - `spycatcher_harness` (library)
   - `config`: configuration structs and OrthoConfig integration
+  - `i18n`: embedded Fluent Translation List (FTL) resources and message IDs
   - `protocol`: protocol adapter traits and implementations
   - `cassette`: cassette schema, canonicalization, hashing, store trait
   - `server`: HTTP server wiring (Axum/Hyper)
@@ -357,6 +362,40 @@ A practical compromise:
 - `spycatcher-harness` (binary)
   - CLI definitions (Clap)
   - Delegates to library
+
+### Localization architecture
+
+The harness should follow the localization pattern described in
+`docs/localizable-rust-libraries-with-fluent.md` and the CLI localization
+guidance in `docs/ortho-config-users-guide.md`.
+
+Library responsibilities:
+
+- Embed library-owned Fluent Translation List (FTL) resources under `i18n/`.
+- Expose localized rendering APIs that accept an application-provided
+  `FluentLanguageLoader` via dependency injection.
+- Keep domain-facing APIs semantic by returning typed errors with stable message
+  IDs, rather than preformatted user-facing strings.
+- Avoid locale detection and avoid constructing process-global language loaders
+  inside the library.
+
+Application responsibilities:
+
+- Act as the single authority for locale negotiation and fallback policy.
+- Build one authoritative language loader at process startup.
+- Load both binary-owned and library-owned localization assets into the same
+  locale context.
+- Inject the configured loader into any library helper that renders localized
+  text.
+
+CLI localization responsibilities:
+
+- Configure CLI copy via `ortho_config::Localizer`, preferring
+  `ortho_config::FluentLocalizer` for Fluent-backed messages.
+- Localize `clap` help and parse errors through
+  `Command::localize(&localizer)` and `localize_clap_error_with_command(..)`.
+- Fall back to `NoOpLocalizer` if localization resources fail to load, so the
+  CLI remains usable while reporting localization setup failures.
 
 ### Configuration via OrthoConfig
 
@@ -386,6 +425,7 @@ use std::path::PathBuf;
 pub struct HarnessConfig {
     pub listen: ListenAddr,
     pub mode: Mode,
+    pub localization: LocalizationConfig,
 
     pub protocol: Protocol,         // openai_chat_completions initially
     pub match_mode: MatchMode,      // sequential_strict default
@@ -406,6 +446,12 @@ pub struct UpstreamConfig {
     pub extra_headers: BTreeMap<String, String>, // header name -> value
 }
 
+#[derive(Debug, Clone, Deserialize)]
+pub struct LocalizationConfig {
+    pub locale: Option<String>,     // explicit locale override
+    pub fallback_locale: String,    // default "en-US"
+}
+
 #[derive(Debug, Clone, Copy, Deserialize)]
 pub enum Mode { Record, Replay }
 
@@ -420,6 +466,18 @@ pub trait ProtocolAdapter: Send + Sync {
 }
 ```
 
+When library components need to render user-facing text, they should accept an
+application-provided language loader rather than constructing one internally:
+
+```rust,no_run
+use i18n_embed::fluent::FluentLanguageLoader;
+
+pub fn localize_harness_error(
+    loader: &FluentLanguageLoader,
+    error: &HarnessError,
+) -> String;
+```
+
 ### Core type and module relationships
 
 For screen readers: The following class diagram summarizes the main
@@ -431,6 +489,7 @@ classDiagram
   class HarnessConfig {
     +ListenAddr listen
     +Mode mode
+    +LocalizationConfig localization
     +Protocol protocol
     +MatchMode match_mode
     +PathBuf cassette_dir
@@ -445,6 +504,11 @@ classDiagram
     +String base_url
     +String api_key_env
     +BTreeMap~String,String~ extra_headers
+  }
+
+  class LocalizationConfig {
+    +Option~String~ locale
+    +String fallback_locale
   }
 
   class Mode {
@@ -493,6 +557,21 @@ classDiagram
     +replay_stream(interaction Interaction, adapter ProtocolAdapter, timing ReplayTiming) StreamEmitter
   }
 
+  class FluentLanguageLoader {
+    <<component>>
+    +lookup(message_id String) String
+  }
+
+  class Localizer {
+    <<interface>>
+    +lookup(message_id String, args Map) Option~String~
+  }
+
+  class FluentLocalizer {
+    <<component>>
+    +builder(locale String) FluentLocalizer
+  }
+
   class UpstreamClient {
     <<component>>
     +send_request(req HttpRequest, cfg UpstreamConfig) Result~HttpResponse~
@@ -505,6 +584,7 @@ classDiagram
 
   HarnessConfig --> UpstreamConfig : uses
   HarnessConfig --> Mode : uses
+  HarnessConfig --> LocalizationConfig : uses
 
   ServerModule ..> HarnessConfig : config_input
   ServerModule ..> RunningHarness : returns
@@ -515,10 +595,14 @@ classDiagram
 
   ReplayEngine ..> CassetteStore : reads
   ReplayEngine ..> ProtocolAdapter : calls
+  ReplayEngine ..> FluentLanguageLoader : localized output
 
   UpstreamClient ..> UpstreamConfig : uses
   UpstreamClient ..> ProtocolAdapter : cooperates
 
+  FluentLocalizer ..|> Localizer : implements
+  CliBinary ..> Localizer : localizes help and errors
+  CliBinary ..> FluentLanguageLoader : injects into library localization APIs
   CliBinary ..> ConfigModule : loads_config
   CliBinary ..> ServerModule : starts_server
 ```
@@ -593,6 +677,15 @@ Subcommands map directly to vertical-slice deliverables:
   VidaiMock schema is confirmed)
 - `export wiremock`: optional later
 
+Global CLI localization behaviour:
+
+- `--locale <LANGID>` allows explicit locale override for command help, error
+  messages, and localized diagnostics.
+- Without `--locale`, the binary resolves locale through OrthoConfig layering
+  (env and config files), then applies `fallback_locale`.
+- `clap` parsing errors should be routed through
+  `localize_clap_error_with_command(..)` before rendering to users.
+
 Subcommand-specific config merging should be enabled via OrthoConfig to support
 per-command defaults in config files. [^9]
 
@@ -623,7 +716,10 @@ In replay configuration, `ttft_ms` is the time-to-first-token (TTFT) delay in
 milliseconds, and `tps` is tokens per second (TPS). In upstream configuration,
 `extra_headers` is a map of HTTP header names to header values. This uses TOML
 table syntax so it deserializes directly into `BTreeMap<String, String>` in
-`UpstreamConfig`.
+`UpstreamConfig`. For localization, `locale` can be set from CLI flags,
+environment variables, or configuration files using OrthoConfig precedence, and
+`fallback_locale` provides a deterministic default when locale negotiation
+fails.
 
 ```toml
 listen = "127.0.0.1:8787"
@@ -633,6 +729,10 @@ match_mode = "sequential_strict"
 
 cassette_dir = "fixtures/llm"
 cassette_name = "podbot_smoke_001"
+
+[localization]
+locale = "en-GB"
+fallback_locale = "en-US"
 
 [redaction]
 drop_headers = ["authorization", "x-api-key"]
@@ -673,6 +773,14 @@ api_key_env = "OPENROUTER_API_KEY"
 - Contract tests:
   - Ensure response shapes remain OpenAI-compatible for Chat Completions.
     [^4]
+- Localization tests:
+  - Verify library-localized message rendering works with an injected
+    `FluentLanguageLoader`.
+  - Verify the library does not construct its own loader or mutate global
+    locale state.
+  - Verify CLI help and parse errors are localized through
+    `ortho_config::Localizer`, with fallback to `NoOpLocalizer` on load
+    failures.
 
 ### Observability
 
