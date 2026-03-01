@@ -12,14 +12,15 @@ units with explicit dependencies and completion criteria.
       startup.
   - Depends on: none.
   - Success criteria:
-    - [ ] `vidaimock_harness` exposes `start_harness(cfg)` and
+    - [ ] `spycatcher_harness` exposes `start_harness(cfg)` and
           `RunningHarness::shutdown()` as compile-checked public APIs.
-    - [ ] `vidaimock-harness` CLI binary delegates all startup and shutdown
+    - [ ] `spycatcher-harness` CLI binary delegates all startup and shutdown
           behaviour to library entry points.
     - [ ] `cargo test --workspace` passes with baseline smoke tests for startup
           and shutdown.
-  - Design references: `docs/spycatcher-harness-design.md` §Rust API and module
-    boundaries, §Public library API surface.
+  - Design references:
+    [Rust API and module boundaries](spycatcher-harness-design.md#rust-api-and-module-boundaries),
+    [Public library API surface](spycatcher-harness-design.md#public-library-api-surface).
 
 - [ ] 1.1.2. Integrate layered configuration loading for all subcommands.
   - Depends on: 1.1.1.
@@ -29,8 +30,9 @@ units with explicit dependencies and completion criteria.
     - [ ] `record`, `replay`, and `verify` support `cmds.<subcommand>` merge
           values with test coverage for overrides.
     - [ ] CLI help and docs describe the merged configuration shape.
-  - Design references: `docs/spycatcher-harness-design.md` §Configuration via
-    OrthoConfig, §CLI integration and configuration.
+  - Design references:
+    [Configuration via OrthoConfig](spycatcher-harness-design.md#configuration-via-orthoconfig),
+    [CLI integration and configuration](spycatcher-harness-design.md#cli-integration-and-configuration).
 
 ### 1.2. Cassette model and matching engine
 
@@ -43,8 +45,9 @@ units with explicit dependencies and completion criteria.
           `format_version` values with actionable errors.
     - [ ] Schema round-trip tests verify lossless serialization for non-stream
           and stream interactions.
-  - Design references: `docs/spycatcher-harness-design.md` §Cassette
-    definition, §Cassette store.
+  - Design references:
+    [Cassette definition](spycatcher-harness-design.md#cassette-definition),
+    [Architecture overview](spycatcher-harness-design.md#architecture-overview).
 
 - [ ] 1.2.2. Implement canonical request generation and stable hashing.
   - Depends on: 1.2.1.
@@ -55,8 +58,8 @@ units with explicit dependencies and completion criteria.
           hash stability.
     - [ ] Fixture tests confirm that equivalent requests produce identical
           hashes and materially different requests do not.
-  - Design references: `docs/spycatcher-harness-design.md` §Canonicalization
-    and hashing.
+  - Design references:
+    [Canonicalization and hashing](spycatcher-harness-design.md#canonicalization-and-hashing).
 
 - [ ] 1.2.3. Deliver strict sequential and keyed replay matching modes.
   - Depends on: 1.2.2.
@@ -66,7 +69,8 @@ units with explicit dependencies and completion criteria.
     - [ ] Keyed mode consumes the next unused interaction for a matching hash.
     - [ ] Integration tests cover mismatch diagnostics and concurrent replay
           order handling.
-  - Design references: `docs/spycatcher-harness-design.md` §Matching modes.
+  - Design references:
+    [Matching modes](spycatcher-harness-design.md#matching-modes).
 
 ### 1.3. OpenAI chat completions non-stream path
 
@@ -78,8 +82,9 @@ units with explicit dependencies and completion criteria.
     - [ ] Non-stream responses are stored as exact bytes plus parsed JSON when
           valid.
     - [ ] Redaction rules remove configured secret headers before persistence.
-  - Design references: `docs/spycatcher-harness-design.md` §Architecture
-    overview, §OpenRouter / OpenAI Chat Completions streaming.
+  - Design references:
+    [Architecture overview](spycatcher-harness-design.md#architecture-overview),
+    [Streaming capture and replay](spycatcher-harness-design.md#streaming-capture-and-replay).
 
 - [ ] 1.3.2. Implement non-stream replay for `POST /v1/chat/completions`.
   - Depends on: 1.2.3, 1.3.1.
@@ -90,8 +95,9 @@ units with explicit dependencies and completion criteria.
           calls are attempted.
     - [ ] End-to-end record to replay integration tests pass using a stub
           upstream service.
-  - Design references: `docs/spycatcher-harness-design.md` §Goals,
-    §Recording and replay semantics.
+  - Design references:
+    [Goals and non-goals](spycatcher-harness-design.md#goals-and-non-goals),
+    [Recording and replay semantics](spycatcher-harness-design.md#recording-and-replay-semantics).
 
 ## 2. Streaming fidelity and cassette verification
 
@@ -106,8 +112,8 @@ units with explicit dependencies and completion criteria.
           end markers.
     - [ ] Unit tests cover fragmented frame boundaries and malformed event
           handling.
-  - Design references: `docs/spycatcher-harness-design.md` §OpenRouter /
-    OpenAI Chat Completions streaming.
+  - Design references:
+    [Streaming capture and replay](spycatcher-harness-design.md#streaming-capture-and-replay).
 
 - [ ] 2.1.2. Preserve OpenRouter comment frames and replay deterministically.
   - Depends on: 2.1.1.
@@ -117,8 +123,9 @@ units with explicit dependencies and completion criteria.
           matching.
     - [ ] Replay can emit recorded comment frames without changing non-comment
           event ordering.
-  - Design references: `docs/spycatcher-harness-design.md` §OpenRouter /
-    OpenAI Chat Completions streaming, §Known risks and limitations.
+  - Design references:
+    [Streaming capture and replay](spycatcher-harness-design.md#streaming-capture-and-replay),
+    [Known risks and limitations](spycatcher-harness-design.md#known-risks-and-limitations).
 
 - [ ] 2.1.3. Implement byte-faithful SSE replay mode.
   - Depends on: 2.1.1.
@@ -128,8 +135,9 @@ units with explicit dependencies and completion criteria.
     - [ ] Raw-transcript mode preserves event boundaries needed by SSE clients.
     - [ ] Integration tests validate compatibility with representative streaming
           clients.
-  - Design references: `docs/spycatcher-harness-design.md` §Streaming capture
-    and replay, §Known risks and limitations.
+  - Design references:
+    [Streaming capture and replay](spycatcher-harness-design.md#streaming-capture-and-replay),
+    [Known risks and limitations](spycatcher-harness-design.md#known-risks-and-limitations).
 
 ### 2.2. Verification and diagnostics workflow
 
@@ -141,8 +149,9 @@ units with explicit dependencies and completion criteria.
     - [ ] Verification failures provide machine-readable and human-readable
           output suitable for CI annotations.
     - [ ] Verification exits non-zero on any failure class.
-  - Design references: `docs/spycatcher-harness-design.md` §CLI shape,
-    §Recommended additions for regression suite integration.
+  - Design references:
+    [CLI shape](spycatcher-harness-design.md#cli-shape),
+    [Recommended additions for regression suite integration](spycatcher-harness-design.md#recommended-additions-for-regression-suite-integration).
 
 - [ ] 2.2.2. Add structured mismatch reports for CI consumption.
   - Depends on: 1.2.3, 2.2.1.
@@ -152,8 +161,9 @@ units with explicit dependencies and completion criteria.
     - [ ] JSON report schema is documented and validated in tests.
     - [ ] Replay command can output mismatch reports to file without changing
           HTTP response semantics.
-  - Design references: `docs/spycatcher-harness-design.md` §Matching modes,
-    §Public library API surface.
+  - Design references:
+    [Matching modes](spycatcher-harness-design.md#matching-modes),
+    [Public library API surface](spycatcher-harness-design.md#public-library-api-surface).
 
 ## 3. Replay realism and operational visibility
 
@@ -162,12 +172,14 @@ units with explicit dependencies and completion criteria.
 - [ ] 3.1.1. Implement deterministic timing controls for replay.
   - Depends on: 2.1.3.
   - Success criteria:
-    - [ ] Configuration supports TTFT delay and inter-chunk timing controls.
+    - [ ] Configuration supports time-to-first-token (TTFT) delay and
+          inter-chunk timing controls.
     - [ ] CI preset produces repeatable timings with bounded variance proven by
           test assertions.
     - [ ] Realistic preset supports jitter ranges without violating event order.
-  - Design references: `docs/spycatcher-harness-design.md` §Replay strategy,
-    §Roadmap tasks.
+  - Design references:
+    [Streaming capture and replay](spycatcher-harness-design.md#streaming-capture-and-replay),
+    [Roadmap tasks](spycatcher-harness-design.md#roadmap-tasks).
 
 ### 3.2. Observability and run diagnostics
 
@@ -179,7 +191,8 @@ units with explicit dependencies and completion criteria.
     - [ ] Log schema is documented with sample lines for successful and failed
           replays.
     - [ ] Integration tests assert key log fields are present for failure paths.
-  - Design references: `docs/spycatcher-harness-design.md` §Observability.
+  - Design references:
+    [Observability](spycatcher-harness-design.md#observability).
 
 - [ ] 3.2.2. Expose replay and mismatch metrics.
   - Depends on: 3.2.1.
@@ -188,7 +201,8 @@ units with explicit dependencies and completion criteria.
           interaction counters by protocol and cassette.
     - [ ] Metrics endpoint behaviour is tested in both record and replay modes.
     - [ ] Metric names and labels match the documented contract.
-  - Design references: `docs/spycatcher-harness-design.md` §Observability.
+  - Design references:
+    [Observability](spycatcher-harness-design.md#observability).
 
 ### 3.3. Optional VidaiMock realism backend
 
@@ -201,8 +215,9 @@ units with explicit dependencies and completion criteria.
           controls.
     - [ ] Replay falls back cleanly to native mode when VidaiMock is
           unavailable.
-  - Design references: `docs/spycatcher-harness-design.md` §VidaiMock and
-    recording tooling, §Roadmap tasks.
+  - Design references:
+    [VidaiMock and recording tooling](spycatcher-harness-design.md#vidaimock-and-recording-tooling),
+    [Roadmap tasks](spycatcher-harness-design.md#roadmap-tasks).
 
 - [ ] 3.3.2. Implement VidaiMock export once fixture schema is authoritative.
   - Depends on: 3.3.1.
@@ -211,8 +226,9 @@ units with explicit dependencies and completion criteria.
     - [ ] Exported fixtures validate against the confirmed schema.
     - [ ] Export command emits clear unsupported-schema errors when mapping is
           incomplete.
-  - Design references: `docs/spycatcher-harness-design.md` §VidaiMock and
-    recording tooling, §Known risks and limitations.
+  - Design references:
+    [VidaiMock and recording tooling](spycatcher-harness-design.md#vidaimock-and-recording-tooling),
+    [Known risks and limitations](spycatcher-harness-design.md#known-risks-and-limitations).
 
 ## 4. Multi-protocol expansion
 
@@ -226,8 +242,9 @@ units with explicit dependencies and completion criteria.
     - [ ] Replayer preserves event ordering and final completion state.
     - [ ] Contract tests verify endpoint compatibility for non-stream and stream
           response forms.
-  - Design references: `docs/spycatcher-harness-design.md` §OpenAI Responses
-    streaming, §Protocol router.
+  - Design references:
+    [OpenAI Responses streaming](spycatcher-harness-design.md#openai-responses-streaming),
+    [Architecture overview](spycatcher-harness-design.md#architecture-overview).
 
 ### 4.2. Anthropic messages support
 
@@ -240,8 +257,9 @@ units with explicit dependencies and completion criteria.
           event types to pass through unchanged.
     - [ ] Adapter tests cover `message_start`, content block events,
           `message_delta`, `message_stop`, `ping`, and `error` handling.
-  - Design references: `docs/spycatcher-harness-design.md` §Anthropic Messages
-    streaming, §Protocol router.
+  - Design references:
+    [Anthropic Messages streaming](spycatcher-harness-design.md#anthropic-messages-streaming),
+    [Architecture overview](spycatcher-harness-design.md#architecture-overview).
 
 ### 4.3. DeepSeek compatibility preset
 
@@ -254,8 +272,8 @@ units with explicit dependencies and completion criteria.
           DeepSeek-compatible
           fixtures.
     - [ ] Documentation explains preset limitations and override points.
-  - Design references: `docs/spycatcher-harness-design.md` §DeepSeek
-    compatibility.
+  - Design references:
+    [DeepSeek compatibility](spycatcher-harness-design.md#deepseek-compatibility).
 
 ### 4.4. Optional WireMock export path
 
@@ -266,8 +284,9 @@ units with explicit dependencies and completion criteria.
           without changing native cassette format.
     - [ ] Export includes metadata that links each mapping to interaction IDs.
     - [ ] Documentation states limitations for protocol-aware streaming replay.
-  - Design references: `docs/spycatcher-harness-design.md` §VidaiMock and
-    recording tooling, §Known risks and limitations.
+  - Design references:
+    [VidaiMock and recording tooling](spycatcher-harness-design.md#vidaimock-and-recording-tooling),
+    [Known risks and limitations](spycatcher-harness-design.md#known-risks-and-limitations).
 
 ## Dependency checkpoints
 

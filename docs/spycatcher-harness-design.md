@@ -1,4 +1,4 @@
-# Repeatability harness for VidaiMock
+# Spycatcher harness design
 
 ## Context and problem statement
 
@@ -25,11 +25,11 @@ diagnostics. The harness must:
   config files > defaults), including subcommand configuration merging.
   citeturn4search1turn4search9turn4search3
 - Integrate with VidaiMock for replay realism where it improves test coverage
-  (latency/TTFT/jitter, chaos primitives), while keeping an early shippable
-  vertical slice that does not depend on undocumented VidaiMock fixture
-  formats. VidaiMock advertises OpenAI- and Anthropic-compatible endpoints,
-  streaming simulation, and chaos injection via headers, and that it runs fully
-  offline/stateless. citeturn2search7
+  (latency/time-to-first-token (TTFT)/jitter, chaos primitives), while keeping
+  an early shippable vertical slice that does not depend on undocumented
+  VidaiMock fixture formats. VidaiMock advertises OpenAI- and
+  Anthropic-compatible endpoints, streaming simulation, and chaos injection via
+  headers, and that it runs fully offline/stateless. citeturn2search7
 
 WireMock (or equivalent) can record/play back HTTP interactions by proxying and
 producing stub mappings, but the harness should only rely on this class of tool
@@ -81,8 +81,9 @@ OpenRouter documents its OpenAI-like request/response schema and that streaming
 is SSE with occasional comment payloads. citeturn2search0turn2search1
 
 The same server runs in replay mode and answers from the cassette. VidaiMock
-can be used as an optional replay backend to simulate TTFT/jitter and chaos
-failure modes that it explicitly advertises. citeturn2search7
+can be used as an optional replay backend to simulate time-to-first-token
+(TTFT), jitter, and chaos failure modes that it explicitly advertises.
+citeturn2search7
 
 A short diagram description follows. The diagram shows the record/replay data
 flow and the adapter boundary.
@@ -91,7 +92,7 @@ flow and the adapter boundary.
 flowchart LR
   Agent[Agent / system under test] -->|HTTP: OpenAI-compatible| Harness
 
-  subgraph Harness[Repeatability harness]
+  subgraph Harness[Spycatcher harness]
     Router[Protocol router]
     Adapter["Protocol adapter<br/>OpenAI chat, later Responses Anthropic DeepSeek"]
     Store["Cassette store<br/>versioned, immutable"]
@@ -302,14 +303,14 @@ A practical compromise:
 
 ### Crate layout
 
-- `vidaimock_harness` (library)
+- `spycatcher_harness` (library)
   - `config`: configuration structs and OrthoConfig integration
   - `protocol`: protocol adapter traits and implementations
   - `cassette`: cassette schema, canonicalization, hashing, store trait
   - `server`: HTTP server wiring (Axum/Hyper)
   - `upstream`: OpenRouter/OpenAI/Anthropic/DeepSeek clients
   - `replay`: native replay engine; optional VidaiMock backend driver
-- `vidaimock-harness` (binary)
+- `spycatcher-harness` (binary)
   - CLI definitions (Clap)
   - Delegates to library
 
@@ -334,6 +335,7 @@ File format support notes:
 
 ```rust,no_run
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 #[derive(Debug, Clone, Deserialize)]
@@ -357,7 +359,7 @@ pub struct UpstreamConfig {
     pub kind: UpstreamKind,         // openrouter initially
     pub base_url: String,           // e.g. https://openrouter.ai/api/v1
     pub api_key_env: String,        // env var name, not the key itself
-    pub extra_headers: Vec<(String, String)>, // HTTP-Referer, X-Title, etc.
+    pub extra_headers: BTreeMap<String, String>, // header name -> value
 }
 
 #[derive(Debug, Clone, Copy, Deserialize)]
@@ -426,7 +428,7 @@ per-command defaults in config files. citeturn4search9
 
 ```bash
 # Record a session by running a local OpenAI-compatible endpoint.
-vidaimock-harness record \
+spycatcher-harness record \
   --listen 127.0.0.1:8787 \
   --cassette-name podbot_smoke_001 \
   --upstream.kind openrouter \
@@ -436,7 +438,7 @@ vidaimock-harness record \
 
 ```bash
 # Replay the recorded session without network access.
-vidaimock-harness replay \
+spycatcher-harness replay \
   --listen 127.0.0.1:8787 \
   --cassette-name podbot_smoke_001
 ```
@@ -445,6 +447,10 @@ vidaimock-harness replay \
 
 TOML is the default supported file format for OrthoConfig.
 citeturn4search3turn4search1
+
+In replay configuration, `ttft_ms` is the time-to-first-token (TTFT) delay in
+milliseconds, and `tps` is tokens per second (TPS). In upstream configuration,
+`extra_headers` is a map of HTTP header names to header values.
 
 ```toml
 listen = "127.0.0.1:8787"
@@ -471,8 +477,8 @@ api_key_env = "OPENROUTER_API_KEY"
 # Optional OpenRouter attribution headers.
 # OpenRouter documents HTTP-Referer and X-Title as optional. citeturn2search2turn0search3
 [cmds.record.upstream.extra_headers]
-http_referer = "https://example.invalid"
-x_title = "CI Regression Harness"
+"HTTP-Referer" = "https://example.invalid"
+"X-Title" = "CI Regression Harness"
 ```
 
 ## Testing, observability, and rollout roadmap
