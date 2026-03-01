@@ -128,11 +128,14 @@ project:
   - `make lint` executes:
 
     ```sh
+    cargo doc --no-deps
     cargo clippy --workspace --all-targets --all-features -- -D warnings
+    whitaker --all -- --all-targets --all-features
     ```
 
+    building documentation (with warnings denied via `RUSTDOCFLAGS`),
     linting every target with all features enabled and denying all Clippy
-    warnings.
+    warnings, and running Whitaker across all targets.
   - `make test` executes:
 
     ```sh
