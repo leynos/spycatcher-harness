@@ -26,6 +26,10 @@ jobs:
             **/*.md
             !**/target/**
             !**/dist/**
+      - name: Install Whitaker
+        run: |
+          cargo binstall --no-confirm whitaker-installer
+          whitaker-installer
       - name: Lint
         run: make lint
       - name: Test and Measure Coverage
