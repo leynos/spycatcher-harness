@@ -327,7 +327,7 @@ Compatibility implications:
 
 ### VidaiMock and recording tooling
 
-VidaiMock’s public product description emphasises offline mocking,
+VidaiMock’s public product description emphasizes offline mocking,
 provider-compatible endpoints, streaming physics, and chaos injection via
 headers, but does not describe an HTTP recording feature. [^11]
 
