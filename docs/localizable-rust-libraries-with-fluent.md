@@ -34,8 +34,8 @@ libraries in Rust using the Fluent ecosystem.
 
 ## Implementing the pattern: A two-crate workspace example
 
-To illustrate this pattern, let's build a simple workspace containing an
-application (`my-app`) that consumes a localizable library (`my-lib`).
+To illustrate this pattern, build a simple workspace containing an application
+(`my-app`) that consumes a localizable library (`my-lib`).
 
 ### 1. Workspace setup
 
