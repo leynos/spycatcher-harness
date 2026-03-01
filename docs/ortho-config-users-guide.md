@@ -564,9 +564,10 @@ attribute. The keys recognised today include:
 - `config_cli_visible`: when `true`, the generated CLI flag appears in help
   output instead of remaining hidden.
 
-Supplying only the keys you need lets you rename the CLI flag without altering
-file discovery, or vice versa. When the attribute is omitted, the defaults
-described in [Config path override](#config-path-override) continue to apply.
+Supplying only the required keys allows renaming of the CLI flag without
+altering file discovery, or vice versa. When the attribute is omitted, the
+defaults described in [Config path override](#config-path-override) continue to
+apply.
 
 ## Loading configuration and precedence rules
 
@@ -617,11 +618,11 @@ following steps:
 ### Config path override
 
 The derive macro always recognises a configuration override flag and the
-associated environment variables even when you do not declare a field
+associated environment variables even when no explicit field is declared
 explicitly. By default a hidden `--config-path` flag is accepted alongside
 `<PREFIX>CONFIG_PATH` and the unprefixed `CONFIG_PATH`. Applying the
-struct-level `discovery(...)` attribute customises this behaviour, allowing you
-to rename or expose the CLI flag and adjust the filenames searched during
+struct-level `discovery(...)` attribute customises this behaviour, allowing
+renaming or exposing the CLI flag and adjusting the filenames searched during
 discovery:
 
 ```rust

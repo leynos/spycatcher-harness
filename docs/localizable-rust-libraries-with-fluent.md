@@ -74,7 +74,7 @@ expose a function to retrieve localized messages.
 `my-lib/Cargo.toml`
 
 The library needs `i18n-embed` for the Fluent abstractions and `rust-embed` to
-bundle the `.ftl` files into the binary.1
+bundle the `.ftl` files into the binary.[^1]
 
 ```ini,toml
 [package]
@@ -130,7 +130,7 @@ calling the library.
 `my-app/Cargo.toml`
 
 The application depends on the library and adds the `desktop-requester` feature
-to `i18n-embed` to detect the system's locale.2
+to `i18n-embed` to detect the system's locale.[^2]
 
 ```ini,toml
 [package]
@@ -202,7 +202,7 @@ fn main() {
 ## Conclusion
 
 This dependency injection pattern provides a clean, robust, and scalable
-architecture for internationalization in a modular Rust ecosystem.1
+architecture for internationalization in a modular Rust ecosystem.[^1]
 
 - **For library authors:** The pattern enables shipping localizable components
   without imposing a specific localization strategy on consuming applications.
@@ -217,10 +217,9 @@ By adhering to this separation of concerns, the Rust community can build a rich
 ecosystem of composable, internationalized libraries that work together
 seamlessly.
 
-## Works cited
-
-1. i18n_embed - Rust - [Docs.rs](http://Docs.rs), accessed on August 18, 2025,
-   [https://docs.rs/i18n-embed](https://docs.rs/i18n-embed)
-
-2. i18n_embed - Rust - [Docs.rs](http://Docs.rs), accessed on August 18, 2025,
-   [https://docs.rs/i18n-embed/0.14.1/i18n_embed/](https://docs.rs/i18n-embed/0.14.1/i18n_embed/)
+[^1]: i18n_embed - Rust - [Docs.rs](http://Docs.rs), accessed on August 18,
+      2025,
+  [https://docs.rs/i18n-embed](https://docs.rs/i18n-embed)
+[^2]: i18n_embed - Rust - [Docs.rs](http://Docs.rs), accessed on August 18,
+      2025,
+  [https://docs.rs/i18n-embed/0.14.1/i18n_embed/](https://docs.rs/i18n-embed/0.14.1/i18n_embed/)
