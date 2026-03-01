@@ -113,6 +113,9 @@ flowchart LR
   Adapter --> VidaiMockBackend
 ```
 
+_Figure 1: Architecture flow showing request routing, protocol adaptation, and
+record/replay backend selection in the Spycatcher harness._
+
 Key architectural points:
 
 - **Protocol router** mounts HTTP routes for supported APIs:
@@ -137,6 +140,46 @@ Key architectural points:
   - Native replay: earliest slice, no external dependency.
   - VidaiMock replay: optional enhancement to simulate streaming physics and
     chaos (because VidaiMock advertises both). citeturn2search7
+
+### Record and replay interaction sequence
+
+For screen readers: The following sequence diagram shows end-to-end request
+handling in both record mode and replay mode for `POST /v1/chat/completions`.
+
+```mermaid
+sequenceDiagram
+  actor Agent
+  participant Harness as Harness_server
+  participant Router as Protocol_router
+  participant Adapter as Protocol_adapter
+  participant Store as Cassette_store
+  participant Upstream as OpenRouter_upstream
+
+  rect rgb(230,230,255)
+    note over Agent,Upstream: Record_mode
+    Agent->>Harness: POST /v1/chat/completions
+    Harness->>Router: route_request
+    Router->>Adapter: handle_request_record
+    Adapter->>Store: canonicalize_and_hash_request
+    Adapter->>Upstream: forward_http_request
+    Upstream-->>Adapter: stream_or_nonstream_response
+    Adapter->>Store: append_interaction_to_cassette
+    Adapter-->>Agent: proxy_response_stream_or_body
+  end
+
+  rect rgb(230,255,230)
+    note over Agent,Store: Replay_mode
+    Agent->>Harness: POST /v1/chat/completions
+    Harness->>Router: route_request
+    Router->>Adapter: handle_request_replay
+    Adapter->>Store: lookup_interaction_by_mode
+    Store-->>Adapter: matched_interaction
+    Adapter-->>Agent: serve_recorded_response
+  end
+```
+
+_Figure 2: Record and replay sequence for chat completions requests through the
+Spycatcher harness._
 
 ## Recording and replay semantics
 
@@ -223,7 +266,7 @@ Recording strategy for OpenAI-style SSE:
   - Parse SSE frames into event records:
     - `comment` frames (leading `:`) recorded as `comment` type.
     - `data:` frames captured as raw string and, when JSON, parsed into `Value`.
-  - Forward frames to the downstream client as bytes *without re-chunking*
+  - Forward frames to the downstream client as bytes _without re-chunking_
     where possible (preserves client edge cases).
 - Store both:
   - The parsed event list (for deterministic replay), and
@@ -375,6 +418,112 @@ pub trait ProtocolAdapter: Send + Sync {
     fn build_stream(&self, interaction: &Interaction) -> StreamEmitter;
 }
 ```
+
+### Core type and module relationships
+
+For screen readers: The following class diagram summarizes the main
+configuration types, protocol interfaces, runtime modules, and their
+dependencies.
+
+```mermaid
+classDiagram
+  class HarnessConfig {
+    +ListenAddr listen
+    +Mode mode
+    +Protocol protocol
+    +MatchMode match_mode
+    +PathBuf cassette_dir
+    +String cassette_name
+    +Option~UpstreamConfig~ upstream
+    +RedactionConfig redaction
+    +ReplayConfig replay
+  }
+
+  class UpstreamConfig {
+    +UpstreamKind kind
+    +String base_url
+    +String api_key_env
+    +BTreeMap~String,String~ extra_headers
+  }
+
+  class Mode {
+    <<enum>>
+    Record
+    Replay
+  }
+
+  class ProtocolAdapter {
+    <<interface>>
+    +protocol_id() str
+    +canonical_request(req HttpRequest) CanonicalRequest
+    +parse_stream(bytes u8[]) Vec~StreamEvent~
+    +build_response(interaction Interaction) HttpResponse
+    +build_stream(interaction Interaction) StreamEmitter
+  }
+
+  class CassetteStore {
+    <<interface>>
+    +append(interaction Interaction) Result
+    +load(path PathBuf) Result~Cassette~
+    +lookup_sequential(hash String) Option~Interaction~
+    +lookup_keyed(hash String) Option~Interaction~
+  }
+
+  class RunningHarness {
+    +SocketAddr addr
+    +PathBuf cassette_path
+    +shutdown() Result
+  }
+
+  class ServerModule {
+    <<module>>
+    +start_harness(cfg HarnessConfig) Result~RunningHarness~
+  }
+
+  class ConfigModule {
+    <<module>>
+    +load() Result~HarnessConfig~
+    +load_and_merge_subcommand_for(name String) Result~HarnessConfig~
+  }
+
+  class ReplayEngine {
+    <<component>>
+    +replay_interaction(interaction Interaction, adapter ProtocolAdapter) HttpResponse
+    +replay_stream(interaction Interaction, adapter ProtocolAdapter, timing ReplayTiming) StreamEmitter
+  }
+
+  class UpstreamClient {
+    <<component>>
+    +send_request(req HttpRequest, cfg UpstreamConfig) Result~HttpResponse~
+  }
+
+  class CliBinary {
+    <<binary>>
+    +main(args String[]) void
+  }
+
+  HarnessConfig --> UpstreamConfig : uses
+  HarnessConfig --> Mode : uses
+
+  ServerModule ..> HarnessConfig : config_input
+  ServerModule ..> RunningHarness : returns
+
+  ConfigModule ..> HarnessConfig : constructs
+
+  RunningHarness ..> CassetteStore : owns
+
+  ReplayEngine ..> CassetteStore : reads
+  ReplayEngine ..> ProtocolAdapter : calls
+
+  UpstreamClient ..> UpstreamConfig : uses
+  UpstreamClient ..> ProtocolAdapter : cooperates
+
+  CliBinary ..> ConfigModule : loads_config
+  CliBinary ..> ServerModule : starts_server
+```
+
+_Figure 3: Core type and module relationships for configuration, request
+handling, replay execution, and CLI orchestration._
 
 ### Public library API surface
 
