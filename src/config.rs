@@ -188,7 +188,11 @@ pub struct RedactionConfig {
 }
 
 /// Replay timing controls for simulating streaming latency.
-#[derive(Debug, Clone, Default)]
+///
+/// The default has `simulate_timing` disabled.  When enabled, `tps`
+/// controls inter-chunk spacing; a zero value is never used for
+/// division because the timing path is gated on `simulate_timing`.
+#[derive(Debug, Clone)]
 pub struct ReplayConfig {
     /// Whether to simulate timing delays during replay.
     pub simulate_timing: bool,
@@ -196,6 +200,16 @@ pub struct ReplayConfig {
     pub ttft_ms: u64,
     /// Tokens per second for inter-chunk spacing.
     pub tps: u64,
+}
+
+impl Default for ReplayConfig {
+    fn default() -> Self {
+        Self {
+            simulate_timing: false,
+            ttft_ms: 200,
+            tps: 50,
+        }
+    }
 }
 
 #[cfg(test)]
@@ -231,6 +245,15 @@ mod tests {
     #[rstest]
     fn default_protocol_is_openai_chat_completions() {
         assert_eq!(Protocol::default(), Protocol::OpenAiChatCompletions);
+    }
+
+    #[rstest]
+    fn default_replay_config_has_non_zero_tps() {
+        let rc = ReplayConfig::default();
+        assert!(
+            rc.tps > 0,
+            "default tps must be non-zero to avoid division-by-zero"
+        );
     }
 
     #[rstest]

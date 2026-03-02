@@ -53,7 +53,11 @@ pub enum HarnessError {
 
     /// An I/O operation failed.
     #[error("io failure")]
-    Io,
+    Io {
+        /// The underlying I/O error.
+        #[source]
+        source: std::io::Error,
+    },
 }
 
 #[cfg(test)]
@@ -75,9 +79,23 @@ mod tests {
         "request mismatch at interaction 42",
     )]
     #[case::upstream_failed(HarnessError::UpstreamRequestFailed, "upstream request failed")]
-    #[case::io(HarnessError::Io, "io failure")]
+    #[case::io(
+        HarnessError::Io { source: std::io::Error::new(std::io::ErrorKind::NotFound, "gone") },
+        "io failure",
+    )]
     fn error_display_matches_expected(#[case] error: HarnessError, #[case] expected: &str) {
         assert_eq!(format!("{error}"), expected);
+    }
+
+    #[test]
+    fn io_variant_preserves_source_chain() {
+        let inner = std::io::Error::new(std::io::ErrorKind::NotFound, "file missing");
+        let err = HarnessError::Io { source: inner };
+        let std_err: &dyn std::error::Error = &err;
+        assert!(
+            std_err.source().is_some(),
+            "Io variant must expose the underlying io::Error via source()",
+        );
     }
 
     #[test]

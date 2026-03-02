@@ -4,6 +4,7 @@
 //! [`spycatcher_harness`] library. CLI argument parsing and `OrthoConfig`
 //! integration are introduced in task 1.1.2.
 
+use eyre::WrapErr;
 use spycatcher_harness::{HarnessConfig, start_harness};
 
 /// Application entry point.
@@ -16,9 +17,14 @@ use spycatcher_harness::{HarnessConfig, start_harness};
 ///
 /// Exits with a non-zero status if harness startup or shutdown fails.
 #[tokio::main(flavor = "current_thread")]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+async fn main() -> eyre::Result<()> {
     let cfg = HarnessConfig::default();
-    let harness = start_harness(cfg).await?;
-    harness.shutdown().await?;
+    let harness = start_harness(cfg)
+        .await
+        .wrap_err("failed to start harness")?;
+    harness
+        .shutdown()
+        .await
+        .wrap_err("failed to shut down harness")?;
     Ok(())
 }

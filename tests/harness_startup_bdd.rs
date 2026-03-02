@@ -18,6 +18,17 @@ use spycatcher_harness::{
     HarnessConfig, HarnessError, HarnessResult, RunningHarness, start_harness,
 };
 
+// -- Helpers ----------------------------------------------------------------
+
+/// Builds a single-threaded Tokio runtime for use in synchronous BDD
+/// step functions.
+fn build_runtime() -> tokio::runtime::Runtime {
+    tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("failed to build tokio runtime")
+}
+
 // -- World fixture ----------------------------------------------------------
 
 #[derive(Default, ScenarioState)]
@@ -54,10 +65,7 @@ fn the_harness_has_been_started(harness_world: &HarnessWorld) {
         .config
         .take()
         .expect("config must be set before starting");
-    let rt = tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()
-        .expect("failed to build tokio runtime");
+    let rt = build_runtime();
     let result = rt.block_on(start_harness(cfg));
     harness_world.start_result.set(result);
 }
@@ -79,10 +87,7 @@ fn when_the_harness_is_started(harness_world: &HarnessWorld) {
         .config
         .take()
         .expect("config must be set before starting");
-    let rt = tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()
-        .expect("failed to build tokio runtime");
+    let rt = build_runtime();
     let result = rt.block_on(start_harness(cfg));
     harness_world.start_result.set(result);
 }
@@ -94,10 +99,7 @@ fn when_the_harness_is_shut_down(harness_world: &HarnessWorld) {
         .take()
         .expect("harness must be started before shutdown")
         .expect("start_result must be Ok to shut down");
-    let rt = tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()
-        .expect("failed to build tokio runtime");
+    let rt = build_runtime();
     let result = rt.block_on(harness.shutdown());
     harness_world.shutdown_result.set(result);
 }

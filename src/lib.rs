@@ -75,7 +75,8 @@ impl RunningHarness {
 /// # Errors
 ///
 /// Returns [`HarnessError::InvalidConfig`] if the configuration is
-/// invalid (e.g. empty cassette name).
+/// invalid (e.g. empty cassette name, path traversal in cassette name,
+/// or record mode without upstream configuration).
 ///
 /// # Examples
 ///
@@ -112,6 +113,16 @@ fn validate_config(cfg: &HarnessConfig) -> HarnessResult<()> {
             message: "cassette name must not be empty".to_owned(),
         });
     }
+    if cfg.cassette_name.starts_with('/') || cfg.cassette_name.contains("..") {
+        return Err(HarnessError::InvalidConfig {
+            message: "cassette name must not contain path traversal sequences".to_owned(),
+        });
+    }
+    if cfg.mode == config::Mode::Record && cfg.upstream.is_none() {
+        return Err(HarnessError::InvalidConfig {
+            message: "upstream configuration is required for record mode".to_owned(),
+        });
+    }
     Ok(())
 }
 
@@ -126,8 +137,9 @@ mod tests {
     #[tokio::test]
     async fn start_harness_with_valid_config_succeeds() {
         let cfg = HarnessConfig::default();
-        let result = start_harness(cfg).await;
-        assert!(result.is_ok());
+        let _harness = start_harness(cfg)
+            .await
+            .expect("startup with default config should succeed");
     }
 
     #[rstest]
@@ -139,6 +151,53 @@ mod tests {
         };
         let result = start_harness(cfg).await;
         assert!(matches!(result, Err(HarnessError::InvalidConfig { .. })));
+    }
+
+    #[rstest]
+    #[tokio::test]
+    async fn start_harness_with_traversal_cassette_name_fails() {
+        let cfg = HarnessConfig {
+            cassette_name: "../escape".to_owned(),
+            ..HarnessConfig::default()
+        };
+        let result = start_harness(cfg).await;
+        assert!(matches!(result, Err(HarnessError::InvalidConfig { .. })));
+    }
+
+    #[rstest]
+    #[tokio::test]
+    async fn start_harness_with_absolute_cassette_name_fails() {
+        let cfg = HarnessConfig {
+            cassette_name: "/tmp/out".to_owned(),
+            ..HarnessConfig::default()
+        };
+        let result = start_harness(cfg).await;
+        assert!(matches!(result, Err(HarnessError::InvalidConfig { .. })));
+    }
+
+    #[rstest]
+    #[tokio::test]
+    async fn start_harness_record_mode_without_upstream_fails() {
+        let cfg = HarnessConfig {
+            mode: config::Mode::Record,
+            upstream: None,
+            ..HarnessConfig::default()
+        };
+        let result = start_harness(cfg).await;
+        assert!(matches!(result, Err(HarnessError::InvalidConfig { .. })));
+    }
+
+    #[rstest]
+    #[tokio::test]
+    async fn start_harness_record_mode_with_upstream_succeeds() {
+        let cfg = HarnessConfig {
+            mode: config::Mode::Record,
+            upstream: Some(config::UpstreamConfig::default()),
+            ..HarnessConfig::default()
+        };
+        let _harness = start_harness(cfg)
+            .await
+            .expect("startup should succeed with upstream");
     }
 
     #[rstest]
@@ -161,8 +220,7 @@ mod tests {
     async fn shutdown_succeeds() {
         let cfg = HarnessConfig::default();
         let harness = start_harness(cfg).await.expect("startup should succeed");
-        let result = harness.shutdown().await;
-        assert!(result.is_ok());
+        harness.shutdown().await.expect("shutdown should succeed");
     }
 
     #[rstest]

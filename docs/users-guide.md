@@ -35,10 +35,9 @@ update syntax to override specific fields:
 
 ```rust
 use spycatcher_harness::HarnessConfig;
-use spycatcher_harness::config::{ListenAddr, Mode};
+use spycatcher_harness::config::ListenAddr;
 
 let cfg = HarnessConfig {
-    mode: Mode::Record,
     listen: ListenAddr::from(
         "127.0.0.1:9090".parse::<std::net::SocketAddr>().unwrap()
     ),
@@ -96,8 +95,8 @@ The `spycatcher-harness` binary delegates all behaviour to the library.
 CLI argument parsing and subcommand support will be added in a future
 release (task 1.1.2).
 
-Currently the binary starts the harness with a default configuration and
-shuts it down immediately:
+Currently, the binary starts the harness with a default configuration
+and shuts it down immediately:
 
 ```sh
 cargo run --bin spycatcher-harness
