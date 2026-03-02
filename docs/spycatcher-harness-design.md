@@ -421,9 +421,9 @@ File format support notes:
 ### Core traits and types
 
 ```rust,no_run
+use camino::Utf8PathBuf;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
-use std::path::PathBuf;
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct HarnessConfig {
@@ -433,7 +433,7 @@ pub struct HarnessConfig {
 
     pub protocol: Protocol,         // openai_chat_completions initially
     pub match_mode: MatchMode,      // sequential_strict default
-    pub cassette_dir: PathBuf,
+    pub cassette_dir: Utf8PathBuf,
     pub cassette_name: String,
 
     pub upstream: Option<UpstreamConfig>, // required for record mode
@@ -644,7 +644,7 @@ pub enum HarnessError {
 
 pub struct RunningHarness {
     pub addr: SocketAddr,
-    pub cassette_path: std::path::PathBuf,
+    pub cassette_path: camino::Utf8PathBuf,
 }
 
 impl RunningHarness {
