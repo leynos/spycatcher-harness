@@ -33,7 +33,7 @@ jobs:
           path: |
             ~/.cargo/bin/whitaker-installer
             ~/.cache/cargo-binstall
-          key: whitaker-installer-${{ runner.os }}-${{ env.WHITAKER_INSTALLER_VERSION }}
+          key: whitaker-installer-${{ runner.os }}-${{ runner.arch }}-${{ env.WHITAKER_INSTALLER_VERSION }}
       - name: Install Whitaker
         run: |
           cargo binstall --no-confirm whitaker-installer@${{ env.WHITAKER_INSTALLER_VERSION }}
