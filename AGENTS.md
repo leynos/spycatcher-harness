@@ -139,7 +139,7 @@ project:
   - `make test` executes:
 
     ```sh
-    cargo nextest run --workspace
+    cargo nextest run --all-targets --all-features
     cargo test --doc --workspace --all-features
     ```
 
