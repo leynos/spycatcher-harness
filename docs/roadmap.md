@@ -8,17 +8,17 @@ units with explicit dependencies and completion criteria.
 
 ### 1.1. Configuration and executable skeleton
 
-- [ ] 1.1.1. Implement the library and binary crate skeleton for harness
+- [x] 1.1.1. Implement the library and binary crate skeleton for harness
       startup.
   - Depends on: none.
   - Success criteria:
-    - [ ] `spycatcher_harness` exposes `start_harness(cfg)` and
+    - [x] `spycatcher_harness` exposes `start_harness(cfg)` and
           `RunningHarness::shutdown()` as compile-checked public APIs.
-    - [ ] Public library entry points return typed error enums and do not
+    - [x] Public library entry points return typed error enums and do not
           export opaque error types.
-    - [ ] `spycatcher-harness` CLI binary delegates all startup and shutdown
+    - [x] `spycatcher-harness` CLI binary delegates all startup and shutdown
           behaviour to library entry points.
-    - [ ] `cargo test --workspace` passes with baseline smoke tests for startup
+    - [x] `cargo test --workspace` passes with baseline smoke tests for startup
           and shutdown.
   - Design references:
     [Rust API and module boundaries](spycatcher-harness-design.md#rust-api-and-module-boundaries),

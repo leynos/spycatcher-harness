@@ -351,7 +351,8 @@ A practical compromise:
 
 ### Crate layout
 
-- `spycatcher_harness` (library)
+- `spycatcher_harness` (library, `src/lib.rs`)
+  - `error`: typed error enum (`HarnessError`) and result alias
   - `config`: configuration structs and OrthoConfig integration
   - `i18n`: embedded Fluent Translation List (FTL) resources and message IDs
   - `protocol`: protocol adapter traits and implementations
@@ -359,9 +360,12 @@ A practical compromise:
   - `server`: HTTP server wiring (Axum/Hyper)
   - `upstream`: OpenRouter/OpenAI/Anthropic/DeepSeek clients
   - `replay`: native replay engine; optional VidaiMock backend driver
-- `spycatcher-harness` (binary)
+- `spycatcher-harness` (binary, `src/bin/spycatcher_harness.rs`)
   - CLI definitions (Clap)
   - Delegates to library
+
+Path fields use `camino::Utf8PathBuf` rather than `std::path::PathBuf`; see
+[Implementation decisions](#implementation-decisions) for rationale.
 
 ### Localization architecture
 
@@ -417,9 +421,9 @@ File format support notes:
 ### Core traits and types
 
 ```rust,no_run
+use camino::Utf8PathBuf;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
-use std::path::PathBuf;
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct HarnessConfig {
@@ -429,7 +433,7 @@ pub struct HarnessConfig {
 
     pub protocol: Protocol,         // openai_chat_completions initially
     pub match_mode: MatchMode,      // sequential_strict default
-    pub cassette_dir: PathBuf,
+    pub cassette_dir: Utf8PathBuf,
     pub cassette_name: String,
 
     pub upstream: Option<UpstreamConfig>, // required for record mode
@@ -640,7 +644,7 @@ pub enum HarnessError {
 
 pub struct RunningHarness {
     pub addr: SocketAddr,
-    pub cassette_path: std::path::PathBuf,
+    pub cassette_path: camino::Utf8PathBuf,
 }
 
 impl RunningHarness {
@@ -884,6 +888,36 @@ avoiding time commitments.
   generic HTTP but is not tailored for LLM streaming protocols, and adds
   operational complexity. [^12][^13] Mitigation: keep WireMock integration
   optional and export-only; avoid requiring it for baseline harness operation.
+
+## Implementation decisions
+
+Decisions recorded during implementation that refine or clarify the design.
+
+### Path types (task 1.1.1)
+
+The library uses `camino::Utf8PathBuf` for all path fields
+(`HarnessConfig.cassette_dir`, `RunningHarness.cassette_path`) rather than
+`std::path::PathBuf`. This follows the project coding standard in `AGENTS.md`
+which mandates `camino` over `std::path` for enhanced cross-platform support
+and UTF-8 path guarantees.
+
+### Crate structure (task 1.1.1)
+
+The project uses a single `Cargo.toml` package with both `[lib]` and `[[bin]]`
+sections rather than a Cargo workspace. Cargo automatically names the library
+crate `spycatcher_harness` (underscores) for the package `spycatcher-harness`.
+This avoids unnecessary `Cargo.toml` duplication and cross-crate dependency
+wiring. The decision should be revisited if the project grows to require
+additional packages.
+
+### Async API contract (task 1.1.1)
+
+Both `start_harness` and `RunningHarness::shutdown` are `async fn` from the
+outset, even though the skeleton performs no asynchronous work. This
+establishes the public API contract so that downstream code does not need to
+change when HTTP server binding (task 1.3.1) introduces genuine async
+operations. The `clippy::unused_async` lint is suppressed with an `#[expect]`
+annotation documenting this rationale.
 
 ## Source references
 
