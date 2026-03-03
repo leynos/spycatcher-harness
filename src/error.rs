@@ -62,6 +62,8 @@ pub enum HarnessError {
 
 #[cfg(test)]
 mod tests {
+    //! Unit tests for harness error display formatting.
+
     use super::*;
     use rstest::rstest;
 

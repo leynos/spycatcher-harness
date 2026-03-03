@@ -214,6 +214,8 @@ impl Default for ReplayConfig {
 
 #[cfg(test)]
 mod tests {
+    //! Unit tests for harness configuration defaults and validation.
+
     use super::*;
     use rstest::rstest;
 

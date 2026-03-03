@@ -128,18 +128,25 @@ project:
   - `make lint` executes:
 
     ```sh
+    cargo doc --no-deps
     cargo clippy --workspace --all-targets --all-features -- -D warnings
+    whitaker --all -- --all-targets --all-features
     ```
 
+    building documentation (with warnings denied via `RUSTDOCFLAGS`),
     linting every target with all features enabled and denying all Clippy
-    warnings.
+    warnings, and running Whitaker across all targets.
   - `make test` executes:
 
     ```sh
-    cargo test --workspace
+    cargo nextest run --all-targets --all-features
+    cargo test --doc --workspace --all-features
     ```
 
-    running the full workspace test suite. Use `make fmt`
+    running the full workspace test suite via nextest, then running
+    doctests separately (nextest does not run doctests on stable
+    toolchains). Falls back to `cargo test` if `cargo-nextest` is not
+    installed. Use `make fmt`
     (`cargo fmt --workspace`) to apply formatting fixes reported by the
     formatter check.
 - Clippy warnings MUST be disallowed.

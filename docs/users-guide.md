@@ -1,18 +1,18 @@
 # Spycatcher harness user's guide
 
 This guide documents the public API surface and usage patterns for the
-Spycatcher harness. The harness records and replays LLM API interactions
-for deterministic regression testing.
+Spycatcher harness. The harness records and replays LLM API interactions for
+deterministic regression testing.
 
 ## Library API
 
-The `spycatcher_harness` crate exposes two primary entry points for
-harness lifecycle management.
+The `spycatcher_harness` crate exposes two primary entry points for harness
+lifecycle management.
 
 ### Starting the harness
 
-Call `start_harness` with a `HarnessConfig` to validate configuration
-and prepare the harness for operation:
+Call `start_harness` with a `HarnessConfig` to validate configuration and
+prepare the harness for operation:
 
 ```rust,no_run
 use spycatcher_harness::{start_harness, HarnessConfig};
@@ -30,8 +30,8 @@ harness.shutdown().await?;
 
 ### Configuration
 
-`HarnessConfig` controls all aspects of harness behaviour. Use struct
-update syntax to override specific fields:
+`HarnessConfig` controls all aspects of harness behaviour. Use struct update
+syntax to override specific fields:
 
 ```rust
 use spycatcher_harness::HarnessConfig;
@@ -63,9 +63,9 @@ Configuration fields:
 
 ### Error handling
 
-All public API functions return `HarnessResult<T>`, which is an alias
-for `Result<T, HarnessError>`. The `HarnessError` enum provides typed
-variants for each failure mode:
+All public API functions return `HarnessResult<T>`, which is an alias for
+`Result<T, HarnessError>`. The `HarnessError` enum provides typed variants for
+each failure mode:
 
 - `InvalidConfig` — configuration validation failed.
 - `CassetteNotFound` — the named cassette does not exist.
@@ -76,8 +76,7 @@ variants for each failure mode:
 
 ### Shutdown
 
-Call `shutdown()` on a `RunningHarness` to tear down the harness
-gracefully:
+Call `shutdown()` on a `RunningHarness` to tear down the harness gracefully:
 
 ```rust,no_run
 # use spycatcher_harness::{start_harness, HarnessConfig};
@@ -91,12 +90,12 @@ harness.shutdown().await?;
 
 ## CLI binary
 
-The `spycatcher-harness` binary delegates all behaviour to the library.
-CLI argument parsing and subcommand support will be added in a future
-release (task 1.1.2).
+The `spycatcher-harness` binary delegates all behaviour to the library. CLI
+argument parsing and subcommand support will be added in a future release (task
+1.1.2).
 
-Currently, the binary starts the harness with a default configuration
-and shuts it down immediately:
+Currently, the binary starts the harness with a default configuration and shuts
+it down immediately:
 
 ```sh
 cargo run --bin spycatcher-harness

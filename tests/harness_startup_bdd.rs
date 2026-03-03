@@ -6,6 +6,10 @@
     clippy::expect_used,
     reason = "BDD step functions use expect for step precondition enforcement"
 )]
+#![allow(
+    unused_variables,
+    reason = "rstest-bdd scenario macro introduces variables consumed by fixture resolution"
+)]
 
 use std::net::SocketAddr;
 
