@@ -16,15 +16,20 @@ use spycatcher_harness::{HarnessConfig, start_harness};
 /// # Errors
 ///
 /// Exits with a non-zero status if harness startup or shutdown fails.
-#[tokio::main(flavor = "current_thread")]
-async fn main() -> eyre::Result<()> {
-    let cfg = HarnessConfig::default();
-    let harness = start_harness(cfg)
-        .await
-        .wrap_err("failed to start harness")?;
-    harness
-        .shutdown()
-        .await
-        .wrap_err("failed to shut down harness")?;
-    Ok(())
+fn main() -> eyre::Result<()> {
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .wrap_err("failed to build tokio runtime")?;
+    rt.block_on(async {
+        let cfg = HarnessConfig::default();
+        let harness = start_harness(cfg)
+            .await
+            .wrap_err("failed to start harness")?;
+        harness
+            .shutdown()
+            .await
+            .wrap_err("failed to shut down harness")?;
+        Ok(())
+    })
 }

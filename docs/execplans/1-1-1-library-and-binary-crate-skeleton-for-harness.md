@@ -44,8 +44,8 @@ escalation, not workarounds.
 - All Clippy lints defined in `Cargo.toml` must pass. No `#[allow]` attributes
   are permitted; use `#[expect(..., reason = "...")]` only as a last resort.
 - Every public item must have `///` documentation. Every module must start with
-  `//!` documentation. (`missing_docs = "deny"`, `missing_crate_level_docs =
-  "deny"` are enforced.)
+  `//!` documentation. (`missing_docs = "deny"`,
+  `missing_crate_level_docs = "deny"` are enforced.)
 - Path fields must use `camino::Utf8PathBuf`, not `std::path::PathBuf`, per
   `AGENTS.md`.
 - Dependencies must use caret requirements (e.g., `thiserror = "2.0.18"`).
@@ -75,27 +75,21 @@ Thresholds that trigger escalation when breached.
 ## Risks
 
 - Risk: `rstest-bdd` async scenario support may have rough edges with
-  `tokio::test`.
-  Severity: low
-  Likelihood: low
-  Mitigation: the user's guide documents the exact pattern
-  (`#[tokio::test(flavor = "current_thread")]` before `#[scenario]`). Fall
-  back to synchronous scenarios with `block_on` if async macro expansion
-  fails.
+  `tokio::test`. Severity: low Likelihood: low Mitigation: the user's guide
+  documents the exact pattern (`#[tokio::test(flavor = "current_thread")]`
+  before `#[scenario]`). Fall back to synchronous scenarios with `block_on` if
+  async macro expansion fails.
 
 - Risk: strict Clippy lints (`unused_async`, `must_use_candidate`,
   `missing_const_for_fn`) will flag the skeleton's placeholder implementations.
-  Severity: low
-  Likelihood: high
-  Mitigation: use `#[expect(..., reason = "...")]` with clear justifications
-  for each suppression. The skeleton's `shutdown()` is async by API contract
-  but performs no async work yet.
+  Severity: low Likelihood: high Mitigation: use
+  `#[expect(..., reason = "...")]` with clear justifications for each
+  suppression. The skeleton's `shutdown()` is async by API contract but
+  performs no async work yet.
 
 - Risk: `camino` path types may conflict with design document code samples
-  that show `std::path::PathBuf`.
-  Severity: low
-  Likelihood: medium
-  Mitigation: this is a deliberate decision documented in the design doc.
+  that show `std::path::PathBuf`. Severity: low Likelihood: medium Mitigation:
+  this is a deliberate decision documented in the design doc.
   `camino::Utf8PathBuf` is the project standard per `AGENTS.md`.
 
 ## Progress
@@ -120,69 +114,61 @@ Thresholds that trigger escalation when breached.
 ## Surprises & discoveries
 
 - Observation: `allow-expect-in-tests = true` in `clippy.toml` only covers
-  `#[cfg(test)]` modules, not integration test files under `tests/`.
-  Evidence: Clippy raised `expect_used` errors in the BDD integration test
-  file despite the clippy.toml setting.
-  Impact: integration test files that use `expect()` need a crate-level
-  `#[expect(clippy::expect_used)]` attribute.
+  `#[cfg(test)]` modules, not integration test files under `tests/`. Evidence:
+  Clippy raised `expect_used` errors in the BDD integration test file despite
+  the clippy.toml setting. Impact: integration test files that use `expect()`
+  need a crate-level `#[expect(clippy::expect_used)]` attribute.
 
 - Observation: `rstest-bdd`'s `#[derive(ScenarioState)]` does not
-  auto-derive `Default`; both `#[derive(Default, ScenarioState)]` are
-  required.
-  Evidence: compiler error "the trait `Default` is not implemented".
-  Impact: future BDD world fixtures must derive both traits explicitly.
+  auto-derive `Default`; both `#[derive(Default, ScenarioState)]` are required.
+  Evidence: compiler error "the trait `Default` is not implemented". Impact:
+  future BDD world fixtures must derive both traits explicitly.
 
 - Observation: `rstest-bdd` scenario function parameters must match
   fixture names exactly; the underscore-prefixed naming convention
-  (`_harness_world`) breaks fixture resolution.
-  Evidence: runtime panic "requires fixtures harness_world, but the
-  following are missing: harness_world. Available fixtures: _harness_world".
-  Impact: scenario binding functions must use the exact fixture name
-  without underscore prefix, even if the value is unused in the body.
+  (`_harness_world`) breaks fixture resolution. Evidence: runtime panic
+  "requires fixtures harness_world, but the following are missing:
+  harness_world. Available fixtures: _harness_world". Impact: scenario binding
+  functions must use the exact fixture name without underscore prefix, even if
+  the value is unused in the body.
 
 ## Decision log
 
 - Decision: use single package with `[lib]` + `[[bin]]` sections rather than a
-  Cargo workspace.
-  Rationale: the design document specifies `spycatcher_harness` (library) and
-  `spycatcher-harness` (binary). A single package achieves this naturally via
-  Cargo's hyphen-to-underscore convention. A workspace adds unnecessary
-  `Cargo.toml` duplication and cross-crate wiring for a single logical unit.
-  The roadmap shows no need for additional packages yet.
-  Date/Author: 2026-03-01 / agent
+  Cargo workspace. Rationale: the design document specifies
+  `spycatcher_harness` (library) and `spycatcher-harness` (binary). A single
+  package achieves this naturally via Cargo's hyphen-to-underscore convention.
+  A workspace adds unnecessary `Cargo.toml` duplication and cross-crate wiring
+  for a single logical unit. The roadmap shows no need for additional packages
+  yet. Date/Author: 2026-03-01 / agent
 
 - Decision: use `camino::Utf8PathBuf` for all path fields instead of
-  `std::path::PathBuf`.
-  Rationale: `AGENTS.md` explicitly mandates `camino` over `std::path`. The
-  design document's pseudo-code shows `PathBuf` but `AGENTS.md` takes
-  precedence as the binding coding standard. Using `Utf8PathBuf` from the
-  start avoids a breaking change later.
-  Date/Author: 2026-03-01 / agent
+  `std::path::PathBuf`. Rationale: `AGENTS.md` explicitly mandates `camino`
+  over `std::path`. The design document's pseudo-code shows `PathBuf` but
+  `AGENTS.md` takes precedence as the binding coding standard. Using
+  `Utf8PathBuf` from the start avoids a breaking change later. Date/Author:
+  2026-03-01 / agent
 
 - Decision: skeleton `start_harness` validates config and returns a
   `RunningHarness` with the configured listen address but does not bind an HTTP
-  server.
-  Rationale: HTTP server binding is task 1.3.1. The skeleton proves the API
-  shape compiles, the error types work, and the startup/shutdown lifecycle is
-  testable. The address in `RunningHarness` reflects the configured listen
+  server. Rationale: HTTP server binding is task 1.3.1. The skeleton proves the
+  API shape compiles, the error types work, and the startup/shutdown lifecycle
+  is testable. The address in `RunningHarness` reflects the configured listen
   address, which will become the actual bound address once the server is
-  implemented.
-  Date/Author: 2026-03-01 / agent
+  implemented. Date/Author: 2026-03-01 / agent
 
 - Decision: define the full `HarnessConfig` struct shape from the design
-  document with `Default` implementations for all sub-types.
-  Rationale: task 1.1.2 (OrthoConfig integration) needs stable types to
-  decorate with `clap`/OrthoConfig attributes. Defining the full shape now
-  avoids a breaking restructuring in 1.1.2. Fields that are not exercised yet
-  get sensible defaults.
-  Date/Author: 2026-03-01 / agent
+  document with `Default` implementations for all sub-types. Rationale: task
+  1.1.2 (OrthoConfig integration) needs stable types to decorate with
+  `clap`/OrthoConfig attributes. Defining the full shape now avoids a breaking
+  restructuring in 1.1.2. Fields that are not exercised yet get sensible
+  defaults. Date/Author: 2026-03-01 / agent
 
 - Decision: use `Box<dyn std::error::Error>` as the binary's return type
-  rather than `eyre::Report`.
-  Rationale: adding `eyre` as a dependency is outside the planned dependency
-  set for this task. `Box<dyn std::error::Error>` is idiomatic for the app
-  boundary. Task 1.1.2 will introduce `eyre` alongside OrthoConfig.
-  Date/Author: 2026-03-01 / agent
+  rather than `eyre::Report`. Rationale: adding `eyre` as a dependency is
+  outside the planned dependency set for this task.
+  `Box<dyn std::error::Error>` is idiomatic for the app boundary. Task 1.1.2
+  will introduce `eyre` alongside OrthoConfig. Date/Author: 2026-03-01 / agent
 
 ## Outcomes & retrospective
 
@@ -272,8 +258,8 @@ Validation: `cargo check --all-targets` passes.
 ### Stage B: error and config types
 
 Populate `src/error.rs` with the `HarnessError` enum (five variants from the
-design document) and the `HarnessResult<T>` type alias. All variants and
-fields are documented with `///`.
+design document) and the `HarnessResult<T>` type alias. All variants and fields
+are documented with `///`.
 
 Populate `src/config.rs` with all configuration types from the design:
 `HarnessConfig`, `ListenAddr`, `Mode`, `Protocol`, `MatchMode`,
@@ -298,8 +284,7 @@ Populate `src/lib.rs` with:
   that validates config (rejects empty cassette name) and returns a
   `RunningHarness`.
 - `impl RunningHarness` with
-  `pub async fn shutdown(self) -> HarnessResult<()>` (no-op returning
-  `Ok(())`).
+  `pub async fn shutdown(self) -> HarnessResult<()>` (no-op returning `Ok(())`).
 - A private `fn validate_config(cfg: &HarnessConfig) -> HarnessResult<()>`.
 
 Populate `src/bin/spycatcher_harness.rs` with a `#[tokio::main] async fn main`
@@ -308,13 +293,13 @@ that constructs a default `HarnessConfig`, calls `start_harness`, and calls
 
 Delete `src/main.rs`.
 
-Validation: `cargo build --all-targets` passes, `cargo run --bin
-spycatcher-harness` exits cleanly.
+Validation: `cargo build --all-targets` passes,
+`cargo run --bin spycatcher-harness` exits cleanly.
 
 ### Stage D: unit tests
 
-Add `#[cfg(test)]` modules to `src/error.rs`, `src/config.rs`, and
-`src/lib.rs` with `rstest`-based tests.
+Add `#[cfg(test)]` modules to `src/error.rs`, `src/config.rs`, and `src/lib.rs`
+with `rstest`-based tests.
 
 In `src/error.rs`:
 
@@ -367,8 +352,8 @@ including all BDD scenarios.
 
 Run `make all` (`check-fmt`, `lint`, `test`). Fix any remaining issues.
 
-Update `docs/spycatcher-harness-design.md` to record design decisions
-(path types, crate structure).
+Update `docs/spycatcher-harness-design.md` to record design decisions (path
+types, crate structure).
 
 Create `docs/users-guide.md` documenting the public API surface.
 
@@ -387,8 +372,7 @@ remain unchanged.
 
 ### 2. Create source files
 
-Create the following files (contents detailed in "Interfaces and
-dependencies"):
+Create the following files (contents detailed in "Interfaces and dependencies"):
 
 ```plaintext
 src/lib.rs
@@ -454,8 +438,8 @@ Quality criteria (what "done" means):
 - Tests: `cargo test --workspace --all-targets --all-features` passes with all
   unit tests and BDD scenarios green.
 - Lint/typecheck: `cargo clippy --workspace --all-targets --all-features -- -D
-  warnings` produces zero warnings. `cargo doc --no-deps` builds without
-  warnings.
+  warnings` produces zero warnings. `cargo doc
+  --no-deps` builds without warnings.
 - Formatting: `cargo fmt --all -- --check` reports no differences.
 - API surface: `start_harness(cfg)` and `RunningHarness::shutdown()` are
   callable from external code. `HarnessError` is the only error type in the
@@ -476,8 +460,8 @@ Every step can be re-run safely. Source files are created via overwrite (not
 append). `cargo check`, `cargo test`, and `make all` are idempotent. If a step
 fails, fix the issue and re-run from that step.
 
-The only destructive action is deleting `src/main.rs`. This is safe because
-the file contains only the placeholder stub and its replacement
+The only destructive action is deleting `src/main.rs`. This is safe because the
+file contains only the placeholder stub and its replacement
 (`src/bin/spycatcher_harness.rs`) is created before deletion.
 
 ## Artifacts and notes

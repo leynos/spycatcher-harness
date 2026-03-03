@@ -128,6 +128,8 @@ fn validate_config(cfg: &HarnessConfig) -> HarnessResult<()> {
 
 #[cfg(test)]
 mod tests {
+    //! Unit tests for harness lifecycle (startup, shutdown, address binding).
+
     use super::*;
     use std::net::SocketAddr;
 
