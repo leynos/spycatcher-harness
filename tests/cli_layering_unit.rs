@@ -46,52 +46,42 @@ fn replay_config(loaded: LoadedSubcommandConfig) -> HarnessConfig {
     }
 }
 
-#[rstest]
-fn precedence_uses_defaults_when_no_sources_present() {
-    let loaded = load_with_jail(&["spycatcher-harness", "replay"], None, &[])
-        .expect("defaults-only replay config should load");
-    let cfg = replay_config(loaded);
-    assert_eq!(cfg.cassette_name, "default");
-}
+const REPLAY_FILE_CONFIG: &str = "[cmds.replay]\ncassette_name = \"from_file\"\n";
 
 #[rstest]
-fn precedence_uses_file_over_defaults() {
-    let config = "[cmds.replay]\ncassette_name = \"from_file\"\n";
-    let loaded = load_with_jail(&["spycatcher-harness", "replay"], Some(config), &[])
-        .expect("file-backed replay config should load");
+#[case(
+    &["spycatcher-harness", "replay"],
+    None,
+    &[],
+    "default",
+)]
+#[case(
+    &["spycatcher-harness", "replay"],
+    Some(REPLAY_FILE_CONFIG),
+    &[],
+    "from_file",
+)]
+#[case(
+    &["spycatcher-harness", "replay"],
+    Some(REPLAY_FILE_CONFIG),
+    &[("SPYCATCHER_HARNESS_CMDS_REPLAY_CASSETTE_NAME", "from_env")],
+    "from_env",
+)]
+#[case(
+    &["spycatcher-harness", "replay", "--cassette-name", "from_cli"],
+    Some(REPLAY_FILE_CONFIG),
+    &[("SPYCATCHER_HARNESS_CMDS_REPLAY_CASSETTE_NAME", "from_env")],
+    "from_cli",
+)]
+fn replay_cassette_name_precedence(
+    #[case] argv: &[&str],
+    #[case] config_file: Option<&str>,
+    #[case] env_vars: &[(&str, &str)],
+    #[case] expected_cassette_name: &str,
+) {
+    let loaded = load_with_jail(argv, config_file, env_vars).expect("config should load");
     let cfg = replay_config(loaded);
-    assert_eq!(cfg.cassette_name, "from_file");
-}
-
-#[rstest]
-fn precedence_uses_env_over_file() {
-    let config = "[cmds.replay]\ncassette_name = \"from_file\"\n";
-    let loaded = load_with_jail(
-        &["spycatcher-harness", "replay"],
-        Some(config),
-        &[("SPYCATCHER_HARNESS_CMDS_REPLAY_CASSETTE_NAME", "from_env")],
-    )
-    .expect("env override should merge for replay");
-    let cfg = replay_config(loaded);
-    assert_eq!(cfg.cassette_name, "from_env");
-}
-
-#[rstest]
-fn precedence_uses_cli_over_env() {
-    let config = "[cmds.replay]\ncassette_name = \"from_file\"\n";
-    let loaded = load_with_jail(
-        &[
-            "spycatcher-harness",
-            "replay",
-            "--cassette-name",
-            "from_cli",
-        ],
-        Some(config),
-        &[("SPYCATCHER_HARNESS_CMDS_REPLAY_CASSETTE_NAME", "from_env")],
-    )
-    .expect("CLI override should win over env for replay");
-    let cfg = replay_config(loaded);
-    assert_eq!(cfg.cassette_name, "from_cli");
+    assert_eq!(cfg.cassette_name, expected_cassette_name);
 }
 
 #[rstest]
