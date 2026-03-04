@@ -97,7 +97,7 @@ Observable success:
 - [x] (2026-03-03 16:12Z) Recorded task 1.1.2 design decisions in
   `docs/spycatcher-harness-design.md`.
 - [x] (2026-03-03 16:14Z) Marked roadmap entry `1.1.2` as done.
-- [ ] Run all quality gates and resolve failures.
+- [x] (2026-03-04 00:00Z) Ran all quality gates and resolved failures.
 
 ## Surprises & discoveries
 

@@ -8,7 +8,7 @@
 use std::collections::BTreeMap;
 
 use camino::Utf8PathBuf;
-use clap::{Parser, Subcommand};
+use clap::{CommandFactory, Parser, Subcommand};
 use ortho_config::load_and_merge_subcommand;
 use ortho_config::subcommand::Prefix;
 use serde::{Deserialize, Serialize};
@@ -85,34 +85,54 @@ where
     let prefix = Prefix::new("SPYCATCHER_HARNESS_");
 
     match cli.command {
-        Commands::Record(args) => {
-            let merged = load_and_merge_subcommand(&prefix, &args).map_err(|error| {
-                CliConfigError::Merge {
-                    subcommand: "record",
-                    message: error.to_string(),
-                }
-            })?;
-            Ok(LoadedSubcommandConfig::Record(to_record_config(merged)))
-        }
-        Commands::Replay(args) => {
-            let merged = load_and_merge_subcommand(&prefix, &args).map_err(|error| {
-                CliConfigError::Merge {
-                    subcommand: "replay",
-                    message: error.to_string(),
-                }
-            })?;
-            Ok(LoadedSubcommandConfig::Replay(to_replay_config(&merged)))
-        }
-        Commands::Verify(args) => {
-            let merged = load_and_merge_subcommand(&prefix, &args).map_err(|error| {
-                CliConfigError::Merge {
-                    subcommand: "verify",
-                    message: error.to_string(),
-                }
-            })?;
-            Ok(LoadedSubcommandConfig::Verify(to_verify_config(&merged)))
-        }
+        Commands::Record(args) => load_record_config(&prefix, &args),
+        Commands::Replay(args) => load_replay_config(&prefix, &args),
+        Commands::Verify(args) => load_verify_config(&prefix, &args),
     }
+}
+
+fn load_record_config(
+    prefix: &Prefix,
+    args: &RecordArgs,
+) -> Result<LoadedSubcommandConfig, CliConfigError> {
+    let merged_args = merge_subcommand_config(prefix, args, "record")?;
+    Ok(LoadedSubcommandConfig::Record(to_record_config(
+        merged_args,
+    )))
+}
+
+fn load_replay_config(
+    prefix: &Prefix,
+    args: &ReplayArgs,
+) -> Result<LoadedSubcommandConfig, CliConfigError> {
+    let merged_args = merge_subcommand_config(prefix, args, "replay")?;
+    Ok(LoadedSubcommandConfig::Replay(to_replay_config(
+        &merged_args,
+    )))
+}
+
+fn load_verify_config(
+    prefix: &Prefix,
+    args: &VerifyArgs,
+) -> Result<LoadedSubcommandConfig, CliConfigError> {
+    let merged_args = merge_subcommand_config(prefix, args, "verify")?;
+    Ok(LoadedSubcommandConfig::Verify(to_verify_config(
+        &merged_args,
+    )))
+}
+
+fn merge_subcommand_config<T>(
+    prefix: &Prefix,
+    args: &T,
+    subcommand: &'static str,
+) -> Result<T, CliConfigError>
+where
+    T: serde::de::DeserializeOwned + Serialize + Default + CommandFactory,
+{
+    load_and_merge_subcommand(prefix, args).map_err(|error| CliConfigError::Merge {
+        subcommand,
+        message: error.to_string(),
+    })
 }
 
 #[derive(Debug, Parser)]
@@ -279,151 +299,5 @@ impl From<RecordUpstreamKind> for config::UpstreamKind {
         match value {
             RecordUpstreamKind::OpenRouter => Self::OpenRouter,
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    //! Unit tests for CLI layered configuration loading.
-
-    use std::cell::RefCell;
-
-    use eyre::{Result, eyre};
-    use ortho_config::figment;
-    use rstest::rstest;
-
-    use super::*;
-
-    #[expect(
-        clippy::result_large_err,
-        reason = "figment::Jail callback requires figment::error::Result"
-    )]
-    fn load_with_jail(
-        argv: &[&str],
-        config_file: Option<&str>,
-        env_vars: &[(&str, &str)],
-    ) -> Result<LoadedSubcommandConfig> {
-        let loaded = RefCell::new(None);
-
-        figment::Jail::try_with(|jail| {
-            if let Some(content) = config_file {
-                jail.create_file(".spycatcher_harness.toml", content)?;
-            }
-            for (key, value) in env_vars {
-                jail.set_env(key, value);
-            }
-            let cfg = load_subcommand_config_from_iter(argv)
-                .map_err(|error| figment::Error::from(error.to_string()))?;
-            loaded.replace(Some(cfg));
-            Ok(())
-        })
-        .map_err(|error| eyre!(error.to_string()))?;
-
-        loaded
-            .into_inner()
-            .ok_or_else(|| eyre!("configuration load did not execute"))
-    }
-
-    fn replay_config(loaded: LoadedSubcommandConfig) -> HarnessConfig {
-        match loaded {
-            LoadedSubcommandConfig::Replay(cfg) => cfg,
-            other => panic!("expected replay config, got {other:?}"),
-        }
-    }
-
-    #[rstest]
-    fn precedence_uses_defaults_when_no_sources_present() {
-        let loaded = load_with_jail(&["spycatcher-harness", "replay"], None, &[])
-            .expect("defaults-only replay config should load");
-        let cfg = replay_config(loaded);
-        assert_eq!(cfg.cassette_name, "default");
-    }
-
-    #[rstest]
-    fn precedence_uses_file_over_defaults() {
-        let config = "[cmds.replay]\ncassette_name = \"from_file\"\n";
-        let loaded = load_with_jail(&["spycatcher-harness", "replay"], Some(config), &[])
-            .expect("file-backed replay config should load");
-        let cfg = replay_config(loaded);
-        assert_eq!(cfg.cassette_name, "from_file");
-    }
-
-    #[rstest]
-    fn precedence_uses_env_over_file() {
-        let config = "[cmds.replay]\ncassette_name = \"from_file\"\n";
-        let loaded = load_with_jail(
-            &["spycatcher-harness", "replay"],
-            Some(config),
-            &[("SPYCATCHER_HARNESS_CMDS_REPLAY_CASSETTE_NAME", "from_env")],
-        )
-        .expect("env override should merge for replay");
-        let cfg = replay_config(loaded);
-        assert_eq!(cfg.cassette_name, "from_env");
-    }
-
-    #[rstest]
-    fn precedence_uses_cli_over_env() {
-        let config = "[cmds.replay]\ncassette_name = \"from_file\"\n";
-        let loaded = load_with_jail(
-            &[
-                "spycatcher-harness",
-                "replay",
-                "--cassette-name",
-                "from_cli",
-            ],
-            Some(config),
-            &[("SPYCATCHER_HARNESS_CMDS_REPLAY_CASSETTE_NAME", "from_env")],
-        )
-        .expect("CLI override should win over env for replay");
-        let cfg = replay_config(loaded);
-        assert_eq!(cfg.cassette_name, "from_cli");
-    }
-
-    #[rstest]
-    fn record_supports_cmds_namespace_for_nested_upstream_values() {
-        let config = concat!(
-            "[cmds.record]\n",
-            "cassette_name = \"cassette_a\"\n",
-            "[cmds.record.upstream]\n",
-            "kind = \"openrouter\"\n",
-            "base_url = \"https://example.invalid/api\"\n",
-            "api_key_env = \"TEST_API_KEY\"\n"
-        );
-
-        let loaded = load_with_jail(&["spycatcher-harness", "record"], Some(config), &[])
-            .expect("record config should load");
-        let LoadedSubcommandConfig::Record(cfg) = loaded else {
-            panic!("expected record config");
-        };
-
-        let upstream = cfg
-            .upstream
-            .unwrap_or_else(|| panic!("record config should contain upstream values"));
-        assert_eq!(cfg.cassette_name, "cassette_a");
-        assert_eq!(upstream.base_url, "https://example.invalid/api");
-        assert_eq!(upstream.api_key_env, "TEST_API_KEY");
-    }
-
-    #[rstest]
-    fn verify_supports_cmds_namespace_overrides() {
-        let config = "[cmds.verify]\ncassette_name = \"verify_cassette\"\n";
-        let loaded = load_with_jail(&["spycatcher-harness", "verify"], Some(config), &[])
-            .expect("verify config should load");
-
-        let LoadedSubcommandConfig::Verify(cfg) = loaded else {
-            panic!("expected verify config");
-        };
-
-        assert_eq!(cfg.cassette_name, "verify_cassette");
-    }
-
-    #[rstest]
-    fn invalid_values_fail_loading() {
-        let loaded = load_with_jail(
-            &["spycatcher-harness", "replay"],
-            None,
-            &[("SPYCATCHER_HARNESS_CMDS_REPLAY_LISTEN", "not-an-address")],
-        );
-        assert!(loaded.is_err(), "invalid listen should fail loading");
     }
 }

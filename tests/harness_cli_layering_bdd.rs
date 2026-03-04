@@ -43,20 +43,20 @@ fn push_env(cli_layering_world: &CliLayeringWorld, key: &str, value: &str) {
     cli_layering_world.env_vars.set(vars);
 }
 
-fn trim_surrounding_quotes(value: String) -> String {
+fn trim_surrounding_quotes(value: &str) -> String {
     value.trim_matches('"').to_owned()
 }
 
 #[given("a replay command with cassette name {cassette_name}")]
 fn replay_command_with_cassette_name(cli_layering_world: &CliLayeringWorld, cassette_name: String) {
-    let cassette_name = trim_surrounding_quotes(cassette_name);
+    let cassette_name_value = trim_surrounding_quotes(&cassette_name);
     set_command(
         cli_layering_world,
         vec![
             String::from("spycatcher-harness"),
             String::from("replay"),
             String::from("--cassette-name"),
-            cassette_name,
+            cassette_name_value,
         ],
     );
 }
@@ -87,25 +87,25 @@ fn verify_command_with_no_cli_overrides(cli_layering_world: &CliLayeringWorld) {
 
 #[given("config file sets replay cassette name to {cassette_name}")]
 fn config_sets_replay_cassette_name(cli_layering_world: &CliLayeringWorld, cassette_name: String) {
-    let cassette_name = trim_surrounding_quotes(cassette_name);
+    let cassette_name_value = trim_surrounding_quotes(&cassette_name);
     append_config(
         cli_layering_world,
-        &format!("[cmds.replay]\ncassette_name = \"{cassette_name}\"\n"),
+        &format!("[cmds.replay]\ncassette_name = \"{cassette_name_value}\"\n"),
     );
 }
 
 #[given("config file sets verify cassette name to {cassette_name}")]
 fn config_sets_verify_cassette_name(cli_layering_world: &CliLayeringWorld, cassette_name: String) {
-    let cassette_name = trim_surrounding_quotes(cassette_name);
+    let cassette_name_value = trim_surrounding_quotes(&cassette_name);
     append_config(
         cli_layering_world,
-        &format!("[cmds.verify]\ncassette_name = \"{cassette_name}\"\n"),
+        &format!("[cmds.verify]\ncassette_name = \"{cassette_name_value}\"\n"),
     );
 }
 
 #[given("config file sets record upstream base URL to {base_url}")]
 fn config_sets_record_upstream_base_url(cli_layering_world: &CliLayeringWorld, base_url: String) {
-    let base_url = trim_surrounding_quotes(base_url);
+    let base_url_value = trim_surrounding_quotes(&base_url);
     append_config(
         cli_layering_world,
         &format!(
@@ -113,7 +113,7 @@ fn config_sets_record_upstream_base_url(cli_layering_world: &CliLayeringWorld, b
              cassette_name = \"record_cfg\"\n\
              [cmds.record.upstream]\n\
              kind = \"openrouter\"\n\
-             base_url = \"{base_url}\"\n\
+             base_url = \"{base_url_value}\"\n\
              api_key_env = \"TEST_KEY\"\n"
         ),
     );
@@ -121,21 +121,21 @@ fn config_sets_record_upstream_base_url(cli_layering_world: &CliLayeringWorld, b
 
 #[given("environment sets replay cassette name to {cassette_name}")]
 fn env_sets_replay_cassette_name(cli_layering_world: &CliLayeringWorld, cassette_name: String) {
-    let cassette_name = trim_surrounding_quotes(cassette_name);
+    let cassette_name_value = trim_surrounding_quotes(&cassette_name);
     push_env(
         cli_layering_world,
         "SPYCATCHER_HARNESS_CMDS_REPLAY_CASSETTE_NAME",
-        &cassette_name,
+        &cassette_name_value,
     );
 }
 
 #[given("environment sets replay listen to invalid value {listen}")]
 fn env_sets_invalid_replay_listen(cli_layering_world: &CliLayeringWorld, listen: String) {
-    let listen = trim_surrounding_quotes(listen);
+    let listen_value = trim_surrounding_quotes(&listen);
     push_env(
         cli_layering_world,
         "SPYCATCHER_HARNESS_CMDS_REPLAY_LISTEN",
-        &listen,
+        &listen_value,
     );
 }
 
@@ -146,6 +146,10 @@ fn load_layered_config(cli_layering_world: &CliLayeringWorld) {
     let env_vars = cli_layering_world.env_vars.take().unwrap_or_default();
 
     let loaded = RefCell::new(None);
+    #[expect(
+        clippy::result_large_err,
+        reason = "figment::Jail callback requires figment::error::Result"
+    )]
     let jail_result = figment::Jail::try_with(|jail| {
         if !config_file.is_empty() {
             jail.create_file(".spycatcher_harness.toml", &config_file)?;
@@ -173,13 +177,15 @@ fn load_layered_config(cli_layering_world: &CliLayeringWorld) {
 
 #[then("replay cassette name is {cassette_name}")]
 fn replay_cassette_name_is(cli_layering_world: &CliLayeringWorld, cassette_name: String) {
-    let cassette_name = trim_surrounding_quotes(cassette_name);
+    let cassette_name_value = trim_surrounding_quotes(&cassette_name);
     let outcome = cli_layering_world
         .result
         .with_ref(Clone::clone)
         .unwrap_or_else(|| Err(String::from("result slot missing")));
     match outcome {
-        Ok(LoadedSubcommandConfig::Replay(cfg)) => assert_eq!(cfg.cassette_name, cassette_name),
+        Ok(LoadedSubcommandConfig::Replay(cfg)) => {
+            assert_eq!(cfg.cassette_name, cassette_name_value);
+        }
         Ok(other) => panic!("expected replay configuration, got {other:?}"),
         Err(error) => panic!("expected replay configuration, load failed: {error}"),
     }
@@ -187,13 +193,15 @@ fn replay_cassette_name_is(cli_layering_world: &CliLayeringWorld, cassette_name:
 
 #[then("verify cassette name is {cassette_name}")]
 fn verify_cassette_name_is(cli_layering_world: &CliLayeringWorld, cassette_name: String) {
-    let cassette_name = trim_surrounding_quotes(cassette_name);
+    let cassette_name_value = trim_surrounding_quotes(&cassette_name);
     let outcome = cli_layering_world
         .result
         .with_ref(Clone::clone)
         .unwrap_or_else(|| Err(String::from("result slot missing")));
     match outcome {
-        Ok(LoadedSubcommandConfig::Verify(cfg)) => assert_eq!(cfg.cassette_name, cassette_name),
+        Ok(LoadedSubcommandConfig::Verify(cfg)) => {
+            assert_eq!(cfg.cassette_name, cassette_name_value);
+        }
         Ok(other) => panic!("expected verify configuration, got {other:?}"),
         Err(error) => panic!("expected verify configuration, load failed: {error}"),
     }
@@ -201,17 +209,17 @@ fn verify_cassette_name_is(cli_layering_world: &CliLayeringWorld, cassette_name:
 
 #[then("record upstream base URL is {base_url}")]
 fn record_upstream_base_url_is(cli_layering_world: &CliLayeringWorld, base_url: String) {
-    let base_url = trim_surrounding_quotes(base_url);
+    let base_url_value = trim_surrounding_quotes(&base_url);
     let outcome = cli_layering_world
         .result
         .with_ref(Clone::clone)
         .unwrap_or_else(|| Err(String::from("result slot missing")));
     match outcome {
         Ok(LoadedSubcommandConfig::Record(cfg)) => {
-            let upstream = cfg
-                .upstream
-                .unwrap_or_else(|| panic!("expected record upstream"));
-            assert_eq!(upstream.base_url, base_url);
+            let Some(upstream) = cfg.upstream else {
+                panic!("expected record upstream");
+            };
+            assert_eq!(upstream.base_url, base_url_value);
         }
         Ok(other) => panic!("expected record configuration, got {other:?}"),
         Err(error) => panic!("expected record configuration, load failed: {error}"),
