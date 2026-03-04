@@ -90,13 +90,81 @@ harness.shutdown().await?;
 
 ## CLI binary
 
-The `spycatcher-harness` binary delegates all behaviour to the library. CLI
-argument parsing and subcommand support will be added in a future release (task
-1.1.2).
+The `spycatcher-harness` binary now supports three subcommands:
 
-Currently, the binary starts the harness with a default configuration and shuts
-it down immediately:
+- `record`
+- `replay`
+- `verify`
+
+Each subcommand loads configuration using layered precedence:
+
+`CLI > env > config files > defaults`
+
+Per-subcommand defaults are loaded from the `cmds` namespace in config files:
+
+- `cmds.record`
+- `cmds.replay`
+- `cmds.verify`
+
+CLI help documents this merged shape:
 
 ```sh
-cargo run --bin spycatcher-harness
+cargo run --bin spycatcher-harness -- --help
+```
+
+### Common CLI flags
+
+The current subcommands support the same top-level override flags:
+
+- `--listen <SOCKET_ADDR>`
+- `--cassette-dir <PATH>`
+- `--cassette-name <NAME>`
+
+`record` additionally supports nested upstream config through file and env
+layering under `cmds.record.upstream`.
+
+### Configuration file shape
+
+Create `.spycatcher_harness.toml` in the working directory:
+
+```toml
+[cmds.record]
+cassette_name = "record_smoke"
+
+[cmds.record.upstream]
+kind = "openrouter"
+base_url = "https://openrouter.ai/api/v1"
+api_key_env = "OPENROUTER_API_KEY"
+
+[cmds.replay]
+cassette_name = "replay_smoke"
+
+[cmds.verify]
+cassette_name = "verify_smoke"
+```
+
+### Environment variable shape
+
+Environment variables use the prefix `SPYCATCHER_HARNESS_CMDS_<SUBCOMMAND>_...`.
+
+Examples:
+
+```sh
+SPYCATCHER_HARNESS_CMDS_REPLAY_CASSETTE_NAME=env_replay
+SPYCATCHER_HARNESS_CMDS_RECORD_UPSTREAM__BASE_URL=https://example.invalid/api
+```
+
+Nested keys use double underscores (`__`).
+
+### CLI usage examples
+
+```sh
+# Record using layered defaults and an explicit cassette name override.
+cargo run --bin spycatcher-harness -- record --cassette-name cli_record
+
+# Replay with layered configuration.
+cargo run --bin spycatcher-harness -- replay
+
+# Verify with layered configuration.
+cargo run --bin spycatcher-harness -- verify
 ```

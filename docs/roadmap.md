@@ -24,14 +24,14 @@ units with explicit dependencies and completion criteria.
     [Rust API and module boundaries](spycatcher-harness-design.md#rust-api-and-module-boundaries),
     [Public library API surface](spycatcher-harness-design.md#public-library-api-surface).
 
-- [ ] 1.1.2. Integrate layered configuration loading for all subcommands.
+- [x] 1.1.2. Integrate layered configuration loading for all subcommands.
   - Depends on: 1.1.1.
   - Success criteria:
-    - [ ] Configuration precedence is proven by tests:
+    - [x] Configuration precedence is proven by tests:
           `CLI > env > config files > defaults`.
-    - [ ] `record`, `replay`, and `verify` support `cmds.<subcommand>` merge
+    - [x] `record`, `replay`, and `verify` support `cmds.<subcommand>` merge
           values with test coverage for overrides.
-    - [ ] CLI help and docs describe the merged configuration shape.
+    - [x] CLI help and docs describe the merged configuration shape.
   - Design references:
     [Configuration via OrthoConfig](spycatcher-harness-design.md#configuration-via-orthoconfig),
     [CLI integration and configuration](spycatcher-harness-design.md#cli-integration-and-configuration).

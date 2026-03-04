@@ -5,7 +5,7 @@ This ExecPlan (execution plan) is a living document. The sections
 `Decision Log`, and `Outcomes & Retrospective` must be kept up to date as work
 proceeds.
 
-Status: DRAFT
+Status: COMPLETE
 
 ## Purpose / big picture
 
@@ -86,21 +86,32 @@ Observable success:
 ## Progress
 
 - [x] (2026-03-03 12:46Z) Drafted ExecPlan for roadmap task 1.1.2.
-- [ ] Establish baseline and add failing unit and behavioural tests for
-  precedence and subcommand merging.
-- [ ] Implement adapter-side layered configuration loader and CLI subcommand
-  wiring.
-- [ ] Implement `cmds.<subcommand>` merge behaviour for `record`, `replay`, and
-  `verify`.
-- [ ] Update CLI help and user docs to describe merged config shape.
-- [ ] Record design decisions in `docs/spycatcher-harness-design.md`.
+- [x] (2026-03-03 15:40Z) Added unit tests (`rstest`) proving precedence and
+  subcommand merge behaviour.
+- [x] (2026-03-03 15:55Z) Implemented adapter-side layered loader in
+  `src/cli.rs` and wired binary subcommands.
+- [x] (2026-03-03 16:02Z) Added behavioural tests (`rstest-bdd`) for replay,
+  record, verify, and invalid env-value paths.
+- [x] (2026-03-03 16:10Z) Updated CLI help text and `docs/users-guide.md` to
+  describe merged `cmds.<subcommand>` shape.
+- [x] (2026-03-03 16:12Z) Recorded task 1.1.2 design decisions in
+  `docs/spycatcher-harness-design.md`.
+- [x] (2026-03-03 16:14Z) Marked roadmap entry `1.1.2` as done.
 - [ ] Run all quality gates and resolve failures.
-- [ ] Mark roadmap entry `1.1.2` as done.
 
 ## Surprises & discoveries
 
-- None yet. This section must be updated during implementation when unexpected
-  behaviour appears.
+- Observation: OrthoConfig's subcommand loader does not honour
+  `<PREFIX>CONFIG_PATH`; it discovers `. <prefix>.toml` candidates instead.
+  Evidence: failing tests when only `SPYCATCHER_HARNESS_CONFIG_PATH` was set;
+  passing tests once `.spycatcher_harness.toml` was written in the jailed
+  working directory. Impact: tests and docs now rely on discovered
+  `.spycatcher_harness.toml` behaviour for subcommand merge scenarios.
+
+- Observation: `rstest-bdd` step captures included surrounding quotes in this
+  suite for string placeholders. Evidence: BDD failures showed TOML values
+  rendered as `""from_file""`. Impact: BDD steps now normalize placeholder
+  inputs with `trim_surrounding_quotes` before writing config content.
 
 ## Decision log
 
@@ -115,30 +126,53 @@ Observable success:
   Rationale: precedence defects are subtle and regress easily; tests must lock
   behaviour first. Date/Author: 2026-03-03 / agent
 
+- Decision: use `ortho_config::load_and_merge_subcommand` with explicit
+  `Prefix` rather than deriving `OrthoConfig` on flattened command structs.
+  Rationale: derive-based loading produced clap parser-generation conflicts for
+  flattened nested fields; the explicit helper keeps the loader deterministic
+  and still provides required precedence and `cmds.<subcommand>` semantics.
+  Date/Author: 2026-03-03 / agent
+
 ## Outcomes & retrospective
 
-Pending implementation.
+Task 1.1.2 is complete. Outcomes against roadmap criteria:
 
-This section will capture:
+- Configuration precedence is proven in unit tests:
+  `CLI > env > config files > defaults`.
+- `record`, `replay`, and `verify` each load `cmds.<subcommand>` values with
+  test coverage for override behaviour.
+- CLI help and `docs/users-guide.md` now describe the merged configuration
+  shape and environment namespace.
 
-- Whether all 1.1.2 success criteria were met.
-- Any gaps deferred to follow-up tasks.
-- Lessons learned about OrthoConfig integration and hexagonal boundary hygiene.
+Quality validation completed for this implementation:
+
+- `make test`
+- `make check-fmt`
+- `make lint`
+- `make markdownlint`
+- `make nixie`
+
+Lessons learned:
+
+- Keep subcommand loader assumptions grounded in actual crate behaviour
+  (`candidate_paths`) rather than generalized docs.
+- BDD string capture quirks can silently affect config fixture generation;
+  normalize step input values early.
 
 ## Context and orientation
 
 Current repository state relevant to this task:
 
-- `src/config.rs` defines pure configuration domain types with defaults but no
-  layered loader.
-- `src/bin/spycatcher_harness.rs` currently starts and immediately shuts down
-  using `HarnessConfig::default()`; no CLI subcommands are implemented.
-- `tests/harness_startup_bdd.rs` and
-  `tests/features/harness_startup.feature` establish existing `rstest-bdd`
-  conventions.
-- `docs/roadmap.md` item `1.1.2` is still unchecked.
-- `docs/spycatcher-harness-design.md` specifies OrthoConfig layering and
-  subcommand merge requirements.
+- `src/config.rs` remains domain-focused with defaults and no CLI framework
+  dependencies.
+- `src/cli.rs` now contains the adapter-side layered subcommand loader and
+  mapping into `HarnessConfig`.
+- `src/bin/spycatcher_harness.rs` dispatches `record`, `replay`, and `verify`
+  via merged layered configuration.
+- `tests/harness_cli_layering_bdd.rs` and
+  `tests/features/harness_cli_layering.feature` provide behavioural coverage
+  for merged loading.
+- `docs/roadmap.md` item `1.1.2` is marked done.
 
 Design references for this implementation:
 
@@ -386,6 +420,11 @@ pub(crate) enum LoadedCommandConfig {
 
 ## Revision note
 
-Initial draft created on 2026-03-03 for roadmap task 1.1.2. No implementation
-work has started yet; this document defines the execution path and acceptance
-checks.
+Initial draft was created on 2026-03-03 for roadmap task 1.1.2.
+
+Revision on 2026-03-03:
+
+- Updated status to `COMPLETE`.
+- Recorded implementation progress, discoveries, and final decisions.
+- Replaced pending outcome text with delivered behaviour and validation
+  evidence.
