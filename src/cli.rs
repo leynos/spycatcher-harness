@@ -97,7 +97,7 @@ fn load_record_config(
 ) -> Result<LoadedSubcommandConfig, CliConfigError> {
     let merged_args = merge_subcommand_config(prefix, args, "record")?;
     Ok(LoadedSubcommandConfig::Record(to_record_config(
-        merged_args,
+        &merged_args,
     )))
 }
 
@@ -227,43 +227,76 @@ fn default_record_api_key_env() -> String {
     String::from("OPENROUTER_API_KEY")
 }
 
-fn to_record_config(args: RecordArgs) -> HarnessConfig {
+trait CommonArgs {
+    fn listen(&self) -> Option<std::net::SocketAddr>;
+    fn cassette_dir(&self) -> Option<&str>;
+    fn cassette_name(&self) -> Option<&str>;
+}
+
+impl CommonArgs for RecordArgs {
+    fn listen(&self) -> Option<std::net::SocketAddr> {
+        self.listen
+    }
+    fn cassette_dir(&self) -> Option<&str> {
+        self.cassette_dir.as_deref()
+    }
+    fn cassette_name(&self) -> Option<&str> {
+        self.cassette_name.as_deref()
+    }
+}
+
+impl CommonArgs for ReplayArgs {
+    fn listen(&self) -> Option<std::net::SocketAddr> {
+        self.listen
+    }
+    fn cassette_dir(&self) -> Option<&str> {
+        self.cassette_dir.as_deref()
+    }
+    fn cassette_name(&self) -> Option<&str> {
+        self.cassette_name.as_deref()
+    }
+}
+
+impl CommonArgs for VerifyArgs {
+    fn listen(&self) -> Option<std::net::SocketAddr> {
+        self.listen
+    }
+    fn cassette_dir(&self) -> Option<&str> {
+        self.cassette_dir.as_deref()
+    }
+    fn cassette_name(&self) -> Option<&str> {
+        self.cassette_name.as_deref()
+    }
+}
+
+fn build_config(
+    args: &impl CommonArgs,
+    mode: config::Mode,
+    upstream: Option<config::UpstreamConfig>,
+) -> HarnessConfig {
     let mut config = HarnessConfig::default();
     apply_overrides(
         &mut config,
-        args.listen,
-        args.cassette_dir.as_deref(),
-        args.cassette_name.as_deref(),
+        args.listen(),
+        args.cassette_dir(),
+        args.cassette_name(),
     );
-    config.mode = config::Mode::Record;
-    config.upstream = args.upstream.map(Into::into);
+    config.mode = mode;
+    config.upstream = upstream;
     config
+}
+
+fn to_record_config(args: &RecordArgs) -> HarnessConfig {
+    let upstream = args.upstream.clone().map(Into::into);
+    build_config(args, config::Mode::Record, upstream)
 }
 
 fn to_replay_config(args: &ReplayArgs) -> HarnessConfig {
-    let mut config = HarnessConfig::default();
-    apply_overrides(
-        &mut config,
-        args.listen,
-        args.cassette_dir.as_deref(),
-        args.cassette_name.as_deref(),
-    );
-    config.mode = config::Mode::Replay;
-    config.upstream = None;
-    config
+    build_config(args, config::Mode::Replay, None)
 }
 
 fn to_verify_config(args: &VerifyArgs) -> HarnessConfig {
-    let mut config = HarnessConfig::default();
-    apply_overrides(
-        &mut config,
-        args.listen,
-        args.cassette_dir.as_deref(),
-        args.cassette_name.as_deref(),
-    );
-    config.mode = config::Mode::Replay;
-    config.upstream = None;
-    config
+    build_config(args, config::Mode::Replay, None)
 }
 
 fn apply_overrides(
