@@ -261,57 +261,65 @@ fn default_record_api_key_env() -> String {
     String::from("OPENROUTER_API_KEY")
 }
 
-struct BuildConfigArgs<'a> {
+/// Common field overrides shared by every subcommand.
+#[derive(Clone, Copy)]
+struct CommonOverrides<'a> {
     listen: Option<std::net::SocketAddr>,
     cassette_dir: Option<&'a str>,
     cassette_name: Option<&'a str>,
-    mode: config::Mode,
-    upstream: Option<config::UpstreamConfig>,
 }
 
-fn build_config(args: BuildConfigArgs<'_>) -> HarnessConfig {
-    let BuildConfigArgs {
-        listen,
-        cassette_dir,
-        cassette_name,
-        mode,
-        upstream,
-    } = args;
+fn build_config(
+    overrides: CommonOverrides<'_>,
+    mode: config::Mode,
+    upstream: Option<config::UpstreamConfig>,
+) -> HarnessConfig {
     let mut config = HarnessConfig::default();
-    apply_overrides(&mut config, listen, cassette_dir, cassette_name);
+    apply_overrides(
+        &mut config,
+        overrides.listen,
+        overrides.cassette_dir,
+        overrides.cassette_name,
+    );
     config.mode = mode;
     config.upstream = upstream;
     config
 }
 
 fn to_record_config(args: &RecordArgs) -> HarnessConfig {
-    build_config(BuildConfigArgs {
-        listen: args.listen,
-        cassette_dir: args.cassette_dir.as_deref(),
-        cassette_name: args.cassette_name.as_deref(),
-        mode: config::Mode::Record,
-        upstream: args.upstream.clone().map(Into::into),
-    })
+    build_config(
+        CommonOverrides {
+            listen: args.listen,
+            cassette_dir: args.cassette_dir.as_deref(),
+            cassette_name: args.cassette_name.as_deref(),
+        },
+        config::Mode::Record,
+        args.upstream.clone().map(Into::into),
+    )
 }
 
 fn to_replay_config(args: &ReplayArgs) -> HarnessConfig {
-    build_config(BuildConfigArgs {
-        listen: args.listen,
-        cassette_dir: args.cassette_dir.as_deref(),
-        cassette_name: args.cassette_name.as_deref(),
-        mode: config::Mode::Replay,
-        upstream: None,
-    })
+    build_config(
+        CommonOverrides {
+            listen: args.listen,
+            cassette_dir: args.cassette_dir.as_deref(),
+            cassette_name: args.cassette_name.as_deref(),
+        },
+        config::Mode::Replay,
+        None,
+    )
 }
 
 fn to_verify_config(args: &VerifyArgs) -> HarnessConfig {
-    build_config(BuildConfigArgs {
-        listen: args.listen,
-        cassette_dir: args.cassette_dir.as_deref(),
-        cassette_name: args.cassette_name.as_deref(),
-        mode: config::Mode::Verify,
-        upstream: None,
-    })
+    build_config(
+        CommonOverrides {
+            listen: args.listen,
+            cassette_dir: args.cassette_dir.as_deref(),
+            cassette_name: args.cassette_name.as_deref(),
+        },
+        config::Mode::Verify,
+        None,
+    )
 }
 
 fn apply_overrides(
