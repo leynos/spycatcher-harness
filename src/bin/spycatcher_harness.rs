@@ -4,8 +4,9 @@
 //! [`spycatcher_harness`] library.
 
 use eyre::WrapErr;
-use spycatcher_harness::cli::{LoadedSubcommandConfig, load_subcommand_config};
+use spycatcher_harness::cli::{CliConfigError, load_subcommand_config};
 use spycatcher_harness::start_harness;
+use std::io::Write;
 
 /// Application entry point.
 ///
@@ -13,20 +14,32 @@ use spycatcher_harness::start_harness;
 ///
 /// Returns an error if configuration loading, startup, or shutdown fails.
 fn main() -> eyre::Result<()> {
-    let loaded = load_subcommand_config().wrap_err("failed to load merged command config")?;
+    let config = load_config_or_display_output()?;
     let rt = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
         .wrap_err("failed to build tokio runtime")?;
-    rt.block_on(run_loaded_command(loaded))
+    rt.block_on(run_harness(config))
 }
 
-async fn run_loaded_command(loaded: LoadedSubcommandConfig) -> eyre::Result<()> {
-    let config = match loaded {
-        LoadedSubcommandConfig::Record(config)
-        | LoadedSubcommandConfig::Replay(config)
-        | LoadedSubcommandConfig::Verify(config) => config,
-    };
+fn load_config_or_display_output() -> eyre::Result<spycatcher_harness::HarnessConfig> {
+    match load_subcommand_config() {
+        Ok(config) => Ok(config),
+        Err(CliConfigError::DisplayRequested { output }) => {
+            write_display_output(&output).wrap_err("failed to write CLI output")?;
+            std::process::exit(0);
+        }
+        Err(error) => Err(error).wrap_err("failed to load merged command config"),
+    }
+}
+
+fn write_display_output(output: &str) -> std::io::Result<()> {
+    let mut stdout = std::io::stdout().lock();
+    stdout.write_all(output.as_bytes())?;
+    stdout.flush()
+}
+
+async fn run_harness(config: spycatcher_harness::HarnessConfig) -> eyre::Result<()> {
     let harness = start_harness(config)
         .await
         .wrap_err("failed to start harness")?;

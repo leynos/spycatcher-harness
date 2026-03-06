@@ -11,10 +11,10 @@ Status: COMPLETE
 
 Task 1.1.2 introduces deterministic layered configuration loading for `record`,
 `replay`, and `verify`, with explicit precedence
-`CLI > env > config files > defaults` and subcommand-specific merge support via
-`cmds.<subcommand>`. After this change, operators can set stable shared
-defaults once, override per subcommand in config files, and still use env and
-CLI for higher-priority overrides.
+`command-line interface (CLI) > env > config files > defaults` and
+subcommand-specific merge support via `cmds.<subcommand>`. After this change,
+operators can set stable shared defaults once, override per subcommand in
+config files, and still use env and CLI for higher-priority overrides.
 
 Observable success:
 

@@ -6,8 +6,8 @@ use eyre::{Result, eyre};
 use ortho_config::figment;
 use rstest::rstest;
 
-use spycatcher_harness::HarnessConfig;
-use spycatcher_harness::cli::{LoadedSubcommandConfig, load_subcommand_config_from_iter};
+use spycatcher_harness::cli::load_subcommand_config_from_iter;
+use spycatcher_harness::{HarnessConfig, config};
 
 #[expect(
     clippy::result_large_err,
@@ -17,7 +17,7 @@ fn load_with_jail(
     argv: &[&str],
     config_file: Option<&str>,
     env_vars: &[(&str, &str)],
-) -> Result<LoadedSubcommandConfig> {
+) -> Result<HarnessConfig> {
     let loaded = RefCell::new(None);
 
     figment::Jail::try_with(|jail| {
@@ -37,13 +37,6 @@ fn load_with_jail(
     loaded
         .into_inner()
         .ok_or_else(|| eyre!("configuration load did not execute"))
-}
-
-fn replay_config(loaded: LoadedSubcommandConfig) -> HarnessConfig {
-    match loaded {
-        LoadedSubcommandConfig::Replay(cfg) => cfg,
-        other => panic!("expected replay config, got {other:?}"),
-    }
 }
 
 const REPLAY_FILE_CONFIG: &str = "[cmds.replay]\ncassette_name = \"from_file\"\n";
@@ -80,8 +73,8 @@ fn replay_cassette_name_precedence(
     #[case] expected_cassette_name: &str,
 ) {
     let loaded = load_with_jail(argv, config_file, env_vars).expect("config should load");
-    let cfg = replay_config(loaded);
-    assert_eq!(cfg.cassette_name, expected_cassette_name);
+    assert_eq!(loaded.cassette_name, expected_cassette_name);
+    assert_eq!(loaded.mode, config::Mode::Replay);
 }
 
 #[rstest]
@@ -97,14 +90,11 @@ fn record_supports_cmds_namespace_for_nested_upstream_values() {
 
     let loaded = load_with_jail(&["spycatcher-harness", "record"], Some(config), &[])
         .expect("record config should load");
-    let LoadedSubcommandConfig::Record(cfg) = loaded else {
-        panic!("expected record config");
-    };
-
-    let upstream = cfg
+    let upstream = loaded
         .upstream
         .expect("record config should contain upstream values");
-    assert_eq!(cfg.cassette_name, "cassette_a");
+    assert_eq!(loaded.cassette_name, "cassette_a");
+    assert_eq!(loaded.mode, config::Mode::Record);
     assert_eq!(upstream.base_url, "https://example.invalid/api");
     assert_eq!(upstream.api_key_env, "TEST_API_KEY");
 }
@@ -114,20 +104,22 @@ fn verify_supports_cmds_namespace_overrides() {
     let config = "[cmds.verify]\ncassette_name = \"verify_cassette\"\n";
     let loaded = load_with_jail(&["spycatcher-harness", "verify"], Some(config), &[])
         .expect("verify config should load");
-
-    let LoadedSubcommandConfig::Verify(cfg) = loaded else {
-        panic!("expected verify config");
-    };
-
-    assert_eq!(cfg.cassette_name, "verify_cassette");
+    assert_eq!(loaded.cassette_name, "verify_cassette");
+    assert_eq!(loaded.mode, config::Mode::Verify);
 }
 
 #[rstest]
 fn invalid_values_fail_loading() {
-    let loaded = load_with_jail(
+    let error = load_with_jail(
         &["spycatcher-harness", "replay"],
         None,
         &[("SPYCATCHER_HARNESS_CMDS_REPLAY_LISTEN", "not-an-address")],
+    )
+    .expect_err("invalid listen should fail loading");
+    let message = error.to_string();
+    assert!(
+        (message.contains("invalid") && message.contains("address"))
+            || (message.contains("socket") && message.contains("parse")),
+        "expected error about invalid listen address, got: {message}",
     );
-    assert!(loaded.is_err(), "invalid listen should fail loading");
 }

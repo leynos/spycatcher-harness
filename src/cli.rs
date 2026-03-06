@@ -8,6 +8,7 @@
 use std::collections::BTreeMap;
 
 use camino::Utf8PathBuf;
+use clap::error::ErrorKind;
 use clap::{CommandFactory, Parser, Subcommand};
 use ortho_config::load_and_merge_subcommand;
 use ortho_config::subcommand::Prefix;
@@ -31,17 +32,6 @@ const CLI_MERGE_HELP: &str = concat!(
     "SPYCATCHER_HARNESS_CMDS_RECORD_UPSTREAM__BASE_URL."
 );
 
-/// Parsed command with effective layered configuration.
-#[derive(Debug, Clone)]
-pub enum LoadedSubcommandConfig {
-    /// Effective config for the `record` subcommand.
-    Record(HarnessConfig),
-    /// Effective config for the `replay` subcommand.
-    Replay(HarnessConfig),
-    /// Effective config for the `verify` subcommand.
-    Verify(HarnessConfig),
-}
-
 /// Errors returned while loading merged command configuration.
 #[derive(Debug, Error)]
 pub enum CliConfigError {
@@ -56,69 +46,81 @@ pub enum CliConfigError {
         /// Merge failure message.
         message: String,
     },
+    /// Help/version output was requested and should be printed before a clean
+    /// process exit.
+    #[error("{output}")]
+    DisplayRequested {
+        /// Rendered clap output for help/version.
+        output: String,
+    },
 }
 
 /// Loads merged configuration for the selected subcommand using process args.
+///
+/// # Examples
+///
+/// ```rust,no_run
+/// use spycatcher_harness::cli::load_subcommand_config;
+///
+/// let config = load_subcommand_config()?;
+/// // Use `config` to start the harness.
+/// # let _ = config;
+/// # Ok::<(), spycatcher_harness::cli::CliConfigError>(())
+/// ```
 ///
 /// # Errors
 ///
 /// Returns [`CliConfigError`] if argument parsing fails or if layered loading
 /// from files/environment fails.
-pub fn load_subcommand_config() -> Result<LoadedSubcommandConfig, CliConfigError> {
+pub fn load_subcommand_config() -> Result<HarnessConfig, CliConfigError> {
     load_subcommand_config_from_iter(std::env::args_os())
 }
 
 /// Loads merged configuration for the selected subcommand from `iter`.
 ///
+/// # Examples
+///
+/// ```rust,no_run
+/// use spycatcher_harness::cli::load_subcommand_config_from_iter;
+///
+/// let config = load_subcommand_config_from_iter(["spycatcher-harness", "replay"])?;
+/// assert_eq!(config.cassette_name, "default");
+/// # Ok::<(), spycatcher_harness::cli::CliConfigError>(())
+/// ```
+///
 /// # Errors
 ///
 /// Returns [`CliConfigError`] if argument parsing fails or if layered loading
 /// from files/environment fails.
-pub fn load_subcommand_config_from_iter<I, T>(
-    iter: I,
-) -> Result<LoadedSubcommandConfig, CliConfigError>
+pub fn load_subcommand_config_from_iter<I, T>(iter: I) -> Result<HarnessConfig, CliConfigError>
 where
     I: IntoIterator<Item = T>,
     T: Into<std::ffi::OsString> + Clone,
 {
-    let cli = Cli::try_parse_from(iter)?;
+    let cli = parse_cli_from_iter(iter)?;
     let prefix = Prefix::new("SPYCATCHER_HARNESS_");
+    cli.command.load_config(&prefix)
+}
 
-    match cli.command {
-        Commands::Record(args) => load_record_config(&prefix, &args),
-        Commands::Replay(args) => load_replay_config(&prefix, &args),
-        Commands::Verify(args) => load_verify_config(&prefix, &args),
+fn parse_cli_from_iter<I, T>(iter: I) -> Result<Cli, CliConfigError>
+where
+    I: IntoIterator<Item = T>,
+    T: Into<std::ffi::OsString> + Clone,
+{
+    match Cli::try_parse_from(iter) {
+        Ok(cli) => Ok(cli),
+        Err(error)
+            if matches!(
+                error.kind(),
+                ErrorKind::DisplayHelp | ErrorKind::DisplayVersion
+            ) =>
+        {
+            Err(CliConfigError::DisplayRequested {
+                output: error.to_string(),
+            })
+        }
+        Err(error) => Err(CliConfigError::CliParse(error)),
     }
-}
-
-fn load_record_config(
-    prefix: &Prefix,
-    args: &RecordArgs,
-) -> Result<LoadedSubcommandConfig, CliConfigError> {
-    let merged_args = merge_subcommand_config(prefix, args, "record")?;
-    Ok(LoadedSubcommandConfig::Record(to_record_config(
-        &merged_args,
-    )))
-}
-
-fn load_replay_config(
-    prefix: &Prefix,
-    args: &ReplayArgs,
-) -> Result<LoadedSubcommandConfig, CliConfigError> {
-    let merged_args = merge_subcommand_config(prefix, args, "replay")?;
-    Ok(LoadedSubcommandConfig::Replay(to_replay_config(
-        &merged_args,
-    )))
-}
-
-fn load_verify_config(
-    prefix: &Prefix,
-    args: &VerifyArgs,
-) -> Result<LoadedSubcommandConfig, CliConfigError> {
-    let merged_args = merge_subcommand_config(prefix, args, "verify")?;
-    Ok(LoadedSubcommandConfig::Verify(to_verify_config(
-        &merged_args,
-    )))
 }
 
 fn merge_subcommand_config<T>(
@@ -152,6 +154,25 @@ enum Commands {
     Replay(ReplayArgs),
     /// Verify cassette and configuration integrity.
     Verify(VerifyArgs),
+}
+
+impl Commands {
+    fn load_config(self, prefix: &Prefix) -> Result<HarnessConfig, CliConfigError> {
+        match self {
+            Self::Record(args) => {
+                let merged_args: RecordArgs = merge_subcommand_config(prefix, &args, "record")?;
+                Ok(to_record_config(&merged_args))
+            }
+            Self::Replay(args) => {
+                let merged_args: ReplayArgs = merge_subcommand_config(prefix, &args, "replay")?;
+                Ok(to_replay_config(&merged_args))
+            }
+            Self::Verify(args) => {
+                let merged_args: VerifyArgs = merge_subcommand_config(prefix, &args, "verify")?;
+                Ok(to_verify_config(&merged_args))
+            }
+        }
+    }
 }
 
 #[derive(Debug, Clone, Parser, Serialize, Deserialize, Default, PartialEq)]
@@ -227,76 +248,43 @@ fn default_record_api_key_env() -> String {
     String::from("OPENROUTER_API_KEY")
 }
 
-trait CommonArgs {
-    fn listen(&self) -> Option<std::net::SocketAddr>;
-    fn cassette_dir(&self) -> Option<&str>;
-    fn cassette_name(&self) -> Option<&str>;
-}
-
-impl CommonArgs for RecordArgs {
-    fn listen(&self) -> Option<std::net::SocketAddr> {
-        self.listen
-    }
-    fn cassette_dir(&self) -> Option<&str> {
-        self.cassette_dir.as_deref()
-    }
-    fn cassette_name(&self) -> Option<&str> {
-        self.cassette_name.as_deref()
-    }
-}
-
-impl CommonArgs for ReplayArgs {
-    fn listen(&self) -> Option<std::net::SocketAddr> {
-        self.listen
-    }
-    fn cassette_dir(&self) -> Option<&str> {
-        self.cassette_dir.as_deref()
-    }
-    fn cassette_name(&self) -> Option<&str> {
-        self.cassette_name.as_deref()
-    }
-}
-
-impl CommonArgs for VerifyArgs {
-    fn listen(&self) -> Option<std::net::SocketAddr> {
-        self.listen
-    }
-    fn cassette_dir(&self) -> Option<&str> {
-        self.cassette_dir.as_deref()
-    }
-    fn cassette_name(&self) -> Option<&str> {
-        self.cassette_name.as_deref()
-    }
-}
-
-fn build_config(
-    args: &impl CommonArgs,
-    mode: config::Mode,
-    upstream: Option<config::UpstreamConfig>,
-) -> HarnessConfig {
+fn to_record_config(args: &RecordArgs) -> HarnessConfig {
     let mut config = HarnessConfig::default();
     apply_overrides(
         &mut config,
-        args.listen(),
-        args.cassette_dir(),
-        args.cassette_name(),
+        args.listen,
+        args.cassette_dir.as_deref(),
+        args.cassette_name.as_deref(),
     );
-    config.mode = mode;
-    config.upstream = upstream;
+    config.mode = config::Mode::Record;
+    config.upstream = args.upstream.clone().map(Into::into);
     config
 }
 
-fn to_record_config(args: &RecordArgs) -> HarnessConfig {
-    let upstream = args.upstream.clone().map(Into::into);
-    build_config(args, config::Mode::Record, upstream)
-}
-
 fn to_replay_config(args: &ReplayArgs) -> HarnessConfig {
-    build_config(args, config::Mode::Replay, None)
+    let mut config = HarnessConfig::default();
+    apply_overrides(
+        &mut config,
+        args.listen,
+        args.cassette_dir.as_deref(),
+        args.cassette_name.as_deref(),
+    );
+    config.mode = config::Mode::Replay;
+    config.upstream = None;
+    config
 }
 
 fn to_verify_config(args: &VerifyArgs) -> HarnessConfig {
-    build_config(args, config::Mode::Replay, None)
+    let mut config = HarnessConfig::default();
+    apply_overrides(
+        &mut config,
+        args.listen,
+        args.cassette_dir.as_deref(),
+        args.cassette_name.as_deref(),
+    );
+    config.mode = config::Mode::Verify;
+    config.upstream = None;
+    config
 }
 
 fn apply_overrides(

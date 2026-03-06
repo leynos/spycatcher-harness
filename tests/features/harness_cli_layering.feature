@@ -23,4 +23,4 @@ Feature: Harness CLI layered configuration
     Given a replay command with no CLI overrides
     And environment sets replay listen to invalid value not-an-address
     When the layered command configuration is loaded
-    Then command configuration loading fails
+    Then command configuration loading fails with error containing address

@@ -1,10 +1,5 @@
 //! Behavioural tests for layered CLI configuration loading.
 
-#![allow(
-    unused_variables,
-    reason = "rstest-bdd scenario macro introduces fixture variables by name"
-)]
-
 use std::cell::RefCell;
 
 use ortho_config::figment;
@@ -12,14 +7,15 @@ use rstest::fixture;
 use rstest_bdd::Slot;
 use rstest_bdd_macros::{ScenarioState, given, scenario, then, when};
 
-use spycatcher_harness::cli::{LoadedSubcommandConfig, load_subcommand_config_from_iter};
+use spycatcher_harness::cli::load_subcommand_config_from_iter;
+use spycatcher_harness::{HarnessConfig, config};
 
 #[derive(Default, ScenarioState)]
 struct CliLayeringWorld {
     argv: Slot<Vec<String>>,
     config_file: Slot<String>,
     env_vars: Slot<Vec<(String, String)>>,
-    result: Slot<Result<LoadedSubcommandConfig, String>>,
+    result: Slot<Result<HarnessConfig, String>>,
 }
 
 #[fixture]
@@ -182,13 +178,12 @@ fn replay_cassette_name_is(cli_layering_world: &CliLayeringWorld, cassette_name:
         .result
         .with_ref(Clone::clone)
         .unwrap_or_else(|| Err(String::from("result slot missing")));
-    match outcome {
-        Ok(LoadedSubcommandConfig::Replay(cfg)) => {
-            assert_eq!(cfg.cassette_name, cassette_name_value);
-        }
-        Ok(other) => panic!("expected replay configuration, got {other:?}"),
+    let loaded_config = match outcome {
+        Ok(config) => config,
         Err(error) => panic!("expected replay configuration, load failed: {error}"),
-    }
+    };
+    assert_eq!(loaded_config.cassette_name, cassette_name_value);
+    assert_eq!(loaded_config.mode, config::Mode::Replay);
 }
 
 #[then("verify cassette name is {cassette_name}")]
@@ -198,13 +193,12 @@ fn verify_cassette_name_is(cli_layering_world: &CliLayeringWorld, cassette_name:
         .result
         .with_ref(Clone::clone)
         .unwrap_or_else(|| Err(String::from("result slot missing")));
-    match outcome {
-        Ok(LoadedSubcommandConfig::Verify(cfg)) => {
-            assert_eq!(cfg.cassette_name, cassette_name_value);
-        }
-        Ok(other) => panic!("expected verify configuration, got {other:?}"),
+    let loaded_config = match outcome {
+        Ok(config) => config,
         Err(error) => panic!("expected verify configuration, load failed: {error}"),
-    }
+    };
+    assert_eq!(loaded_config.cassette_name, cassette_name_value);
+    assert_eq!(loaded_config.mode, config::Mode::Verify);
 }
 
 #[then("record upstream base URL is {base_url}")]
@@ -214,47 +208,62 @@ fn record_upstream_base_url_is(cli_layering_world: &CliLayeringWorld, base_url: 
         .result
         .with_ref(Clone::clone)
         .unwrap_or_else(|| Err(String::from("result slot missing")));
-    match outcome {
-        Ok(LoadedSubcommandConfig::Record(cfg)) => {
-            let Some(upstream) = cfg.upstream else {
-                panic!("expected record upstream");
-            };
-            assert_eq!(upstream.base_url, base_url_value);
-        }
-        Ok(other) => panic!("expected record configuration, got {other:?}"),
+    let loaded_config = match outcome {
+        Ok(config) => config,
         Err(error) => panic!("expected record configuration, load failed: {error}"),
-    }
+    };
+    let Some(upstream) = loaded_config.upstream else {
+        panic!("expected record upstream");
+    };
+    assert_eq!(loaded_config.mode, config::Mode::Record);
+    assert_eq!(upstream.base_url, base_url_value);
 }
 
-#[then("command configuration loading fails")]
-fn command_loading_fails(cli_layering_world: &CliLayeringWorld) {
-    let failed = cli_layering_world
+#[then("command configuration loading fails with error containing {error_marker}")]
+fn command_loading_fails(cli_layering_world: &CliLayeringWorld, error_marker: String) {
+    let outcome = cli_layering_world
         .result
-        .with_ref(Result::is_err)
-        .unwrap_or(false);
-    assert!(failed, "expected configuration loading to fail");
+        .with_ref(Clone::clone)
+        .unwrap_or_else(|| Err(String::from("result slot missing")));
+    match outcome {
+        Ok(config) => {
+            panic!("expected command configuration loading to fail, but succeeded with: {config:?}")
+        }
+        Err(error) => assert!(
+            error.contains(&error_marker),
+            "expected error to contain marker {error_marker:?}, but was: {error}",
+        ),
+    }
 }
 
 #[scenario(
     path = "tests/features/harness_cli_layering.feature",
     name = "Replay precedence favours CLI over env and file"
 )]
-fn replay_precedence_favours_cli_over_env_and_file(cli_layering_world: CliLayeringWorld) {}
+fn replay_precedence_favours_cli_over_env_and_file(cli_layering_world: CliLayeringWorld) {
+    let _ = cli_layering_world;
+}
 
 #[scenario(
     path = "tests/features/harness_cli_layering.feature",
     name = "Record command merges cmds.record upstream values"
 )]
-fn record_command_merges_cmds_record_upstream_values(cli_layering_world: CliLayeringWorld) {}
+fn record_command_merges_cmds_record_upstream_values(cli_layering_world: CliLayeringWorld) {
+    let _ = cli_layering_world;
+}
 
 #[scenario(
     path = "tests/features/harness_cli_layering.feature",
     name = "Verify command merges cmds.verify cassette value"
 )]
-fn verify_command_merges_cmds_verify_cassette_value(cli_layering_world: CliLayeringWorld) {}
+fn verify_command_merges_cmds_verify_cassette_value(cli_layering_world: CliLayeringWorld) {
+    let _ = cli_layering_world;
+}
 
 #[scenario(
     path = "tests/features/harness_cli_layering.feature",
     name = "Invalid environment value fails loading"
 )]
-fn invalid_environment_value_fails_loading(cli_layering_world: CliLayeringWorld) {}
+fn invalid_environment_value_fails_loading(cli_layering_world: CliLayeringWorld) {
+    let _ = cli_layering_world;
+}

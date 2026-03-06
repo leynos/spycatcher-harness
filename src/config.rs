@@ -108,6 +108,8 @@ pub enum Mode {
     /// Serve responses from a recorded cassette.
     #[default]
     Replay,
+    /// Validate cassette integrity and configuration.
+    Verify,
 }
 
 /// Protocol exposed by the harness HTTP server.
