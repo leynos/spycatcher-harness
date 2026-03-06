@@ -248,47 +248,52 @@ fn default_record_api_key_env() -> String {
     String::from("OPENROUTER_API_KEY")
 }
 
-fn build_base_config(
+#[expect(
+    clippy::too_many_arguments,
+    reason = "This helper intentionally centralizes layered CLI overrides."
+)]
+fn build_config(
     listen: Option<std::net::SocketAddr>,
     cassette_dir: Option<&str>,
     cassette_name: Option<&str>,
+    mode: config::Mode,
+    upstream: Option<config::UpstreamConfig>,
 ) -> HarnessConfig {
     let mut config = HarnessConfig::default();
     apply_overrides(&mut config, listen, cassette_dir, cassette_name);
+    config.mode = mode;
+    config.upstream = upstream;
     config
 }
 
 fn to_record_config(args: &RecordArgs) -> HarnessConfig {
-    let mut config = build_base_config(
+    build_config(
         args.listen,
         args.cassette_dir.as_deref(),
         args.cassette_name.as_deref(),
-    );
-    config.mode = config::Mode::Record;
-    config.upstream = args.upstream.clone().map(Into::into);
-    config
+        config::Mode::Record,
+        args.upstream.clone().map(Into::into),
+    )
 }
 
 fn to_replay_config(args: &ReplayArgs) -> HarnessConfig {
-    let mut config = build_base_config(
+    build_config(
         args.listen,
         args.cassette_dir.as_deref(),
         args.cassette_name.as_deref(),
-    );
-    config.mode = config::Mode::Replay;
-    config.upstream = None;
-    config
+        config::Mode::Replay,
+        None,
+    )
 }
 
 fn to_verify_config(args: &VerifyArgs) -> HarnessConfig {
-    let mut config = build_base_config(
+    build_config(
         args.listen,
         args.cassette_dir.as_deref(),
         args.cassette_name.as_deref(),
-    );
-    config.mode = config::Mode::Verify;
-    config.upstream = None;
-    config
+        config::Mode::Verify,
+        None,
+    )
 }
 
 fn apply_overrides(

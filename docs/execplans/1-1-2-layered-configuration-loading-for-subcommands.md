@@ -264,84 +264,84 @@ Go/no-go: docs are consistent with CLI help and tests.
 
 All commands run from repository root `/home/user/project`.
 
-- Step 1: Capture baseline and create red tests.
+1. Step 1: Capture baseline and create red tests.
 
-```bash
-set -o pipefail
-make test 2>&1 | tee /tmp/1-1-2-baseline-test.log
-```
+    ```bash
+    set -o pipefail
+    make test 2>&1 | tee /tmp/1-1-2-baseline-test.log
+    ```
 
-Expected transcript excerpt:
+    Expected transcript excerpt:
 
-```plaintext
-... existing startup tests pass ...
-... new precedence/subcommand tests fail (red) ...
-```
+    ```plaintext
+    ... existing startup tests pass ...
+    ... new precedence/subcommand tests fail (red) ...
+    ```
 
-- Step 2: Implement adapter loader and subcommand merge wiring.
+2. Step 2: Implement adapter loader and subcommand merge wiring.
 
-```bash
-set -o pipefail
-cargo test --all-targets --all-features 2>&1 | tee /tmp/1-1-2-dev-test.log
-```
+    ```bash
+    set -o pipefail
+    cargo test --all-targets --all-features 2>&1 | tee /tmp/1-1-2-dev-test.log
+    ```
 
-Expected transcript excerpt:
+    Expected transcript excerpt:
 
-```plaintext
-... precedence tests now pass ...
-... bdd scenarios for config layering pass ...
-```
+    ```plaintext
+    ... precedence tests now pass ...
+    ... bdd scenarios for config layering pass ...
+    ```
 
-- Step 3: Run formatting and lint/test quality gates.
+3. Step 3: Run formatting and lint/test quality gates.
 
-```bash
-set -o pipefail
-make fmt 2>&1 | tee /tmp/1-1-2-fmt.log
-set -o pipefail
-make check-fmt 2>&1 | tee /tmp/1-1-2-check-fmt.log
-set -o pipefail
-make lint 2>&1 | tee /tmp/1-1-2-lint.log
-set -o pipefail
-make test 2>&1 | tee /tmp/1-1-2-test.log
-```
+    ```bash
+    set -o pipefail
+    make fmt 2>&1 | tee /tmp/1-1-2-fmt.log
+    set -o pipefail
+    make check-fmt 2>&1 | tee /tmp/1-1-2-check-fmt.log
+    set -o pipefail
+    make lint 2>&1 | tee /tmp/1-1-2-lint.log
+    set -o pipefail
+    make test 2>&1 | tee /tmp/1-1-2-test.log
+    ```
 
-Expected transcript excerpt:
+    Expected transcript excerpt:
 
-```plaintext
-... check-fmt passes ...
-... clippy/whitaker/doc pass with no warnings ...
-... nextest and doctests pass ...
-```
+    ```plaintext
+    ... check-fmt passes ...
+    ... clippy/whitaker/doc pass with no warnings ...
+    ... nextest and doctests pass ...
+    ```
 
-- Step 4: Validate documentation changes.
+4. Step 4: Validate documentation changes.
 
-```bash
-set -o pipefail
-make markdownlint 2>&1 | tee /tmp/1-1-2-markdownlint.log
-set -o pipefail
-make nixie 2>&1 | tee /tmp/1-1-2-nixie.log
-```
+    ```bash
+    set -o pipefail
+    make markdownlint 2>&1 | tee /tmp/1-1-2-markdownlint.log
+    set -o pipefail
+    make nixie 2>&1 | tee /tmp/1-1-2-nixie.log
+    ```
 
-Expected transcript excerpt:
+    Expected transcript excerpt:
 
-```plaintext
-... markdownlint passes ...
-... nixie passes ...
-```
+    ```plaintext
+    ... markdownlint passes ...
+    ... nixie passes ...
+    ```
 
-- Step 5: Final verification before closing the task.
+5. Step 5: Final verification before closing the task.
 
-```bash
-git status --short
-rg -n "1\.1\.2" docs/roadmap.md
-```
+    ```bash
+    git status --short
+    rg -n "1\.1\.2" docs/roadmap.md
+    ```
 
-Expected transcript excerpt:
+    Expected transcript excerpt:
 
-```plaintext
-M docs/roadmap.md
-... shows item 1.1.2 marked [x] ...
-```
+    ```plaintext
+    M docs/roadmap.md
+    ... shows item 1.1.2 marked [x] ...
+    ```
 
 ## Validation and acceptance
 
