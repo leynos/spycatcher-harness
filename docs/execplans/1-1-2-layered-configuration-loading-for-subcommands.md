@@ -264,7 +264,7 @@ Go/no-go: docs are consistent with CLI help and tests.
 
 All commands run from repository root `/home/user/project`.
 
-1. Capture baseline and create red tests.
+- Step 1: Capture baseline and create red tests.
 
 ```bash
 set -o pipefail
@@ -278,7 +278,7 @@ Expected transcript excerpt:
 ... new precedence/subcommand tests fail (red) ...
 ```
 
-1. Implement adapter loader and subcommand merge wiring.
+- Step 2: Implement adapter loader and subcommand merge wiring.
 
 ```bash
 set -o pipefail
@@ -292,7 +292,7 @@ Expected transcript excerpt:
 ... bdd scenarios for config layering pass ...
 ```
 
-1. Run formatting and lint/test quality gates.
+- Step 3: Run formatting and lint/test quality gates.
 
 ```bash
 set -o pipefail
@@ -313,7 +313,7 @@ Expected transcript excerpt:
 ... nextest and doctests pass ...
 ```
 
-1. Validate documentation changes.
+- Step 4: Validate documentation changes.
 
 ```bash
 set -o pipefail
@@ -329,7 +329,7 @@ Expected transcript excerpt:
 ... nixie passes ...
 ```
 
-1. Final verification before closing the task.
+- Step 5: Final verification before closing the task.
 
 ```bash
 git status --short
@@ -393,25 +393,18 @@ proof.
 
 Prescriptive interface outcomes for this milestone:
 
-- A dedicated adapter loader function must exist that returns the selected
-  subcommand plus effective domain config. Example target shape:
+- A dedicated adapter loader function must exist that returns effective domain
+  config for the selected command. Implemented API:
 
 ```rust
-pub(crate) fn load_effective_command_config(
-    argv: impl IntoIterator<Item = std::ffi::OsString>,
-) -> eyre::Result<LoadedCommandConfig>
+pub fn load_subcommand_config_from_iter<I, T>(iter: I) -> Result<HarnessConfig, CliConfigError>
+where
+    I: IntoIterator<Item = T>,
+    T: Into<std::ffi::OsString> + Clone
 ```
 
-- A command-selection type must represent `record`, `replay`, and `verify`
-  after merging. Example target shape:
-
-```rust
-pub(crate) enum LoadedCommandConfig {
-    Record(spycatcher_harness::HarnessConfig),
-    Replay(spycatcher_harness::HarnessConfig),
-    Verify(spycatcher_harness::HarnessConfig),
-}
-```
+- Command selection for `record`, `replay`, and `verify` is represented by
+  `HarnessConfig.mode`, and downstream execution routes by that mode.
 
 - Mapping from adapter-level config DTOs into domain `HarnessConfig` must be
   explicit and test-covered.

@@ -248,10 +248,18 @@ fn default_record_api_key_env() -> String {
     String::from("OPENROUTER_API_KEY")
 }
 
-fn to_record_config(args: &RecordArgs) -> HarnessConfig {
+fn build_base_config(
+    listen: Option<std::net::SocketAddr>,
+    cassette_dir: Option<&str>,
+    cassette_name: Option<&str>,
+) -> HarnessConfig {
     let mut config = HarnessConfig::default();
-    apply_overrides(
-        &mut config,
+    apply_overrides(&mut config, listen, cassette_dir, cassette_name);
+    config
+}
+
+fn to_record_config(args: &RecordArgs) -> HarnessConfig {
+    let mut config = build_base_config(
         args.listen,
         args.cassette_dir.as_deref(),
         args.cassette_name.as_deref(),
@@ -262,9 +270,7 @@ fn to_record_config(args: &RecordArgs) -> HarnessConfig {
 }
 
 fn to_replay_config(args: &ReplayArgs) -> HarnessConfig {
-    let mut config = HarnessConfig::default();
-    apply_overrides(
-        &mut config,
+    let mut config = build_base_config(
         args.listen,
         args.cassette_dir.as_deref(),
         args.cassette_name.as_deref(),
@@ -275,9 +281,7 @@ fn to_replay_config(args: &ReplayArgs) -> HarnessConfig {
 }
 
 fn to_verify_config(args: &VerifyArgs) -> HarnessConfig {
-    let mut config = HarnessConfig::default();
-    apply_overrides(
-        &mut config,
+    let mut config = build_base_config(
         args.listen,
         args.cassette_dir.as_deref(),
         args.cassette_name.as_deref(),
