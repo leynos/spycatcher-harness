@@ -20,8 +20,9 @@ Observable success:
 
 - Unit tests prove precedence and subcommand merge behaviour for happy and
   unhappy paths.
-- Behavioural tests (BDD with `rstest-bdd`) prove user-observable CLI outcomes
-  for layered configuration and override errors.
+- Behavioural tests (behaviour-driven development (BDD) with `rstest-bdd`)
+  prove user-observable CLI outcomes for layered configuration and override
+  errors.
 - CLI help plus `docs/users-guide.md` describe the merged configuration shape,
   including `cmds.record`, `cmds.replay`, and `cmds.verify`.
 - `docs/roadmap.md` entry `1.1.2` is marked done only after all quality gates

@@ -158,21 +158,34 @@ enum Commands {
 
 impl Commands {
     fn load_config(self, prefix: &Prefix) -> Result<HarnessConfig, CliConfigError> {
-        match self {
-            Self::Record(args) => {
-                let merged_args: RecordArgs = merge_subcommand_config(prefix, &args, "record")?;
-                Ok(to_record_config(&merged_args))
-            }
-            Self::Replay(args) => {
-                let merged_args: ReplayArgs = merge_subcommand_config(prefix, &args, "replay")?;
-                Ok(to_replay_config(&merged_args))
-            }
-            Self::Verify(args) => {
-                let merged_args: VerifyArgs = merge_subcommand_config(prefix, &args, "verify")?;
-                Ok(to_verify_config(&merged_args))
-            }
-        }
+        load_command_config(prefix, &self)
     }
+}
+
+fn load_command_config(
+    prefix: &Prefix,
+    command: &Commands,
+) -> Result<HarnessConfig, CliConfigError> {
+    match command {
+        Commands::Record(args) => load_record_config(prefix, args),
+        Commands::Replay(args) => load_replay_config(prefix, args),
+        Commands::Verify(args) => load_verify_config(prefix, args),
+    }
+}
+
+fn load_record_config(prefix: &Prefix, args: &RecordArgs) -> Result<HarnessConfig, CliConfigError> {
+    let merged_args: RecordArgs = merge_subcommand_config(prefix, args, "record")?;
+    Ok(to_record_config(&merged_args))
+}
+
+fn load_replay_config(prefix: &Prefix, args: &ReplayArgs) -> Result<HarnessConfig, CliConfigError> {
+    let merged_args: ReplayArgs = merge_subcommand_config(prefix, args, "replay")?;
+    Ok(to_replay_config(&merged_args))
+}
+
+fn load_verify_config(prefix: &Prefix, args: &VerifyArgs) -> Result<HarnessConfig, CliConfigError> {
+    let merged_args: VerifyArgs = merge_subcommand_config(prefix, args, "verify")?;
+    Ok(to_verify_config(&merged_args))
 }
 
 #[derive(Debug, Clone, Parser, Serialize, Deserialize, Default, PartialEq)]
@@ -248,17 +261,22 @@ fn default_record_api_key_env() -> String {
     String::from("OPENROUTER_API_KEY")
 }
 
-#[expect(
-    clippy::too_many_arguments,
-    reason = "This helper intentionally centralizes layered CLI overrides."
-)]
-fn build_config(
+struct BuildConfigArgs<'a> {
     listen: Option<std::net::SocketAddr>,
-    cassette_dir: Option<&str>,
-    cassette_name: Option<&str>,
+    cassette_dir: Option<&'a str>,
+    cassette_name: Option<&'a str>,
     mode: config::Mode,
     upstream: Option<config::UpstreamConfig>,
-) -> HarnessConfig {
+}
+
+fn build_config(args: BuildConfigArgs<'_>) -> HarnessConfig {
+    let BuildConfigArgs {
+        listen,
+        cassette_dir,
+        cassette_name,
+        mode,
+        upstream,
+    } = args;
     let mut config = HarnessConfig::default();
     apply_overrides(&mut config, listen, cassette_dir, cassette_name);
     config.mode = mode;
@@ -267,33 +285,33 @@ fn build_config(
 }
 
 fn to_record_config(args: &RecordArgs) -> HarnessConfig {
-    build_config(
-        args.listen,
-        args.cassette_dir.as_deref(),
-        args.cassette_name.as_deref(),
-        config::Mode::Record,
-        args.upstream.clone().map(Into::into),
-    )
+    build_config(BuildConfigArgs {
+        listen: args.listen,
+        cassette_dir: args.cassette_dir.as_deref(),
+        cassette_name: args.cassette_name.as_deref(),
+        mode: config::Mode::Record,
+        upstream: args.upstream.clone().map(Into::into),
+    })
 }
 
 fn to_replay_config(args: &ReplayArgs) -> HarnessConfig {
-    build_config(
-        args.listen,
-        args.cassette_dir.as_deref(),
-        args.cassette_name.as_deref(),
-        config::Mode::Replay,
-        None,
-    )
+    build_config(BuildConfigArgs {
+        listen: args.listen,
+        cassette_dir: args.cassette_dir.as_deref(),
+        cassette_name: args.cassette_name.as_deref(),
+        mode: config::Mode::Replay,
+        upstream: None,
+    })
 }
 
 fn to_verify_config(args: &VerifyArgs) -> HarnessConfig {
-    build_config(
-        args.listen,
-        args.cassette_dir.as_deref(),
-        args.cassette_name.as_deref(),
-        config::Mode::Verify,
-        None,
-    )
+    build_config(BuildConfigArgs {
+        listen: args.listen,
+        cassette_dir: args.cassette_dir.as_deref(),
+        cassette_name: args.cassette_name.as_deref(),
+        mode: config::Mode::Verify,
+        upstream: None,
+    })
 }
 
 fn apply_overrides(
