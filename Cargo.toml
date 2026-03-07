@@ -12,8 +12,11 @@ name = "spycatcher-harness"
 path = "src/bin/spycatcher_harness.rs"
 
 [dependencies]
-camino = "1.1.9"
+camino = { version = "1.1.9", features = ["serde1"] }
+clap = { version = "4.5.32", features = ["derive"] }
 eyre = "0.6.12"
+ortho_config = "0.7.0"
+serde = { version = "1.0.219", features = ["derive"] }
 thiserror = "2.0.18"
 tokio = { version = "1.43.0", features = ["rt", "macros", "net"] }
 

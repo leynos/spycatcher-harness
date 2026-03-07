@@ -36,7 +36,11 @@ jobs:
           key: whitaker-installer-${{ runner.os }}-${{ runner.arch }}-${{ env.WHITAKER_INSTALLER_VERSION }}
       - name: Install Whitaker
         run: |
-          cargo binstall --no-confirm whitaker-installer@${{ env.WHITAKER_INSTALLER_VERSION }}
+          if command -v whitaker-installer >/dev/null 2>&1; then
+            echo "whitaker-installer already present; skipping cargo binstall"
+          else
+            cargo binstall --no-confirm whitaker-installer@${{ env.WHITAKER_INSTALLER_VERSION }}
+          fi
           whitaker-installer
       - name: Lint
         run: make lint

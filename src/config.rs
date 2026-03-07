@@ -28,7 +28,9 @@ use camino::Utf8PathBuf;
 pub struct HarnessConfig {
     /// Address and port the harness listens on.
     pub listen: ListenAddr,
-    /// Operating mode (record or replay).
+    /// Operating mode (`record`, `replay`, or `verify`).
+    ///
+    /// `Mode::Verify` runs cassette and configuration validation flows.
     pub mode: Mode,
     /// Localisation settings.
     pub localization: LocalizationConfig,
@@ -108,6 +110,8 @@ pub enum Mode {
     /// Serve responses from a recorded cassette.
     #[default]
     Replay,
+    /// Validate cassette integrity and configuration.
+    Verify,
 }
 
 /// Protocol exposed by the harness HTTP server.

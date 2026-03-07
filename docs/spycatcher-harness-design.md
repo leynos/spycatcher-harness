@@ -919,6 +919,24 @@ change when HTTP server binding (task 1.3.1) introduces genuine async
 operations. The `clippy::unused_async` lint is suppressed with an `#[expect]`
 annotation documenting this rationale.
 
+### Layered subcommand loading scope (task 1.1.2)
+
+Task 1.1.2 implements layered loading with OrthoConfig's subcommand merge
+helpers (`load_and_merge_subcommand`) in a dedicated CLI adapter module
+(`src/cli.rs`). The implementation currently scopes file loading to the
+`cmds.<subcommand>` namespace plus subcommand-specific environment variables:
+
+- `SPYCATCHER_HARNESS_CMDS_RECORD_*`
+- `SPYCATCHER_HARNESS_CMDS_REPLAY_*`
+- `SPYCATCHER_HARNESS_CMDS_VERIFY_*`
+
+This keeps command selection explicit and deterministic while preserving the
+required precedence `CLI > env > config files > defaults`.
+
+The adapter maps merged command arguments into domain `HarnessConfig` values in
+one step before invoking `start_harness`, maintaining a clean boundary between
+domain config types and adapter-level loading concerns.
+
 ## Source references
 
 [^1]: `turn2search0` OpenRouter API behaviour and model/provider compatibility
