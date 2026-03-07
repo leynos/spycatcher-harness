@@ -103,7 +103,7 @@ Observable success:
 ## Surprises & discoveries
 
 - Observation: OrthoConfig's subcommand loader does not honour
-  `<PREFIX>CONFIG_PATH`; it discovers `. <prefix>.toml` candidates instead.
+  `<PREFIX>CONFIG_PATH`; it discovers `.<prefix>.toml` candidates instead.
   Evidence: failing tests when only `SPYCATCHER_HARNESS_CONFIG_PATH` was set;
   passing tests once `.spycatcher_harness.toml` was written in the jailed
   working directory. Impact: tests and docs now rely on discovered
