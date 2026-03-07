@@ -76,8 +76,9 @@ Observable success:
 - Risk: `ortho_config` `0.8.0` may alter helper signatures or behaviour for
   `load_and_merge_subcommand`, `Prefix`, or figment-backed test utilities.
   Severity: medium. Likelihood: medium. Mitigation: keep the current targeted
-  unit and BDD tests as the behavioural contract and add focused regression
-  tests if compilation failures reveal a changed call pattern.
+  unit and behaviour-driven development (BDD) tests as the behavioural contract
+  and add focused regression tests if compilation failures reveal a changed
+  call pattern.
 
 - Risk: documentation already references `ortho_config` `0.8.0`, while the
   crate dependency is still `0.7.0`, so documentation drift may hide upgrade
