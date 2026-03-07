@@ -64,7 +64,7 @@ Observable success:
 - Documentation artifacts: if wiring `[package.metadata.ortho_config]` would
   require introducing a new derive root type or a new documentation pipeline
   that does not already exist in this crate, record that as a decision and do
-  not improvize beyond the agreed scope.
+  not improvise beyond the agreed scope.
 
 ## Risks
 
