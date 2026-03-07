@@ -18,7 +18,7 @@ eyre = "0.6.12"
 ortho_config = "0.7.0"
 serde = { version = "1.0.219", features = ["derive"] }
 thiserror = "2.0.18"
-tokio = { version = "1.43.0", features = ["rt", "macros", "net"] }
+tokio = { version = "1.50.0", features = ["rt", "macros", "net"] }
 
 [dev-dependencies]
 rstest = "0.25.0"
