@@ -116,7 +116,7 @@ Observable success:
 - [x] (2026-03-07 00:00Z) Ran `make fmt`, `make check-fmt`, `make lint`,
   `make test`, `make markdownlint`, and `make nixie`; all passed.
 
-## Surprises & Discoveries
+## Surprises & discoveries
 
 - Discovery: the current crate already follows one `0.8.0` migration
   recommendation by importing `figment` through `ortho_config::figment` in
@@ -140,32 +140,32 @@ Observable success:
   test suites were already compatible with `ortho_config` `0.8.0`; the
   dependency bump required no Rust source changes in this crate.
 
-## Decision Log
+## Decision log
 
 - Decision: keep this upgrade scoped to compatibility and documentation
   alignment, not a redesign of configuration loading. Rationale: the current
   crate uses explicit subcommand loading helpers in `src/cli.rs`, and the
   migration notes do not require replacing that design. Date/Author: 2026-03-07
-  / agent
+  / agent.
 
 - Decision: treat the `cargo orthohelp` metadata as conditional rather than
   automatic. Rationale: the migration note says to wire the metadata in only if
   documentation artifacts are generated, and no such workflow currently exists
-  in this crate. Date/Author: 2026-03-07 / agent
+  in this crate. Date/Author: 2026-03-07 / agent.
 
 - Decision: sync the local OrthoConfig guide to the tagged upstream `v0.8.0`
   text instead of hand-editing equivalent prose. Rationale: the user requested
   the upstream guide specifically, and using the tagged source keeps the local
   guide aligned with the published migration guidance. Date/Author: 2026-03-07
-  / agent
+  / agent.
 
 - Decision: do not add `[package.metadata.ortho_config]` in this change.
   Rationale: this crate does not currently generate `cargo orthohelp`
   artifacts, expose an `OrthoConfigDocs` root type, or document such a build
   step, so the migration note is not applicable here. Date/Author: 2026-03-07 /
-  agent
+  agent.
 
-## Outcomes & Retrospective
+## Outcomes & retrospective
 
 The migration is complete.
 
@@ -349,9 +349,3 @@ Expected end state:
 - Markdown and Mermaid validation pass after any documentation edits.
 - `git diff --stat` shows a focused compatibility upgrade, not a broad refactor.
 ```
-
-## Approval gate
-
-This gate applied during the draft phase before implementation began. It is
-retained here as an audit note only and is no longer an implementation blocker,
-because the migration recorded above is complete.
