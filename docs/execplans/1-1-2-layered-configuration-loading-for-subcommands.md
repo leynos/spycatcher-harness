@@ -57,8 +57,8 @@ Observable success:
   escalate.
 - Interface: if meeting this task requires changing the public signature of
   `start_harness` or `RunningHarness::shutdown`, stop and escalate.
-- Dependency: if more than four new crates are needed (expected: `ortho_config`,
-  `serde`, and only minimal test/support additions), stop and escalate.
+- Dependency: if more than five new crates are needed (expected: `ortho_config`,
+  `serde`, `clap`, and only minimal test/support additions), stop and escalate.
 - Iteration: if `make lint` or `make test` fails after five fix cycles, stop and
   escalate with failure details.
 - Ambiguity: if `cmds.<subcommand>` merge semantics are ambiguous between design
@@ -263,7 +263,7 @@ Go/no-go: docs are consistent with CLI help and tests.
 
 ## Concrete steps
 
-All commands run from repository root `/home/user/project`.
+All commands are run from the repository root.
 
 1. Step 1: Capture baseline and create red tests.
 
@@ -407,10 +407,10 @@ where
 - Command selection for `record`, `replay`, and `verify` is represented by
   `HarnessConfig.mode`, and downstream execution routes by that mode.
 
-- Mapping from adapter-level config DTOs into domain `HarnessConfig` must be
-  explicit and test-covered.
-- Dependencies should remain minimal. Expected additions are `ortho_config`
-  and `serde` (derive support), plus only necessary test utilities.
+- Mapping from adapter-level config data transfer objects (DTOs) into domain
+  `HarnessConfig` must be explicit and test-covered.
+- Dependencies should remain minimal. Expected additions are `ortho_config`,
+  `serde`, and `clap` (derive support), plus only necessary test utilities.
 
 ## Revision note
 

@@ -269,6 +269,36 @@ struct CommonOverrides<'a> {
     cassette_name: Option<&'a str>,
 }
 
+impl<'a> From<&'a RecordArgs> for CommonOverrides<'a> {
+    fn from(args: &'a RecordArgs) -> Self {
+        Self {
+            listen: args.listen,
+            cassette_dir: args.cassette_dir.as_deref(),
+            cassette_name: args.cassette_name.as_deref(),
+        }
+    }
+}
+
+impl<'a> From<&'a ReplayArgs> for CommonOverrides<'a> {
+    fn from(args: &'a ReplayArgs) -> Self {
+        Self {
+            listen: args.listen,
+            cassette_dir: args.cassette_dir.as_deref(),
+            cassette_name: args.cassette_name.as_deref(),
+        }
+    }
+}
+
+impl<'a> From<&'a VerifyArgs> for CommonOverrides<'a> {
+    fn from(args: &'a VerifyArgs) -> Self {
+        Self {
+            listen: args.listen,
+            cassette_dir: args.cassette_dir.as_deref(),
+            cassette_name: args.cassette_name.as_deref(),
+        }
+    }
+}
+
 fn build_config(
     overrides: CommonOverrides<'_>,
     mode: config::Mode,
@@ -288,38 +318,18 @@ fn build_config(
 
 fn to_record_config(args: &RecordArgs) -> HarnessConfig {
     build_config(
-        CommonOverrides {
-            listen: args.listen,
-            cassette_dir: args.cassette_dir.as_deref(),
-            cassette_name: args.cassette_name.as_deref(),
-        },
+        args.into(),
         config::Mode::Record,
         args.upstream.clone().map(Into::into),
     )
 }
 
 fn to_replay_config(args: &ReplayArgs) -> HarnessConfig {
-    build_config(
-        CommonOverrides {
-            listen: args.listen,
-            cassette_dir: args.cassette_dir.as_deref(),
-            cassette_name: args.cassette_name.as_deref(),
-        },
-        config::Mode::Replay,
-        None,
-    )
+    build_config(args.into(), config::Mode::Replay, None)
 }
 
 fn to_verify_config(args: &VerifyArgs) -> HarnessConfig {
-    build_config(
-        CommonOverrides {
-            listen: args.listen,
-            cassette_dir: args.cassette_dir.as_deref(),
-            cassette_name: args.cassette_name.as_deref(),
-        },
-        config::Mode::Verify,
-        None,
-    )
+    build_config(args.into(), config::Mode::Verify, None)
 }
 
 fn apply_overrides(
