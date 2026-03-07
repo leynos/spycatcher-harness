@@ -352,5 +352,6 @@ Expected end state:
 
 ## Approval gate
 
-This file is the draft plan only. Do not begin implementation until the user
-explicitly approves the plan or requests revisions.
+This gate applied during the draft phase before implementation began. It is
+retained here as an audit note only and is no longer an implementation blocker,
+because the migration recorded above is complete.
