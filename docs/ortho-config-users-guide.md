@@ -141,7 +141,7 @@ CLI layers. This validates every precedence permutation without copy-pasting
 setup.
 
 Every derived configuration also exposes `compose_layers()` and
-`compose_layers_from_iter(..)`. These helpers discover configuration files,
+`compose_layers_from_iter(...)`. These helpers discover configuration files,
 serialize environment variables, and capture CLI input as a `LayerComposition`,
 keeping discovery separate from merging. The returned composition includes both
 the ordered layers and any collected errors, letting callers push additional
@@ -618,12 +618,12 @@ following steps:
 ### Config path override
 
 The derive macro always recognizes a configuration override flag and the
-associated environment variables even when no explicit field is declared. By
+associated environment variables even when no field is declared explicitly. By
 default a hidden `--config-path` flag is accepted alongside
 `<PREFIX>CONFIG_PATH` and the unprefixed `CONFIG_PATH`. Applying the
-struct-level `discovery(...)` attribute customizes this behaviour, allowing
-renaming or exposing the CLI flag and adjusting the filenames searched during
-discovery:
+struct-level `discovery(...)` attribute customizes this behaviour, allowing the
+CLI flag to be renamed or exposed and the searched filenames to be adjusted
+during discovery:
 
 ```rust
 #[derive(Debug, Deserialize, ortho_config::OrthoConfig)]
