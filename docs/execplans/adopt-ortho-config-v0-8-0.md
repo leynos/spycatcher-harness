@@ -5,7 +5,7 @@ This ExecPlan (execution plan) is a living document. The sections
 `Decision Log`, and `Outcomes & Retrospective` must be kept up to date as work
 proceeds.
 
-Status: DRAFT
+Status: IN PROGRESS
 
 ## Purpose / big picture
 
@@ -104,6 +104,9 @@ Observable success:
   `cargo orthohelp` workflow is currently present.
 - [x] (2026-03-07 00:00Z) Drafted this ExecPlan at
   `docs/execplans/adopt-ortho-config-v0-8-0.md`.
+- [x] (2026-03-07 00:00Z) Replaced
+  `docs/ortho-config-users-guide.md` with the upstream `ortho-config` `v0.8.0`
+  guide text for the changed sections.
 - [ ] Bump dependencies and toolchain declarations, then regenerate
   `Cargo.lock`.
 - [ ] Run targeted tests to capture any `0.8.0` compatibility failures before
@@ -127,6 +130,11 @@ Observable success:
   `[package.metadata.ortho_config]` block, no `OrthoConfigDocs` implementation
   in this crate, and no existing `cargo orthohelp` invocation in the repository.
 
+- Discovery: the local `docs/ortho-config-users-guide.md` was already very
+  close to upstream `v0.8.0`; syncing to the tagged source only changed a small
+  set of wording and en-GB spelling details rather than replacing the entire
+  document body.
+
 ## Decision Log
 
 - Decision: keep this upgrade scoped to compatibility and documentation
@@ -139,6 +147,12 @@ Observable success:
   automatic. Rationale: the migration note says to wire the metadata in only if
   documentation artifacts are generated, and no such workflow currently exists
   in this crate. Date/Author: 2026-03-07 / agent
+
+- Decision: sync the local OrthoConfig guide to the tagged upstream `v0.8.0`
+  text instead of hand-editing equivalent prose. Rationale: the user requested
+  the upstream guide specifically, and using the tagged source keeps the local
+  guide aligned with the published migration guidance. Date/Author: 2026-03-07
+  / agent
 
 ## Outcomes & Retrospective
 

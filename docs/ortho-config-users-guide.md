@@ -141,7 +141,7 @@ CLI layers. This validates every precedence permutation without copy-pasting
 setup.
 
 Every derived configuration also exposes `compose_layers()` and
-`compose_layers_from_iter(..)`. These helpers discover configuration files,
+`compose_layers_from_iter(...)`. These helpers discover configuration files,
 serialize environment variables, and capture CLI input as a `LayerComposition`,
 keeping discovery separate from merging. The returned composition includes both
 the ordered layers and any collected errors, letting callers push additional
@@ -545,10 +545,10 @@ resulting in environment variables such as `APP_DB_URL`. The `features` field
 is a `Vec<String>` and accumulates values from multiple sources rather than
 overwriting them.
 
-### Customizing configuration discovery
+### Customising configuration discovery
 
 Configuration discovery can be tailored per struct using the `discovery(...)`
-attribute. The keys recognized today include:
+attribute. The keys recognised today include:
 
 - `app_name`: directory name used under XDG and application data folders.
 - `env_var`: override for the environment variable consulted before discovery
@@ -564,10 +564,9 @@ attribute. The keys recognized today include:
 - `config_cli_visible`: when `true`, the generated CLI flag appears in help
   output instead of remaining hidden.
 
-Supplying only the required keys allows renaming of the CLI flag without
-altering file discovery, or vice versa. When the attribute is omitted, the
-defaults described in [Config path override](#config-path-override) continue to
-apply.
+Supplying only the keys you need lets you rename the CLI flag without altering
+file discovery, or vice versa. When the attribute is omitted, the defaults
+described in [Config path override](#config-path-override) continue to apply.
 
 ## Loading configuration and precedence rules
 
@@ -617,12 +616,12 @@ following steps:
 
 ### Config path override
 
-The derive macro always recognizes a configuration override flag and the
-associated environment variables even when no explicit field is declared. By
-default a hidden `--config-path` flag is accepted alongside
+The derive macro always recognises a configuration override flag and the
+associated environment variables even when you do not declare a field
+explicitly. By default a hidden `--config-path` flag is accepted alongside
 `<PREFIX>CONFIG_PATH` and the unprefixed `CONFIG_PATH`. Applying the
-struct-level `discovery(...)` attribute customizes this behaviour, allowing
-renaming or exposing the CLI flag and adjusting the filenames searched during
+struct-level `discovery(...)` attribute customises this behaviour, allowing you
+to rename or expose the CLI flag and adjust the filenames searched during
 discovery:
 
 ```rust
@@ -1008,7 +1007,7 @@ Missing required values:
 
 ### Preserving `clap` display exits
 
-When a user passes `--help` or `--version`, `clap` surfaces specialized
+When a user passes `--help` or `--version`, `clap` surfaces specialised
 `ErrorKind::DisplayHelp` / `DisplayVersion` errors so applications can print
 usage text and exit successfully. Deriving `OrthoConfig` often goes hand in
 hand with `Cli::try_parse()` so applications can map errors into their own
