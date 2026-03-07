@@ -5,7 +5,7 @@ This ExecPlan (execution plan) is a living document. The sections
 `Decision Log`, and `Outcomes & Retrospective` must be kept up to date as work
 proceeds.
 
-Status: IN PROGRESS
+Status: COMPLETE
 
 ## Purpose / big picture
 
@@ -68,11 +68,10 @@ Observable success:
 
 ## Risks
 
-- Risk: the repository pins a nightly toolchain in `rust-toolchain.toml`, but
-  the crate does not currently declare `rust-version` in `Cargo.toml`.
-  Severity: medium. Likelihood: medium. Mitigation: verify the actual compiler
-  version with `rustc --version`; add `rust-version = "1.88"` to `Cargo.toml`;
-  only adjust the pinned toolchain if it is older than the new minimum.
+- Risk: ancillary documentation may still describe the old Rust `1.85`
+  baseline or imply a stable pinned toolchain, which would become inaccurate
+  after the migration. Severity: low. Likelihood: medium. Mitigation: audit
+  `docs/` for stale toolchain statements and update them in the same change set.
 
 - Risk: `ortho_config` `0.8.0` may alter helper signatures or behaviour for
   `load_and_merge_subcommand`, `Prefix`, or figment-backed test utilities.
@@ -107,13 +106,14 @@ Observable success:
 - [x] (2026-03-07 00:00Z) Replaced
   `docs/ortho-config-users-guide.md` with the upstream `ortho-config` `v0.8.0`
   guide text for the changed sections.
-- [ ] Bump dependencies and toolchain declarations, then regenerate
-  `Cargo.lock`.
-- [ ] Run targeted tests to capture any `0.8.0` compatibility failures before
-  broader documentation edits.
-- [ ] Update source, tests, and documentation for any migration-required
-  changes.
-- [ ] Run all repository quality gates and record the outcome.
+- [x] (2026-03-07 00:00Z) Bumped `ortho_config` to `0.8.0`, added
+  `rust-version = "1.88"`, and regenerated `Cargo.lock`.
+- [x] (2026-03-07 00:00Z) Re-ran the targeted layered configuration tests after
+  the bump; both suites passed without source changes.
+- [x] (2026-03-07 00:00Z) Updated migration-related documentation, including
+  the stale toolchain guidance in `docs/rstest-bdd-users-guide.md`.
+- [x] (2026-03-07 00:00Z) Ran `make fmt`, `make check-fmt`, `make lint`,
+  `make test`, `make markdownlint`, and `make nixie`; all passed.
 
 ## Surprises & Discoveries
 
@@ -121,9 +121,9 @@ Observable success:
   recommendation by importing `figment` through `ortho_config::figment` in
   tests, even though the actual dependency remains at `0.7.0`.
 
-- Discovery: `docs/rstest-bdd-users-guide.md` currently states that each
-  `Cargo.toml` declares `rust-version = "1.85"`, but this crate's `Cargo.toml`
-  does not currently declare any `rust-version`.
+- Discovery: `docs/rstest-bdd-users-guide.md` previously stated that each
+  `Cargo.toml` declared `rust-version = "1.85"` and that the repository pinned
+  a stable toolchain; both claims needed updating for this crate.
 
 - Discovery: the repository documents `cargo-orthohelp` usage in
   `docs/ortho-config-users-guide.md`, but there is no current
@@ -134,6 +134,10 @@ Observable success:
   close to upstream `v0.8.0`; syncing to the tagged source only changed a small
   set of wording and en-GB spelling details rather than replacing the entire
   document body.
+
+- Discovery: the runtime integration in `src/cli.rs` and the existing layered
+  test suites were already compatible with `ortho_config` `0.8.0`; the
+  dependency bump required no Rust source changes in this crate.
 
 ## Decision Log
 
@@ -154,17 +158,45 @@ Observable success:
   guide aligned with the published migration guidance. Date/Author: 2026-03-07
   / agent
 
+- Decision: do not add `[package.metadata.ortho_config]` in this change.
+  Rationale: this crate does not currently generate `cargo orthohelp`
+  artifacts, expose an `OrthoConfigDocs` root type, or document such a build
+  step, so the migration note is not applicable here. Date/Author: 2026-03-07 /
+  agent
+
 ## Outcomes & Retrospective
 
-This section remains incomplete until implementation finishes. Success requires
-the following to be true and recorded here:
+The migration is complete.
 
-- The crate builds and tests against `ortho_config` `0.8.0`.
-- Rust `1.88` or newer is both declared and actually supported by the chosen
-  toolchain configuration.
-- Documentation accurately reflects the implemented `ortho_config` integration
-  and minimum toolchain requirements.
-- All required quality gates pass, with command transcripts summarized here.
+Implemented outcomes:
+
+- `Cargo.toml` now declares `ortho_config = "0.8.0"` and
+  `rust-version = "1.88"`.
+- `Cargo.lock` was regenerated and now resolves `ortho_config` and
+  `ortho_config_macros` at `0.8.0`.
+- The existing `src/cli.rs` integration remained source-compatible with
+  `ortho_config` `0.8.0`; no runtime Rust code changes were required.
+- `docs/rstest-bdd-users-guide.md` now reflects the Rust `1.88` minimum and
+  the repository's nightly toolchain pin.
+- The local OrthoConfig guide was aligned with the tagged upstream `v0.8.0`
+  text in the earlier step of this migration.
+
+Quality validation completed:
+
+- `make fmt`
+- `make check-fmt`
+- `make lint`
+- `make test`
+- `make markdownlint`
+- `make nixie`
+
+Lessons learned:
+
+- This crate had already adopted the `ortho_config::figment` re-export pattern,
+  which reduced the migration to a dependency and documentation update.
+- The migration note about `cargo orthohelp` is genuinely conditional; there
+  was no value in adding package metadata for a documentation pipeline this
+  crate does not use.
 
 ## Context and orientation
 

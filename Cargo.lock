@@ -843,11 +843,12 @@ checksum = "04744f49eae99ab78e0d5c0b603ab218f515ea8cfe5a456d7629ad883a3b6e7d"
 
 [[package]]
 name = "ortho_config"
-version = "0.7.0"
+version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2ee9d60c6be312d7c6ce47b7146e3c9b8464c54fc304ef8f7656e29c268faeb1"
+checksum = "9314c7a4be184287f3f9a66fcbcec054ac215d4975152df86b7aadeae8d5e019"
 dependencies = [
  "camino",
+ "cap-std",
  "clap",
  "clap-dispatch",
  "directories",
@@ -869,9 +870,9 @@ dependencies = [
 
 [[package]]
 name = "ortho_config_macros"
-version = "0.7.0"
+version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "992d8fc0b33823adb993fe8968614ac0df3964d9e3564f7a147fd253e27a3acd"
+checksum = "a3941ab7c592a0b93aadf12ce30e0ef3d01af87b46c8f363d8157dc33273ba83"
 dependencies = [
  "heck 0.5.0",
  "proc-macro2",
