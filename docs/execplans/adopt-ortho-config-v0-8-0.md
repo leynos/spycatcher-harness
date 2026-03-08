@@ -1,8 +1,8 @@
 # Adopt `ortho_config` v0.8.0
 
 This ExecPlan (execution plan) is a living document. The sections
-`Constraints`, `Tolerances`, `Risks`, `Progress`, `Surprises & Discoveries`,
-`Decision Log`, and `Outcomes & Retrospective` must be kept up to date as work
+`Constraints`, `Tolerances`, `Risks`, `Progress`, `Surprises & discoveries`,
+`Decision log`, and `Outcomes & retrospective` must be kept up to date as work
 proceeds.
 
 Status: COMPLETE
@@ -61,7 +61,7 @@ Observable success:
 - Behaviour: if `load_and_merge_subcommand` semantics in `0.8.0` differ from
   the current tests in a way that changes user-visible precedence or config
   path discovery, stop and escalate before changing behaviour.
-- Documentation artifacts: if wiring `[package.metadata.ortho_config]` would
+- Documentation artefacts: if wiring `[package.metadata.ortho_config]` would
   require introducing a new derive root type or a new documentation pipeline
   that does not already exist in this crate, record that as a decision and do
   not improvise beyond the agreed scope.
@@ -88,7 +88,7 @@ Observable success:
 
 - Risk: the migration note about `cargo orthohelp` may not apply because this
   crate does not currently expose an `OrthoConfigDocs` root type or generate
-  documentation artifacts. Severity: low. Likelihood: high. Mitigation: treat
+  documentation artefacts. Severity: low. Likelihood: high. Mitigation: treat
   this as a decision point; either wire the metadata because there is an
   existing artifact workflow, or explicitly document why it is not part of this
   upgrade.
@@ -150,7 +150,7 @@ Observable success:
 
 - Decision: treat the `cargo orthohelp` metadata as conditional rather than
   automatic. Rationale: the migration note says to wire the metadata in only if
-  documentation artifacts are generated, and no such workflow currently exists
+  documentation artefacts are generated, and no such workflow currently exists
   in this crate. Date/Author: 2026-03-07 / agent.
 
 - Decision: sync the local OrthoConfig guide to the tagged upstream `v0.8.0`
@@ -161,7 +161,7 @@ Observable success:
 
 - Decision: do not add `[package.metadata.ortho_config]` in this change.
   Rationale: this crate does not currently generate `cargo orthohelp`
-  artifacts, expose an `OrthoConfigDocs` root type, or document such a build
+  artefacts, expose an `OrthoConfigDocs` root type, or document such a build
   step, so the migration note is not applicable here. Date/Author: 2026-03-07 /
   agent.
 
@@ -314,7 +314,7 @@ Synchronize the docs with the implemented state.
    `1.88` or newer, especially `docs/rstest-bdd-users-guide.md`.
 2. Update `docs/users-guide.md` and `docs/spycatcher-harness-design.md` only if
    the upgrade changes user-facing `ortho_config` behaviour in this crate.
-3. Decide whether this crate generates `cargo orthohelp` artifacts:
+3. Decide whether this crate generates `cargo orthohelp` artefacts:
    - If yes, add `[package.metadata.ortho_config]` to `Cargo.toml`, define the
      appropriate `root_type` and `locales`, and verify the flow with
      `cargo orthohelp`.
