@@ -187,7 +187,10 @@ Spycatcher harness._
 ### Cassette definition
 
 A cassette is a single recorded agent session, consisting of an ordered list of
-interactions. Each interaction contains:
+interactions. On disk, the cassette is a single JSON document with a top-level
+`format_version` field and an `interactions` array. The configured
+`cassette_name` is used verbatim as the file name within `cassette_dir`; the
+harness does not append an implicit `.json` suffix. Each interaction contains:
 
 - Request:
   - Method, path, query.
@@ -636,6 +639,10 @@ pub enum HarnessError {
     CassetteNotFound { cassette_name: String },
     #[error("request mismatch at interaction {interaction_id}")]
     RequestMismatch { interaction_id: usize },
+    #[error("invalid cassette: {message}")]
+    InvalidCassette { message: String },
+    #[error("unsupported cassette format version {found}; supported version is {supported}")]
+    UnsupportedCassetteFormatVersion { found: u32, supported: u32 },
     #[error("upstream request failed")]
     UpstreamRequestFailed,
     #[error("io failure")]
@@ -813,8 +820,8 @@ avoiding time commitments.
 
 - [ ] 1.1.1. Implement HTTP server for `POST /v1/chat/completions` (non-stream).
   - [ ] Return recorded JSON response bytes verbatim during replay.
-  - [ ] Store cassette as `cassette.json` with `format_version` and ordered
-        interactions.
+  - [ ] Store cassette at the configured `cassette_dir/cassette_name` path
+        with `format_version` and ordered interactions.
   - [ ] Add strict sequential matching with request hash and diff summary on
         mismatch.
 - [ ] 1.1.2. Add streaming proxy/recorder for OpenAI-style SSE.
@@ -936,6 +943,29 @@ required precedence `CLI > env > config files > defaults`.
 The adapter maps merged command arguments into domain `HarnessConfig` values in
 one step before invoking `start_harness`, maintaining a clean boundary between
 domain config types and adapter-level loading concerns.
+
+### Cassette file naming and schema versioning (task 1.2.1)
+
+Task `1.2.1` stores cassettes as single JSON documents at the configured
+`cassette_dir/cassette_name` path. The harness keeps `cassette_name` as an
+explicit user-supplied file name rather than silently appending `.json`,
+because the existing configuration API, `RunningHarness.cassette_path`, and the
+user's guide already treat `cassette_name` as the full file name.
+
+The on-disk schema is versioned through a top-level `format_version` field. A
+build of the harness supports one schema version at a time and rejects other
+versions during replay startup with a typed `UnsupportedCassetteFormatVersion`
+error before any replay logic begins.
+
+### Append-only persistence semantics (task 1.2.1)
+
+Task `1.2.1` implements append-only persistence at the behavioural level. The
+record-mode cassette store only appends new interactions to the logical end of
+the session and never reorders or mutates earlier interactions. The current
+filesystem adapter keeps the full cassette model in memory and rewrites the
+single JSON document after each append. This is sufficient for the roadmap
+slice because the requirement is deterministic append-only behaviour, not a
+journaled `O_APPEND` file format.
 
 ## Source references
 

@@ -95,17 +95,10 @@ impl CassetteAppender for FilesystemCassetteStore {
     }
 }
 
-fn open_parent_dir(
-    cassette_path: &Utf8Path,
-    create_parent: bool,
-) -> HarnessResult<(Dir, String)> {
+fn open_parent_dir(cassette_path: &Utf8Path, create_parent: bool) -> HarnessResult<(Dir, String)> {
     let root_dir = Dir::open_ambient_dir(".", ambient_authority())?;
-    if create_parent {
-        if let Some(parent) = cassette_path.parent() {
-            if !parent.as_str().is_empty() && parent != Utf8Path::new(".") {
-                root_dir.create_dir_all(parent)?;
-            }
-        }
+    if create_parent && let Some(parent) = cassette_parent_to_create(cassette_path) {
+        root_dir.create_dir_all(parent)?;
     }
     open_parent_dir_with_root(&root_dir, cassette_path)
 }
@@ -136,6 +129,12 @@ fn cassette_name(cassette_path: &Utf8Path) -> HarnessResult<String> {
         })
 }
 
+fn cassette_parent_to_create(cassette_path: &Utf8Path) -> Option<&Utf8Path> {
+    cassette_path
+        .parent()
+        .filter(|parent| !parent.as_str().is_empty() && *parent != Utf8Path::new("."))
+}
+
 #[cfg(test)]
 mod tests {
     //! Unit tests for the filesystem cassette adapter.
@@ -147,10 +146,10 @@ mod tests {
     use rstest::rstest;
     use serde_json::json;
 
+    use crate::HarnessError;
     use crate::cassette::{
         InteractionMetadata, RecordedRequest, RecordedResponse, StreamEvent, StreamTiming,
     };
-    use crate::HarnessError;
 
     static NEXT_TEST_DIR: AtomicUsize = AtomicUsize::new(1);
 
@@ -175,10 +174,8 @@ mod tests {
         let first = sample_interaction("first");
         let second = sample_interaction("second");
 
-        CassetteAppender::append(&mut store, first.clone())
-            .expect("first append should succeed");
-        CassetteAppender::append(&mut store, second.clone())
-            .expect("second append should succeed");
+        CassetteAppender::append(&mut store, first.clone()).expect("first append should succeed");
+        CassetteAppender::append(&mut store, second.clone()).expect("second append should succeed");
 
         let reloaded = FilesystemCassetteStore::open_for_replay(&cassette_path)
             .expect("replay load should succeed")
@@ -194,7 +191,9 @@ mod tests {
         let mut store = FilesystemCassetteStore::open_or_create_for_record(&cassette_path)
             .expect("record mode should create cassette");
         store.cassette.format_version = 99;
-        store.flush().expect("writing unsupported cassette should succeed");
+        store
+            .flush()
+            .expect("writing unsupported cassette should succeed");
 
         let error = FilesystemCassetteStore::open_for_replay(&cassette_path)
             .expect_err("unsupported cassette version should fail");
@@ -228,7 +227,10 @@ mod tests {
 
     fn unique_cassette_path(name: &str) -> Utf8PathBuf {
         let index = NEXT_TEST_DIR.fetch_add(1, Ordering::Relaxed);
-        Utf8PathBuf::from(format!("target/test-cassettes/{name}-{index}.json"))
+        Utf8PathBuf::from(format!(
+            "target/test-cassettes/{name}-{}-{index}.json",
+            std::process::id()
+        ))
     }
 
     fn sample_interaction(content: &str) -> Interaction {

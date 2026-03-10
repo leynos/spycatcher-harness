@@ -38,14 +38,14 @@ units with explicit dependencies and completion criteria.
 
 ### 1.2. Cassette model and matching engine
 
-- [ ] 1.2.1. Implement cassette schema versioning and append-only persistence.
+- [x] 1.2.1. Implement cassette schema versioning and append-only persistence.
   - Depends on: 1.1.1.
   - Success criteria:
-    - [ ] Stored cassette includes `format_version`, ordered interactions,
+    - [x] Stored cassette includes `format_version`, ordered interactions,
           protocol identifiers, and metadata fields from the design.
-    - [ ] Replay mode opens cassettes read-only and rejects unsupported
+    - [x] Replay mode opens cassettes read-only and rejects unsupported
           `format_version` values with actionable errors.
-    - [ ] Schema round-trip tests verify lossless serialization for non-stream
+    - [x] Schema round-trip tests verify lossless serialization for non-stream
           and stream interactions.
   - Design references:
     [Cassette definition](spycatcher-harness-design.md#cassette-definition),

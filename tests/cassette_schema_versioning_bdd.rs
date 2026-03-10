@@ -169,12 +169,12 @@ fn replay_startup_rejects_an_unsupported_cassette_version(cassette_world: Casset
 
 fn unique_cassette_name(prefix: &str) -> String {
     let index = NEXT_TEST_CASSETTE.fetch_add(1, Ordering::Relaxed);
-    format!("{prefix}-{index}")
+    format!("{prefix}-{}-{index}", std::process::id())
 }
 
 fn write_cassette(cassette_path: &Utf8PathBuf, value: &serde_json::Value) {
-    let root_dir = Dir::open_ambient_dir(".", ambient_authority())
-        .expect("ambient root should open");
+    let root_dir =
+        Dir::open_ambient_dir(".", ambient_authority()).expect("ambient root should open");
     if let Some(parent) = cassette_path.parent() {
         root_dir
             .create_dir_all(parent)

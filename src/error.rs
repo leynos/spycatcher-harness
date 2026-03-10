@@ -55,9 +55,7 @@ pub enum HarnessError {
     },
 
     /// The cassette uses a schema version this build does not support.
-    #[error(
-        "unsupported cassette format version {found}; supported version is {supported}"
-    )]
+    #[error("unsupported cassette format version {found}; supported version is {supported}")]
     UnsupportedCassetteFormatVersion {
         /// The version value found on disk.
         found: u32,

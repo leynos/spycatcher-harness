@@ -160,8 +160,7 @@ fn the_cassette_path_matches_the_configured_directory_and_name(harness_world: &H
         .with_ref(Utf8PathBuf::clone)
         .expect("expected_cassette_path must be set");
     assert_eq!(
-        path,
-        expected,
+        path, expected,
         "cassette path should join default dir and name",
     );
 }
@@ -233,5 +232,5 @@ fn start_harness_preserves_listen_address(harness_world: HarnessWorld) {}
 
 fn unique_cassette_name(prefix: &str) -> String {
     let index = NEXT_TEST_CASSETTE.fetch_add(1, Ordering::Relaxed);
-    format!("{prefix}-{index}")
+    format!("{prefix}-{}-{index}", std::process::id())
 }

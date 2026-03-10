@@ -5,7 +5,7 @@ This ExecPlan (execution plan) is a living document. The sections
 `Decision Log`, and `Outcomes & Retrospective` must be kept up to date as work
 proceeds.
 
-Status: DRAFT
+Status: COMPLETE
 
 ## Purpose / big picture
 
@@ -108,16 +108,20 @@ Observable success:
 ## Progress
 
 - [x] (2026-03-09) Drafted ExecPlan for roadmap task `1.2.1`.
-- [ ] Resolve the cassette path and extension decision in the design document.
-- [ ] Add failing unit tests for schema round-trips, append-only ordering, and
-  unsupported `format_version` handling.
-- [ ] Introduce cassette domain types and version validation.
-- [ ] Implement the filesystem-backed cassette store adapter.
-- [ ] Wire replay startup to open and validate cassettes read-only.
-- [ ] Add behavioural tests for supported and unsupported replay startup.
-- [ ] Update `docs/spycatcher-harness-design.md`, `docs/users-guide.md`, and
-  `docs/roadmap.md`.
-- [ ] Run all Rust and Markdown quality gates through `tee` logs.
+- [x] (2026-03-10) Resolved the cassette path and extension decision in the
+  design document.
+- [x] (2026-03-10) Added `rstest` unit tests for schema round-trips,
+  append-only ordering, and unsupported `format_version` handling.
+- [x] (2026-03-10) Introduced cassette domain types and version validation.
+- [x] (2026-03-10) Implemented the filesystem-backed cassette store adapter.
+- [x] (2026-03-10) Wired replay startup to open and validate cassettes
+  read-only.
+- [x] (2026-03-10) Added `rstest-bdd` behavioural tests for supported and
+  unsupported replay startup.
+- [x] (2026-03-10) Updated `docs/spycatcher-harness-design.md`,
+  `docs/users-guide.md`, and `docs/roadmap.md`.
+- [x] (2026-03-10) Ran `make fmt`, `make check-fmt`, `make lint`,
+  `make test`, `make markdownlint`, and `make nixie`.
 
 ## Surprises & Discoveries
 
@@ -130,6 +134,19 @@ Observable success:
   Evidence: `src/lib.rs` unit tests and `tests/harness_startup_bdd.rs` both
   assert that contract today. Impact: file naming changes are contract changes,
   not implementation details.
+
+- Observation: repeated test runs reused previously written cassette files when
+  generated test names were only counter-based. Evidence: the append-order
+  filesystem test loaded duplicate interactions from a prior run until the test
+  helpers included the process ID in generated cassette names. Impact: cassette
+  persistence tests must generate cross-run-unique paths, not merely
+  per-process counters.
+
+- Observation: once `src/cassette.rs` gained a child module
+  (`src/cassette/filesystem.rs`), Whitaker's `self_named_module_files` rule
+  required the parent module to move to `src/cassette/mod.rs`. Evidence:
+  `make lint` failed until the module was moved. Impact: future cassette
+  submodules must keep the parent module in directory form.
 
 ## Decision log
 
@@ -150,12 +167,33 @@ Observable success:
   Any move to an implicit `.json` suffix should be treated as a conscious
   breaking change. Date/Author: 2026-03-09 / agent
 
+- Decision: implement append-only persistence as a logical guarantee backed by
+  full-document JSON rewrites in the filesystem adapter. Rationale: this keeps
+  the on-disk schema simple and versioned while still ensuring that record mode
+  only grows the interaction list in order. Date/Author: 2026-03-10 / agent
+
 ## Outcomes & retrospective
 
-This document is a draft plan only. No feature code has been implemented yet.
-Completion for task `1.2.1` means the cassette schema is versioned and
-persisted, replay startup validates version support read-only, the new tests
-pass, the relevant docs are updated, and the roadmap entry is marked done.
+Task `1.2.1` is complete. The delivered behaviour is:
+
+- cassettes are stored as versioned JSON documents with ordered interactions,
+  protocol IDs, and metadata;
+- replay startup loads cassettes read-only and rejects unsupported
+  `format_version` values with typed errors;
+- unit tests cover non-stream and stream schema round-trips plus append
+  ordering;
+- behavioural tests cover supported and unsupported replay startup;
+- the design doc, user's guide, roadmap, and this ExecPlan all reflect the
+  final behaviour.
+
+Validation completed:
+
+- `make fmt`
+- `make check-fmt`
+- `make lint`
+- `make test`
+- `make markdownlint`
+- `make nixie`
 
 ## Context and orientation
 

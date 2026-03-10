@@ -15,6 +15,7 @@
 //! let cfg = HarnessConfig::default();
 //! let harness = start_harness(cfg).await?;
 //! // … use the harness …
+//! // The default replay config assumes a compatible cassette already exists.
 //! harness.shutdown().await?;
 //! # Ok(())
 //! # }
@@ -71,15 +72,21 @@ impl RunningHarness {
 
 /// Starts the harness with the given configuration.
 ///
-/// Validates the configuration and prepares the harness for operation.
-/// In the current skeleton no HTTP server is bound; the returned
-/// address reflects the configured listen address.
+/// Validates the configuration, prepares cassette access for the selected
+/// mode, and prepares the harness for operation. In the current skeleton no
+/// HTTP server is bound; the returned address reflects the configured listen
+/// address.
 ///
 /// # Errors
 ///
-/// Returns [`HarnessError::InvalidConfig`] if the configuration is
-/// invalid (e.g. empty cassette name, path traversal in cassette name,
-/// or record mode without upstream configuration).
+/// Returns [`HarnessError::InvalidConfig`] if the configuration is invalid
+/// (for example empty cassette name, path traversal in cassette name, or
+/// record mode without upstream configuration).
+///
+/// Returns [`HarnessError::CassetteNotFound`],
+/// [`HarnessError::InvalidCassette`], or
+/// [`HarnessError::UnsupportedCassetteFormatVersion`] when replay or verify
+/// mode cannot load a compatible cassette from disk.
 ///
 /// # Examples
 ///
@@ -234,7 +241,10 @@ mod tests {
             .await
             .expect("startup should succeed with upstream");
         let cassette_path = Utf8PathBuf::from("target/test-harness").join(cassette_name);
-        assert!(cassette_path.is_file(), "record startup should create cassette file");
+        assert!(
+            cassette_path.is_file(),
+            "record startup should create cassette file"
+        );
     }
 
     #[rstest]
@@ -317,10 +327,13 @@ mod tests {
             .expect("test harness directory should open")
             .create(&cassette_name)
             .expect("cassette file should open for overwrite");
-        serde_json::to_writer_pretty(file, &serde_json::json!({
-            "format_version": 9,
-            "interactions": [],
-        }))
+        serde_json::to_writer_pretty(
+            file,
+            &serde_json::json!({
+                "format_version": 9,
+                "interactions": [],
+            }),
+        )
         .expect("invalid cassette should write");
 
         let error = start_harness(replay_config(cassette_name))
@@ -357,7 +370,7 @@ mod tests {
 
     fn unique_cassette_name(prefix: &str) -> String {
         let index = NEXT_TEST_CASSETTE.fetch_add(1, Ordering::Relaxed);
-        format!("{prefix}-{index}")
+        format!("{prefix}-{}-{index}", std::process::id())
     }
 
     fn seed_replay_cassette(cassette_name: &str) -> Utf8PathBuf {

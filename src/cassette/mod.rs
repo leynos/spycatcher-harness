@@ -32,7 +32,7 @@ pub struct Cassette {
 impl Cassette {
     /// Creates an empty cassette using the current schema version.
     #[must_use]
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Self {
             format_version: SUPPORTED_FORMAT_VERSION,
             interactions: Vec::new(),
@@ -50,7 +50,7 @@ impl Cassette {
     ///
     /// Returns [`HarnessError::UnsupportedCassetteFormatVersion`] when the
     /// on-disk version is not supported.
-    pub fn validate(&self) -> HarnessResult<()> {
+    pub const fn validate(&self) -> HarnessResult<()> {
         if self.format_version == SUPPORTED_FORMAT_VERSION {
             Ok(())
         } else {
@@ -70,11 +70,10 @@ impl Cassette {
     /// [`HarnessError::UnsupportedCassetteFormatVersion`] when the version is
     /// unknown.
     pub fn from_reader(reader: impl Read) -> HarnessResult<Self> {
-        let cassette: Self = serde_json::from_reader(reader).map_err(|error| {
-            HarnessError::InvalidCassette {
+        let cassette: Self =
+            serde_json::from_reader(reader).map_err(|error| HarnessError::InvalidCassette {
                 message: error.to_string(),
-            }
-        })?;
+            })?;
         cassette.validate()?;
         Ok(cassette)
     }
@@ -85,10 +84,8 @@ impl Cassette {
     ///
     /// Returns [`HarnessError::InvalidCassette`] when serialization fails.
     pub fn write_to(&self, writer: impl Write) -> HarnessResult<()> {
-        serde_json::to_writer_pretty(writer, self).map_err(|error| {
-            HarnessError::InvalidCassette {
-                message: error.to_string(),
-            }
+        serde_json::to_writer_pretty(writer, self).map_err(|error| HarnessError::InvalidCassette {
+            message: error.to_string(),
         })
     }
 }
@@ -102,12 +99,21 @@ impl Default for Cassette {
 /// Domain-owned reader port for loading an existing cassette.
 pub trait CassetteReader {
     /// Loads and validates a cassette.
+    ///
+    /// # Errors
+    ///
+    /// Returns a harness error when the underlying cassette cannot be loaded
+    /// or validated.
     fn load(&self) -> HarnessResult<Cassette>;
 }
 
 /// Domain-owned writer port for append-only cassette persistence.
 pub trait CassetteAppender {
     /// Appends one interaction to the end of the cassette.
+    ///
+    /// # Errors
+    ///
+    /// Returns a harness error when the append cannot be persisted.
     fn append(&mut self, interaction: Interaction) -> HarnessResult<()>;
 }
 
@@ -275,8 +281,8 @@ mod tests {
     fn malformed_cassette_is_rejected() {
         let json = r#"{"interactions":[]}"#;
 
-        let error = Cassette::from_reader(json.as_bytes())
-            .expect_err("missing format_version must fail");
+        let error =
+            Cassette::from_reader(json.as_bytes()).expect_err("missing format_version must fail");
 
         assert!(matches!(error, HarnessError::InvalidCassette { .. }));
     }
