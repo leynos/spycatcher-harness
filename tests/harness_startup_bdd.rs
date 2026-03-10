@@ -12,7 +12,9 @@
 )]
 
 use std::net::SocketAddr;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
+use camino::Utf8PathBuf;
 use rstest::fixture;
 use rstest_bdd::Slot;
 use rstest_bdd_macros::{ScenarioState, given, scenario, then, when};
@@ -21,6 +23,8 @@ use spycatcher_harness::config::ListenAddr;
 use spycatcher_harness::{
     HarnessConfig, HarnessError, HarnessResult, RunningHarness, start_harness,
 };
+
+static NEXT_TEST_CASSETTE: AtomicUsize = AtomicUsize::new(1);
 
 // -- Helpers ----------------------------------------------------------------
 
@@ -40,6 +44,7 @@ struct HarnessWorld {
     config: Slot<HarnessConfig>,
     start_result: Slot<HarnessResult<RunningHarness>>,
     shutdown_result: Slot<HarnessResult<()>>,
+    expected_cassette_path: Slot<Utf8PathBuf>,
 }
 
 #[fixture]
@@ -51,7 +56,18 @@ fn harness_world() -> HarnessWorld {
 
 #[given("a valid harness configuration")]
 fn a_valid_harness_configuration(harness_world: &HarnessWorld) {
-    harness_world.config.set(HarnessConfig::default());
+    let cassette_name = unique_cassette_name("valid");
+    let cassette_dir = Utf8PathBuf::from("target/test-harness-bdd");
+    harness_world
+        .expected_cassette_path
+        .set(cassette_dir.join(&cassette_name));
+    harness_world.config.set(HarnessConfig {
+        mode: spycatcher_harness::config::Mode::Record,
+        cassette_dir,
+        cassette_name,
+        upstream: Some(spycatcher_harness::config::UpstreamConfig::default()),
+        ..HarnessConfig::default()
+    });
 }
 
 #[given("a harness configuration with an empty cassette name")]
@@ -76,8 +92,17 @@ fn the_harness_has_been_started(harness_world: &HarnessWorld) {
 
 #[given("a harness configuration with listen address {addr}")]
 fn a_harness_configuration_with_listen_address(harness_world: &HarnessWorld, addr: SocketAddr) {
+    let cassette_name = unique_cassette_name("listen");
+    let cassette_dir = Utf8PathBuf::from("target/test-harness-bdd");
+    harness_world
+        .expected_cassette_path
+        .set(cassette_dir.join(&cassette_name));
     let cfg = HarnessConfig {
         listen: ListenAddr::from(addr),
+        mode: spycatcher_harness::config::Mode::Record,
+        cassette_dir,
+        cassette_name,
+        upstream: Some(spycatcher_harness::config::UpstreamConfig::default()),
         ..HarnessConfig::default()
     };
     harness_world.config.set(cfg);
@@ -130,9 +155,13 @@ fn the_cassette_path_matches_the_configured_directory_and_name(harness_world: &H
                 .clone()
         })
         .expect("start_result must be set");
+    let expected = harness_world
+        .expected_cassette_path
+        .with_ref(Utf8PathBuf::clone)
+        .expect("expected_cassette_path must be set");
     assert_eq!(
-        path.as_str(),
-        "fixtures/llm/default",
+        path,
+        expected,
         "cassette path should join default dir and name",
     );
 }
@@ -201,3 +230,8 @@ fn shutdown_a_running_harness(harness_world: HarnessWorld) {}
     name = "Start harness preserves listen address"
 )]
 fn start_harness_preserves_listen_address(harness_world: HarnessWorld) {}
+
+fn unique_cassette_name(prefix: &str) -> String {
+    let index = NEXT_TEST_CASSETTE.fetch_add(1, Ordering::Relaxed);
+    format!("{prefix}-{index}")
+}
