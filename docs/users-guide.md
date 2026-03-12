@@ -12,7 +12,9 @@ lifecycle management.
 ### Starting the harness
 
 Call `start_harness` with a `HarnessConfig` to validate configuration and
-prepare the harness for operation:
+prepare the harness for operation. In replay mode, startup now opens the
+configured cassette file read-only and validates its `format_version` before
+returning a `RunningHarness`:
 
 ```rust,no_run
 use spycatcher_harness::{start_harness, HarnessConfig};
@@ -61,6 +63,13 @@ Configuration fields:
 - `replay` — timing controls for replay mode.
 - `localization` — locale settings.
 
+Replay startup expectations:
+
+- The cassette file must already exist at `cassette_dir/cassette_name`.
+- The file name is exactly `cassette_name`; the harness does not append an
+  implicit `.json` suffix.
+- The stored cassette must use the currently supported `format_version`.
+
 ### Error handling
 
 All public API functions return `HarnessResult<T>`, which is an alias for
@@ -69,6 +78,10 @@ each failure mode:
 
 - `InvalidConfig` — configuration validation failed.
 - `CassetteNotFound` — the named cassette does not exist.
+- `InvalidCassette` — the cassette JSON is malformed or missing required
+  fields.
+- `UnsupportedCassetteFormatVersion` — replay encountered a cassette schema
+  version this build does not support.
 - `RequestMismatch` — a replayed request did not match the expected
   interaction.
 - `UpstreamRequestFailed` — a request to the upstream provider failed.
@@ -168,3 +181,7 @@ cargo run --bin spycatcher-harness -- replay
 # Verify with layered configuration.
 cargo run --bin spycatcher-harness -- verify
 ```
+
+For replay and verify mode, ensure the cassette file already exists at the
+configured `cassette_dir/cassette_name` path and was created by a compatible
+`format_version`.

@@ -12,7 +12,9 @@
 )]
 
 use std::net::SocketAddr;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
+use camino::Utf8PathBuf;
 use rstest::fixture;
 use rstest_bdd::Slot;
 use rstest_bdd_macros::{ScenarioState, given, scenario, then, when};
@@ -21,6 +23,8 @@ use spycatcher_harness::config::ListenAddr;
 use spycatcher_harness::{
     HarnessConfig, HarnessError, HarnessResult, RunningHarness, start_harness,
 };
+
+static NEXT_TEST_CASSETTE: AtomicUsize = AtomicUsize::new(1);
 
 // -- Helpers ----------------------------------------------------------------
 
@@ -33,6 +37,21 @@ fn build_runtime() -> tokio::runtime::Runtime {
         .expect("failed to build tokio runtime")
 }
 
+fn make_record_config(prefix: &str, listen: Option<ListenAddr>) -> (HarnessConfig, Utf8PathBuf) {
+    let cassette_name = unique_cassette_name(prefix);
+    let cassette_dir = Utf8PathBuf::from("target/test-harness-bdd");
+    let expected_cassette_path = cassette_dir.join(&cassette_name);
+    let cfg = HarnessConfig {
+        listen: listen.unwrap_or_default(),
+        mode: spycatcher_harness::config::Mode::Record,
+        cassette_dir,
+        cassette_name,
+        upstream: Some(spycatcher_harness::config::UpstreamConfig::default()),
+        ..HarnessConfig::default()
+    };
+    (cfg, expected_cassette_path)
+}
+
 // -- World fixture ----------------------------------------------------------
 
 #[derive(Default, ScenarioState)]
@@ -40,6 +59,7 @@ struct HarnessWorld {
     config: Slot<HarnessConfig>,
     start_result: Slot<HarnessResult<RunningHarness>>,
     shutdown_result: Slot<HarnessResult<()>>,
+    expected_cassette_path: Slot<Utf8PathBuf>,
 }
 
 #[fixture]
@@ -51,7 +71,11 @@ fn harness_world() -> HarnessWorld {
 
 #[given("a valid harness configuration")]
 fn a_valid_harness_configuration(harness_world: &HarnessWorld) {
-    harness_world.config.set(HarnessConfig::default());
+    let (cfg, expected_cassette_path) = make_record_config("valid", None);
+    harness_world
+        .expected_cassette_path
+        .set(expected_cassette_path);
+    harness_world.config.set(cfg);
 }
 
 #[given("a harness configuration with an empty cassette name")]
@@ -76,10 +100,10 @@ fn the_harness_has_been_started(harness_world: &HarnessWorld) {
 
 #[given("a harness configuration with listen address {addr}")]
 fn a_harness_configuration_with_listen_address(harness_world: &HarnessWorld, addr: SocketAddr) {
-    let cfg = HarnessConfig {
-        listen: ListenAddr::from(addr),
-        ..HarnessConfig::default()
-    };
+    let (cfg, expected_cassette_path) = make_record_config("listen", Some(ListenAddr::from(addr)));
+    harness_world
+        .expected_cassette_path
+        .set(expected_cassette_path);
     harness_world.config.set(cfg);
 }
 
@@ -130,9 +154,12 @@ fn the_cassette_path_matches_the_configured_directory_and_name(harness_world: &H
                 .clone()
         })
         .expect("start_result must be set");
+    let expected = harness_world
+        .expected_cassette_path
+        .with_ref(Utf8PathBuf::clone)
+        .expect("expected_cassette_path must be set");
     assert_eq!(
-        path.as_str(),
-        "fixtures/llm/default",
+        path, expected,
         "cassette path should join default dir and name",
     );
 }
@@ -201,3 +228,8 @@ fn shutdown_a_running_harness(harness_world: HarnessWorld) {}
     name = "Start harness preserves listen address"
 )]
 fn start_harness_preserves_listen_address(harness_world: HarnessWorld) {}
+
+fn unique_cassette_name(prefix: &str) -> String {
+    let index = NEXT_TEST_CASSETTE.fetch_add(1, Ordering::Relaxed);
+    format!("{prefix}-{}-{index}", std::process::id())
+}

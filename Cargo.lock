@@ -1415,6 +1415,7 @@ name = "spycatcher-harness"
 version = "0.1.0"
 dependencies = [
  "camino",
+ "cap-std",
  "clap",
  "eyre",
  "ortho_config",
@@ -1422,6 +1423,7 @@ dependencies = [
  "rstest-bdd",
  "rstest-bdd-macros",
  "serde",
+ "serde_json",
  "thiserror 2.0.18",
  "tokio",
 ]
