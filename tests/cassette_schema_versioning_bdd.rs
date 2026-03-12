@@ -46,15 +46,16 @@ fn cassette_world() -> CassetteWorld {
     CassetteWorld::default()
 }
 
-#[given("a replay configuration with a supported cassette")]
-fn a_replay_configuration_with_a_supported_cassette(cassette_world: &CassetteWorld) {
-    let cassette_name = unique_cassette_name("supported");
+fn setup_replay_config(
+    cassette_world: &CassetteWorld,
+    name_prefix: &str,
+    cassette_json: serde_json::Value,
+) {
+    let cassette_name = unique_cassette_name(name_prefix);
     let cassette_dir = Utf8PathBuf::from("target/test-replay-bdd");
     let cassette_path = cassette_dir.join(&cassette_name);
-    write_cassette(
-        &cassette_path,
-        &serde_json::to_value(Cassette::new()).expect("empty cassette should serialize"),
-    );
+    write_cassette(&cassette_path, &cassette_json);
+    drop(cassette_json);
     cassette_world.expected_cassette_path.set(cassette_path);
     cassette_world.config.set(HarnessConfig {
         mode: spycatcher_harness::config::Mode::Replay,
@@ -64,28 +65,28 @@ fn a_replay_configuration_with_a_supported_cassette(cassette_world: &CassetteWor
     });
 }
 
+#[given("a replay configuration with a supported cassette")]
+fn a_replay_configuration_with_a_supported_cassette(cassette_world: &CassetteWorld) {
+    setup_replay_config(
+        cassette_world,
+        "supported",
+        serde_json::to_value(Cassette::new()).expect("empty cassette should serialize"),
+    );
+}
+
 #[given("a replay configuration with cassette format version {version:u32}")]
 fn a_replay_configuration_with_cassette_format_version(
     cassette_world: &CassetteWorld,
     version: u32,
 ) {
-    let cassette_name = unique_cassette_name("unsupported");
-    let cassette_dir = Utf8PathBuf::from("target/test-replay-bdd");
-    let cassette_path = cassette_dir.join(&cassette_name);
-    write_cassette(
-        &cassette_path,
-        &serde_json::json!({
+    setup_replay_config(
+        cassette_world,
+        "unsupported",
+        serde_json::json!({
             "format_version": version,
             "interactions": [],
         }),
     );
-    cassette_world.expected_cassette_path.set(cassette_path);
-    cassette_world.config.set(HarnessConfig {
-        mode: spycatcher_harness::config::Mode::Replay,
-        cassette_dir,
-        cassette_name,
-        ..HarnessConfig::default()
-    });
 }
 
 #[when("the replay harness is started")]
