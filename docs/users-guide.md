@@ -80,8 +80,8 @@ each failure mode:
 - `CassetteNotFound` — the named cassette does not exist.
 - `InvalidCassette` — the cassette JSON is malformed or missing required
   fields.
-- `UnsupportedCassetteFormatVersion` — replay encountered a cassette schema
-  version this build does not support.
+- `UnsupportedCassetteFormatVersion` — cassette schema version is not supported
+  during cassette loading or startup (includes replay and verify modes).
 - `RequestMismatch` — a replayed request did not match the expected
   interaction.
 - `UpstreamRequestFailed` — a request to the upstream provider failed.

@@ -65,15 +65,23 @@ impl Cassette {
     ///
     /// # Errors
     ///
-    /// Returns [`HarnessError::InvalidCassette`] when JSON decoding fails or
+    /// Returns [`HarnessError::Io`] when reading fails,
+    /// [`HarnessError::InvalidCassette`] when JSON decoding fails or
     /// required fields are missing, and
     /// [`HarnessError::UnsupportedCassetteFormatVersion`] when the version is
     /// unknown.
     pub fn from_reader(reader: impl Read) -> HarnessResult<Self> {
-        let cassette: Self =
-            serde_json::from_reader(reader).map_err(|error| HarnessError::InvalidCassette {
-                message: error.to_string(),
-            })?;
+        let cassette: Self = serde_json::from_reader(reader).map_err(|error| {
+            if error.is_io() {
+                HarnessError::Io {
+                    source: error.into(),
+                }
+            } else {
+                HarnessError::InvalidCassette {
+                    message: error.to_string(),
+                }
+            }
+        })?;
         cassette.validate()?;
         Ok(cassette)
     }
@@ -82,10 +90,19 @@ impl Cassette {
     ///
     /// # Errors
     ///
-    /// Returns [`HarnessError::InvalidCassette`] when serialization fails.
+    /// Returns [`HarnessError::Io`] when writing fails, and
+    /// [`HarnessError::InvalidCassette`] when serialization fails.
     pub fn write_to(&self, writer: impl Write) -> HarnessResult<()> {
-        serde_json::to_writer_pretty(writer, self).map_err(|error| HarnessError::InvalidCassette {
-            message: error.to_string(),
+        serde_json::to_writer_pretty(writer, self).map_err(|error| {
+            if error.is_io() {
+                HarnessError::Io {
+                    source: error.into(),
+                }
+            } else {
+                HarnessError::InvalidCassette {
+                    message: error.to_string(),
+                }
+            }
         })
     }
 }

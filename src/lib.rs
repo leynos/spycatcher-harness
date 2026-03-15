@@ -38,7 +38,7 @@ use std::net::SocketAddr;
 
 use camino::Utf8PathBuf;
 
-use crate::cassette::{CassetteAppender, CassetteReader, filesystem::FilesystemCassetteStore};
+use crate::cassette::{CassetteReader, filesystem::FilesystemCassetteStore};
 
 /// A running harness instance.
 ///
@@ -141,29 +141,16 @@ fn validate_config(cfg: &HarnessConfig) -> HarnessResult<()> {
 fn prepare_cassette(cfg: &HarnessConfig, cassette_path: &Utf8PathBuf) -> HarnessResult<()> {
     match cfg.mode {
         config::Mode::Record => {
-            let mut store = FilesystemCassetteStore::open_or_create_for_record(cassette_path)?;
-            ensure_record_store_ready(&mut store)
+            let store = FilesystemCassetteStore::open_or_create_for_record(cassette_path)?;
+            let _cassette = store.load()?;
+            Ok(())
         }
         config::Mode::Replay | config::Mode::Verify => {
             let store = FilesystemCassetteStore::open_for_replay(cassette_path)?;
-            ensure_replay_store_ready(&store)
+            let _cassette = store.load()?;
+            Ok(())
         }
     }
-}
-
-/// Verifies that replay startup can load a validated cassette through the
-/// read-only cassette port.
-fn ensure_replay_store_ready(store: &impl CassetteReader) -> HarnessResult<()> {
-    let _cassette = store.load()?;
-    Ok(())
-}
-
-/// Verifies that record startup has an append-capable cassette store ready.
-fn ensure_record_store_ready(
-    store: &mut (impl CassetteReader + CassetteAppender),
-) -> HarnessResult<()> {
-    let _cassette = store.load()?;
-    Ok(())
 }
 
 #[cfg(test)]
@@ -175,6 +162,7 @@ mod tests {
     use std::sync::atomic::{AtomicUsize, Ordering};
 
     use rstest::rstest;
+    use uuid::Uuid;
 
     static NEXT_TEST_CASSETTE: AtomicUsize = AtomicUsize::new(1);
 
@@ -370,7 +358,8 @@ mod tests {
 
     fn unique_cassette_name(prefix: &str) -> String {
         let index = NEXT_TEST_CASSETTE.fetch_add(1, Ordering::Relaxed);
-        format!("{prefix}-{}-{index}", std::process::id())
+        let uuid = Uuid::new_v4();
+        format!("{prefix}-{index}-{uuid}")
     }
 
     fn seed_replay_cassette(cassette_name: &str) -> Utf8PathBuf {

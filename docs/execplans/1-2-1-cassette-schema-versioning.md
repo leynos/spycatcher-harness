@@ -94,10 +94,11 @@ Observable success:
   Likelihood: medium. Mitigation: lock the meaning down in the design document
   before implementation proceeds beyond red tests.
 
-- Risk: stream support is only partially designed today because runtime SSE
-  capture arrives in later roadmap tasks. Severity: medium. Likelihood: medium.
-  Mitigation: define a stream schema that can faithfully round-trip synthetic
-  stream interactions now without claiming that live SSE parsing is finished.
+- Risk: stream support is only partially designed today because runtime
+  Server-Sent Events (SSE) capture arrives in later roadmap tasks. Severity:
+  medium. Likelihood: medium. Mitigation: define a stream schema that can
+  faithfully round-trip synthetic stream interactions now without claiming that
+  live SSE parsing is finished.
 
 - Risk: replay startup currently does not open cassette files at all.
   Severity: medium. Likelihood: high. Mitigation: keep startup integration for

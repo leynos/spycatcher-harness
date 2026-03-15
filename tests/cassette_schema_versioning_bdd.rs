@@ -6,10 +6,6 @@
     clippy::expect_used,
     reason = "BDD step functions use expect for step precondition enforcement"
 )]
-#![allow(
-    unused_variables,
-    reason = "rstest-bdd scenario macro introduces variables consumed by fixture resolution"
-)]
 
 use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -22,6 +18,7 @@ use spycatcher_harness::cassette::Cassette;
 use spycatcher_harness::{
     HarnessConfig, HarnessError, HarnessResult, RunningHarness, start_harness,
 };
+use uuid::Uuid;
 
 static NEXT_TEST_CASSETTE: AtomicUsize = AtomicUsize::new(1);
 
@@ -49,13 +46,12 @@ fn cassette_world() -> CassetteWorld {
 fn setup_replay_config(
     cassette_world: &CassetteWorld,
     name_prefix: &str,
-    cassette_json: serde_json::Value,
+    cassette_json: &serde_json::Value,
 ) {
     let cassette_name = unique_cassette_name(name_prefix);
     let cassette_dir = Utf8PathBuf::from("target/test-replay-bdd");
     let cassette_path = cassette_dir.join(&cassette_name);
-    write_cassette(&cassette_path, &cassette_json);
-    drop(cassette_json);
+    write_cassette(&cassette_path, cassette_json);
     cassette_world.expected_cassette_path.set(cassette_path);
     cassette_world.config.set(HarnessConfig {
         mode: spycatcher_harness::config::Mode::Replay,
@@ -70,7 +66,7 @@ fn a_replay_configuration_with_a_supported_cassette(cassette_world: &CassetteWor
     setup_replay_config(
         cassette_world,
         "supported",
-        serde_json::to_value(Cassette::new()).expect("empty cassette should serialize"),
+        &serde_json::to_value(Cassette::new()).expect("empty cassette should serialize"),
     );
 }
 
@@ -82,7 +78,7 @@ fn a_replay_configuration_with_cassette_format_version(
     setup_replay_config(
         cassette_world,
         "unsupported",
-        serde_json::json!({
+        &serde_json::json!({
             "format_version": version,
             "interactions": [],
         }),
@@ -170,26 +166,31 @@ fn replay_startup_rejects_an_unsupported_cassette_version(cassette_world: Casset
 
 fn unique_cassette_name(prefix: &str) -> String {
     let index = NEXT_TEST_CASSETTE.fetch_add(1, Ordering::Relaxed);
-    format!("{prefix}-{}-{index}", std::process::id())
+    let uuid = Uuid::new_v4();
+    format!("{prefix}-{index}-{uuid}")
 }
 
 fn write_cassette(cassette_path: &Utf8PathBuf, value: &serde_json::Value) {
     let root_dir =
         Dir::open_ambient_dir(".", ambient_authority()).expect("ambient root should open");
-    if let Some(parent) = cassette_path.parent() {
-        root_dir
-            .create_dir_all(parent)
-            .expect("cassette parent directory should exist");
-        let parent_dir = root_dir
-            .open_dir(parent)
-            .expect("cassette parent directory should open");
-        let file = parent_dir
-            .create(
-                cassette_path
-                    .file_name()
-                    .expect("cassette path should contain a file name"),
-            )
-            .expect("cassette file should open");
-        serde_json::to_writer_pretty(file, value).expect("cassette json should write");
-    }
+    let parent_option = cassette_path.parent();
+    let parent_dir = parent_option.map_or_else(
+        || root_dir.try_clone().expect("root directory should clone"),
+        |parent_path| {
+            root_dir
+                .create_dir_all(parent_path)
+                .expect("cassette parent directory should be created");
+            root_dir
+                .open_dir(parent_path)
+                .expect("cassette parent directory should open")
+        },
+    );
+    let file = parent_dir
+        .create(
+            cassette_path
+                .file_name()
+                .expect("cassette path should contain a file name"),
+        )
+        .expect("cassette file should open");
+    serde_json::to_writer_pretty(file, value).expect("cassette json should write");
 }

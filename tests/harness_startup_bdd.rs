@@ -18,6 +18,7 @@ use camino::Utf8PathBuf;
 use rstest::fixture;
 use rstest_bdd::Slot;
 use rstest_bdd_macros::{ScenarioState, given, scenario, then, when};
+use uuid::Uuid;
 
 use spycatcher_harness::config::ListenAddr;
 use spycatcher_harness::{
@@ -231,5 +232,6 @@ fn start_harness_preserves_listen_address(harness_world: HarnessWorld) {}
 
 fn unique_cassette_name(prefix: &str) -> String {
     let index = NEXT_TEST_CASSETTE.fetch_add(1, Ordering::Relaxed);
-    format!("{prefix}-{}-{index}", std::process::id())
+    let uuid = Uuid::new_v4();
+    format!("{prefix}-{index}-{uuid}")
 }

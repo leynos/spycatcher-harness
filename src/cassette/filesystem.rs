@@ -34,10 +34,10 @@ impl FilesystemCassetteStore {
     /// Returns a harness error when the cassette cannot be created, opened,
     /// or decoded.
     pub(crate) fn open_or_create_for_record(cassette_path: &Utf8Path) -> HarnessResult<Self> {
-        let (parent_dir, file_name) = open_parent_dir(cassette_path, true)?;
-        let cassette = match parent_dir.open(&file_name) {
-            Ok(file) => Cassette::from_reader(file)?,
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Cassette::new(),
+        let (parent_dir, file_name) = open_rooted_parent(cassette_path, true)?;
+        let (cassette, is_new) = match parent_dir.open(&file_name) {
+            Ok(file) => (Cassette::from_reader(file)?, false),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => (Cassette::new(), true),
             Err(error) => return Err(HarnessError::from(error)),
         };
         let mut store = Self {
@@ -45,12 +45,14 @@ impl FilesystemCassetteStore {
             file_name,
             cassette,
         };
-        store.flush()?;
+        if is_new {
+            store.flush()?;
+        }
         Ok(store)
     }
 
     fn open_existing(cassette_path: &Utf8Path) -> HarnessResult<Self> {
-        let (parent_dir, file_name) = match open_parent_dir(cassette_path, false) {
+        let (parent_dir, file_name) = match open_rooted_parent(cassette_path, false) {
             Ok(result) => result,
             Err(HarnessError::Io { source }) if source.kind() == std::io::ErrorKind::NotFound => {
                 return Err(HarnessError::CassetteNotFound {
@@ -90,33 +92,41 @@ impl CassetteReader for FilesystemCassetteStore {
 
 impl CassetteAppender for FilesystemCassetteStore {
     fn append(&mut self, interaction: Interaction) -> HarnessResult<()> {
-        self.cassette.append(interaction);
-        self.flush()
-    }
-}
-
-fn open_parent_dir(cassette_path: &Utf8Path, create_parent: bool) -> HarnessResult<(Dir, String)> {
-    let root_dir = Dir::open_ambient_dir(".", ambient_authority())?;
-    if create_parent && let Some(parent) = cassette_parent_to_create(cassette_path) {
-        root_dir.create_dir_all(parent)?;
-    }
-    open_parent_dir_with_root(&root_dir, cassette_path)
-}
-
-fn open_parent_dir_with_root(
-    root_dir: &Dir,
-    cassette_path: &Utf8Path,
-) -> HarnessResult<(Dir, String)> {
-    let file_name = cassette_name(cassette_path)?;
-    let parent_dir = if let Some(parent) = cassette_path.parent() {
-        if parent.as_str().is_empty() || parent == Utf8Path::new(".") {
-            root_dir.try_clone()?
-        } else {
-            root_dir.open_dir(parent)?
+        self.cassette.append(interaction.clone());
+        if let Err(error) = self.flush() {
+            self.cassette.interactions.pop();
+            return Err(error);
         }
-    } else {
-        root_dir.try_clone()?
+        Ok(())
+    }
+}
+
+fn open_rooted_parent(
+    cassette_path: &Utf8Path,
+    create_parent: bool,
+) -> HarnessResult<(Dir, String)> {
+    let root = Dir::open_ambient_dir(".", ambient_authority())?;
+    let file_name = cassette_name(cassette_path)?;
+    let parent_option = cassette_path.parent();
+
+    if create_parent
+        && let Some(parent_path) = parent_option
+        && !parent_path.as_str().is_empty()
+        && parent_path != Utf8Path::new(".")
+    {
+        root.create_dir_all(parent_path)?;
+    }
+
+    let parent_dir = match parent_option {
+        None => root.try_clone()?,
+        Some(parent_path)
+            if parent_path.as_str().is_empty() || parent_path == Utf8Path::new(".") =>
+        {
+            root.try_clone()?
+        }
+        Some(parent_path) => root.open_dir(parent_path)?,
     };
+
     Ok((parent_dir, file_name))
 }
 
@@ -129,12 +139,6 @@ fn cassette_name(cassette_path: &Utf8Path) -> HarnessResult<String> {
         })
 }
 
-fn cassette_parent_to_create(cassette_path: &Utf8Path) -> Option<&Utf8Path> {
-    cassette_path
-        .parent()
-        .filter(|parent| !parent.as_str().is_empty() && *parent != Utf8Path::new("."))
-}
-
 #[cfg(test)]
 mod tests {
     //! Unit tests for the filesystem cassette adapter.
@@ -145,6 +149,7 @@ mod tests {
     use camino::Utf8PathBuf;
     use rstest::rstest;
     use serde_json::json;
+    use uuid::Uuid;
 
     use crate::HarnessError;
     use crate::cassette::{
@@ -227,10 +232,8 @@ mod tests {
 
     fn unique_cassette_path(name: &str) -> Utf8PathBuf {
         let index = NEXT_TEST_DIR.fetch_add(1, Ordering::Relaxed);
-        Utf8PathBuf::from(format!(
-            "target/test-cassettes/{name}-{}-{index}.json",
-            std::process::id()
-        ))
+        let uuid = Uuid::new_v4();
+        Utf8PathBuf::from(format!("target/test-cassettes/{name}-{index}-{uuid}.json"))
     }
 
     fn sample_interaction(content: &str) -> Interaction {
