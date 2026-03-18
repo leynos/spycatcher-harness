@@ -131,6 +131,16 @@ pub(crate) fn probe_record_write_access(cassette_path: &Utf8Path) -> HarnessResu
     }
 }
 
+/// Returns `true` when `path` refers to the current directory and therefore
+/// needs no explicit open or creation.
+fn is_trivial_parent(path: &Utf8Path) -> bool {
+    path.as_str().is_empty() || path == Utf8Path::new(".")
+}
+
+#[expect(
+    clippy::collapsible_if,
+    reason = "the nested structure keeps the trivial-parent rule explicit per review request"
+)]
 fn open_rooted_parent(
     cassette_path: &Utf8Path,
     create_parent: bool,
@@ -139,27 +149,21 @@ fn open_rooted_parent(
     let file_name = cassette_name(cassette_path)?;
     let parent_option = cassette_path.parent();
 
-    if let Some(parent_path) =
-        parent_option.filter(|path| should_create_parent_dir(path, create_parent))
-    {
-        root.create_dir_all(parent_path)?;
+    if create_parent {
+        if let Some(parent_path) = parent_option {
+            if !is_trivial_parent(parent_path) {
+                root.create_dir_all(parent_path)?;
+            }
+        }
     }
 
     let parent_dir = match parent_option {
         None => root.try_clone()?,
-        Some(parent_path) if is_root_parent(parent_path) => root.try_clone()?,
+        Some(parent_path) if is_trivial_parent(parent_path) => root.try_clone()?,
         Some(parent_path) => root.open_dir(parent_path)?,
     };
 
     Ok((parent_dir, file_name))
-}
-
-fn should_create_parent_dir(parent_path: &Utf8Path, create_parent: bool) -> bool {
-    create_parent && !is_root_parent(parent_path)
-}
-
-fn is_root_parent(parent_path: &Utf8Path) -> bool {
-    parent_path.as_str().is_empty() || parent_path == Utf8Path::new(".")
 }
 
 fn cassette_name(cassette_path: &Utf8Path) -> HarnessResult<String> {
