@@ -200,16 +200,25 @@ Validation completed:
 
 Current repository state relevant to this task:
 
-- `src/cassette.rs` is an empty stub that promises schema, hashing, and store
-  traits, but defines none of them yet.
-- `src/replay.rs` is an empty stub and does not currently load or validate
-  cassettes.
-- `src/lib.rs` currently validates configuration and returns a
-  `RunningHarness`, but does not touch the filesystem beyond constructing
-  `cassette_path`.
-- `src/error.rs` has no cassette-format-specific error variant yet.
-- Existing tests cover startup validation and CLI config layering, but there is
-  no cassette storage test coverage yet.
+- `src/cassette/mod.rs` defines `Cassette`, `Interaction`, `RecordedRequest`,
+  `RecordedResponse`, `StreamEvent`, `StreamTiming`, and `InteractionMetadata`
+  types with serde serialization; provides `from_reader` and `write_to` for
+  JSON persistence; implements `validate()` for version checking; defines
+  `CassetteReader` and `CassetteAppender` traits for hexagonal boundaries.
+- `src/cassette/filesystem.rs` implements `FilesystemCassetteStore` with
+  `open_for_replay` and `open_or_create_for_record`; provides read-only replay
+  access and append-only record-mode writes using cap-std.
+- `src/replay.rs` remains an empty stub; replay startup validation occurs in
+  `src/lib.rs::prepare_cassette` instead.
+- `src/lib.rs::prepare_cassette` loads and validates cassettes for both record
+  and replay modes via `FilesystemCassetteStore`; `start_harness` returns
+  `RunningHarness` with validated cassette path.
+- `src/error.rs` defines `CassetteNotFound`, `InvalidCassette`, and
+  `UnsupportedCassetteFormatVersion` variants alongside `Io` for filesystem
+  errors.
+- Test coverage includes unit tests for cassette round-trips, append-only
+  persistence, version rejection, and BDD scenarios for replay startup with
+  supported/unsupported cassettes.
 
 Key design references to keep open while implementing:
 

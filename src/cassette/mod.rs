@@ -9,7 +9,6 @@
 
 pub(crate) mod filesystem;
 
-use std::collections::BTreeMap;
 use std::io::{Read, Write};
 
 use serde::{Deserialize, Serialize};
@@ -154,8 +153,9 @@ pub struct RecordedRequest {
     pub path: String,
     /// Raw query string in its observed order.
     pub query: String,
-    /// Selected, redacted-safe request headers.
-    pub headers: BTreeMap<String, String>,
+    /// Selected, redacted-safe request headers in observed order.
+    /// Preserves duplicate header names (e.g., multiple Set-Cookie).
+    pub headers: Vec<(String, String)>,
     /// Raw request body bytes.
     pub body: Vec<u8>,
     /// Parsed JSON representation when the request body is JSON.
@@ -174,8 +174,9 @@ pub enum RecordedResponse {
     NonStream {
         /// HTTP status code returned by the upstream or replay server.
         status: u16,
-        /// Selected response headers.
-        headers: BTreeMap<String, String>,
+        /// Selected response headers in observed order.
+        /// Preserves duplicate header names (e.g., multiple Set-Cookie).
+        headers: Vec<(String, String)>,
         /// Raw response body bytes.
         body: Vec<u8>,
         /// Parsed JSON representation when the response body is JSON.
@@ -185,8 +186,9 @@ pub enum RecordedResponse {
     Stream {
         /// HTTP status code returned by the upstream or replay server.
         status: u16,
-        /// Selected response headers.
-        headers: BTreeMap<String, String>,
+        /// Selected response headers in observed order.
+        /// Preserves duplicate header names (e.g., multiple Set-Cookie).
+        headers: Vec<(String, String)>,
         /// Parsed stream events preserved in order.
         events: Vec<StreamEvent>,
         /// Raw stream transcript bytes for faithful replay later.
@@ -309,7 +311,7 @@ mod tests {
             method: "POST".to_owned(),
             path: "/v1/chat/completions".to_owned(),
             query: "stream=false".to_owned(),
-            headers: BTreeMap::from([("content-type".to_owned(), "application/json".to_owned())]),
+            headers: vec![("content-type".to_owned(), "application/json".to_owned())],
             body: br#"{"model":"gpt-test","stream":false}"#.to_vec(),
             parsed_json: Some(json!({"model": "gpt-test", "stream": false})),
             canonical_request: None,
@@ -317,7 +319,7 @@ mod tests {
         };
         let response = RecordedResponse::NonStream {
             status: 200,
-            headers: BTreeMap::from([("content-type".to_owned(), "application/json".to_owned())]),
+            headers: vec![("content-type".to_owned(), "application/json".to_owned())],
             body: br#"{"id":"chatcmpl-1","choices":[]}"#.to_vec(),
             parsed_json: Some(json!({"id": "chatcmpl-1", "choices": []})),
         };
@@ -338,7 +340,7 @@ mod tests {
         let mut interaction = sample_non_stream_interaction();
         interaction.response = RecordedResponse::Stream {
             status: 200,
-            headers: BTreeMap::from([("content-type".to_owned(), "text/event-stream".to_owned())]),
+            headers: vec![("content-type".to_owned(), "text/event-stream".to_owned())],
             events: vec![
                 StreamEvent::Comment {
                     text: "OPENROUTER PROCESSING".to_owned(),

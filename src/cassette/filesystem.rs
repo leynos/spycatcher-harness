@@ -79,8 +79,12 @@ impl FilesystemCassetteStore {
     }
 
     fn flush(&mut self) -> HarnessResult<()> {
-        let file = self.parent_dir.create(&self.file_name)?;
-        self.cassette.write_to(file)
+        let temp_name = format!("{}.tmp", self.file_name);
+        let temp_file = self.parent_dir.create(&temp_name)?;
+        self.cassette.write_to(temp_file)?;
+        self.parent_dir
+            .rename(&temp_name, &self.parent_dir, &self.file_name)?;
+        Ok(())
     }
 }
 
@@ -242,7 +246,7 @@ mod tests {
                 method: "POST".to_owned(),
                 path: "/v1/chat/completions".to_owned(),
                 query: String::new(),
-                headers: std::collections::BTreeMap::new(),
+                headers: Vec::new(),
                 body: format!("request-{content}").into_bytes(),
                 parsed_json: Some(json!({"content": content})),
                 canonical_request: None,
@@ -250,7 +254,7 @@ mod tests {
             },
             response: RecordedResponse::Stream {
                 status: 200,
-                headers: std::collections::BTreeMap::new(),
+                headers: Vec::new(),
                 events: vec![
                     StreamEvent::Comment {
                         text: format!("comment-{content}"),

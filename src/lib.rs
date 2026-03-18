@@ -86,7 +86,9 @@ impl RunningHarness {
 /// Returns [`HarnessError::CassetteNotFound`],
 /// [`HarnessError::InvalidCassette`], or
 /// [`HarnessError::UnsupportedCassetteFormatVersion`] when replay or verify
-/// mode cannot load a compatible cassette from disk.
+/// mode cannot load a compatible cassette from disk. In record mode, these
+/// errors can also occur when an existing cassette file is found but is
+/// malformed or uses an unsupported format version.
 ///
 /// # Examples
 ///
@@ -238,18 +240,17 @@ mod tests {
     #[rstest]
     #[tokio::test]
     async fn start_harness_cassette_path_joins_dir_and_name() {
+        let cassette_name = unique_cassette_name("path-join");
+        let cassette_dir = Utf8PathBuf::from("target/test-harness");
+        seed_replay_cassette(&cassette_name);
         let cfg = HarnessConfig {
-            cassette_dir: Utf8PathBuf::from("test/cassettes"),
-            cassette_name: "smoke_001".to_owned(),
-            mode: config::Mode::Record,
-            upstream: Some(config::UpstreamConfig::default()),
+            cassette_dir: cassette_dir.clone(),
+            cassette_name: cassette_name.clone(),
+            mode: config::Mode::Replay,
             ..HarnessConfig::default()
         };
         let harness = start_harness(cfg).await.expect("startup should succeed");
-        assert_eq!(
-            harness.cassette_path,
-            Utf8PathBuf::from("test/cassettes/smoke_001"),
-        );
+        assert_eq!(harness.cassette_path, cassette_dir.join(cassette_name));
     }
 
     #[rstest]
