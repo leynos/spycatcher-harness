@@ -154,24 +154,24 @@ Observable success:
 - Decision: implement the cassette schema as domain-owned Rust types plus
   `serde` serialization, and keep filesystem persistence behind a dedicated
   adapter. Rationale: this follows the hexagonal dependency rule and keeps
-  schema tests independent of file I/O. Date/Author: 2026-03-09 / agent
+  schema tests independent of file I/O. Date/Author: 2026-03-09 / agent.
 
 - Decision: scope behavioural tests to replay startup and replay rejection,
   not low-level append internals. Rationale: `rstest-bdd` should exercise
   observable behaviour. Append semantics, serialization details, and lossless
   round-trips are better locked down with `rstest` unit tests. Date/Author:
-  2026-03-09 / agent
+  2026-03-09 / agent.
 
 - Decision: treat the current `cassette_name` path semantics as the default
   compatibility constraint for this plan. Rationale: the implementation, unit
   tests, behavioural tests, and user's guide already agree on that contract.
   Any move to an implicit `.json` suffix should be treated as a conscious
-  breaking change. Date/Author: 2026-03-09 / agent
+  breaking change. Date/Author: 2026-03-09 / agent.
 
 - Decision: implement append-only persistence as a logical guarantee backed by
   full-document JSON rewrites in the filesystem adapter. Rationale: this keeps
   the on-disk schema simple and versioned while still ensuring that record mode
-  only grows the interaction list in order. Date/Author: 2026-03-10 / agent
+  only grows the interaction list in order. Date/Author: 2026-03-10 / agent.
 
 ## Outcomes & retrospective
 

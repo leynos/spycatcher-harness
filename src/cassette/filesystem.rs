@@ -80,8 +80,15 @@ impl FilesystemCassetteStore {
 
     fn flush(&mut self) -> HarnessResult<()> {
         let temp_name = format!("{}.tmp", self.file_name);
-        let temp_file = self.parent_dir.create(&temp_name)?;
-        self.cassette.write_to(temp_file)?;
+        let mut temp_file = self.parent_dir.create(&temp_name)?;
+        let write_result = self
+            .cassette
+            .write_to(&mut temp_file)
+            .and_then(|()| temp_file.sync_all().map_err(HarnessError::from));
+        if let Err(error) = write_result {
+            drop(self.parent_dir.remove_file(&temp_name));
+            return Err(error);
+        }
         self.parent_dir
             .rename(&temp_name, &self.parent_dir, &self.file_name)?;
         Ok(())
@@ -105,6 +112,25 @@ impl CassetteAppender for FilesystemCassetteStore {
     }
 }
 
+/// Verifies that record mode can create and remove sibling files.
+///
+/// This probes the same parent directory permissions used by append
+/// persistence so startup can fail early on read-only targets.
+pub(crate) fn probe_record_write_access(cassette_path: &Utf8Path) -> HarnessResult<()> {
+    let (parent_dir, file_name) = open_rooted_parent(cassette_path, true)?;
+    let probe_name = format!("{}.startup-probe-{}.tmp", file_name, probe_suffix());
+    let probe_file = parent_dir.create(&probe_name);
+
+    match probe_file {
+        Ok(file) => {
+            drop(file);
+            parent_dir.remove_file(&probe_name)?;
+            Ok(())
+        }
+        Err(error) => Err(HarnessError::from(error)),
+    }
+}
+
 fn open_rooted_parent(
     cassette_path: &Utf8Path,
     create_parent: bool,
@@ -113,25 +139,27 @@ fn open_rooted_parent(
     let file_name = cassette_name(cassette_path)?;
     let parent_option = cassette_path.parent();
 
-    if create_parent
-        && let Some(parent_path) = parent_option
-        && !parent_path.as_str().is_empty()
-        && parent_path != Utf8Path::new(".")
+    if let Some(parent_path) =
+        parent_option.filter(|path| should_create_parent_dir(path, create_parent))
     {
         root.create_dir_all(parent_path)?;
     }
 
     let parent_dir = match parent_option {
         None => root.try_clone()?,
-        Some(parent_path)
-            if parent_path.as_str().is_empty() || parent_path == Utf8Path::new(".") =>
-        {
-            root.try_clone()?
-        }
+        Some(parent_path) if is_root_parent(parent_path) => root.try_clone()?,
         Some(parent_path) => root.open_dir(parent_path)?,
     };
 
     Ok((parent_dir, file_name))
+}
+
+fn should_create_parent_dir(parent_path: &Utf8Path, create_parent: bool) -> bool {
+    create_parent && !is_root_parent(parent_path)
+}
+
+fn is_root_parent(parent_path: &Utf8Path) -> bool {
+    parent_path.as_str().is_empty() || parent_path == Utf8Path::new(".")
 }
 
 fn cassette_name(cassette_path: &Utf8Path) -> HarnessResult<String> {
@@ -141,6 +169,15 @@ fn cassette_name(cassette_path: &Utf8Path) -> HarnessResult<String> {
         .ok_or_else(|| HarnessError::InvalidConfig {
             message: "cassette name must not be empty".to_owned(),
         })
+}
+
+fn probe_suffix() -> u128 {
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos()
 }
 
 #[cfg(test)]
@@ -196,10 +233,11 @@ mod tests {
 
     #[rstest]
     fn replay_load_rejects_unsupported_format_version() {
+        let supported = crate::cassette::CassetteFormatVersion::SUPPORTED.as_u32();
         let cassette_path = unique_cassette_path("unsupported");
         let mut store = FilesystemCassetteStore::open_or_create_for_record(&cassette_path)
             .expect("record mode should create cassette");
-        store.cassette.format_version = 99;
+        store.cassette.format_version = crate::cassette::CassetteFormatVersion::from(99);
         store
             .flush()
             .expect("writing unsupported cassette should succeed");
@@ -211,8 +249,9 @@ mod tests {
             error,
             HarnessError::UnsupportedCassetteFormatVersion {
                 found: 99,
-                supported: crate::cassette::SUPPORTED_FORMAT_VERSION,
+                supported: found_supported,
             }
+            if found_supported == supported
         ));
     }
 

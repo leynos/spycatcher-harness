@@ -10,20 +10,67 @@
 pub(crate) mod filesystem;
 
 use std::io::{Read, Write};
+use std::num::ParseIntError;
+use std::str::FromStr;
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::{HarnessError, HarnessResult};
 
-/// The schema version supported by this build.
-pub const SUPPORTED_FORMAT_VERSION: u32 = 1;
+/// Schema version used to encode and validate cassette documents.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct CassetteFormatVersion(u32);
+
+impl CassetteFormatVersion {
+    /// Schema version supported by this build.
+    pub const SUPPORTED: Self = Self(1);
+
+    /// Returns the numeric schema version stored on disk.
+    #[must_use]
+    pub const fn as_u32(self) -> u32 {
+        self.0
+    }
+
+    /// Returns whether this version can be consumed by this build.
+    #[must_use]
+    pub const fn is_supported(self) -> bool {
+        self.0 == Self::SUPPORTED.0
+    }
+}
+
+impl std::fmt::Display for CassetteFormatVersion {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(formatter, "{}", self.0)
+    }
+}
+
+impl From<CassetteFormatVersion> for u32 {
+    fn from(value: CassetteFormatVersion) -> Self {
+        value.0
+    }
+}
+
+impl From<u32> for CassetteFormatVersion {
+    fn from(value: u32) -> Self {
+        Self(value)
+    }
+}
+
+impl FromStr for CassetteFormatVersion {
+    type Err = ParseIntError;
+
+    fn from_str(source: &str) -> Result<Self, Self::Err> {
+        source.parse::<u32>().map(Self)
+    }
+}
 
 /// A single recorded agent session persisted on disk.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Cassette {
     /// Schema version used to decode the cassette.
-    pub format_version: u32,
+    pub format_version: CassetteFormatVersion,
     /// Ordered request/response interactions in this session.
     pub interactions: Vec<Interaction>,
 }
@@ -33,7 +80,7 @@ impl Cassette {
     #[must_use]
     pub const fn new() -> Self {
         Self {
-            format_version: SUPPORTED_FORMAT_VERSION,
+            format_version: CassetteFormatVersion::SUPPORTED,
             interactions: Vec::new(),
         }
     }
@@ -50,12 +97,12 @@ impl Cassette {
     /// Returns [`HarnessError::UnsupportedCassetteFormatVersion`] when the
     /// on-disk version is not supported.
     pub const fn validate(&self) -> HarnessResult<()> {
-        if self.format_version == SUPPORTED_FORMAT_VERSION {
+        if self.format_version.is_supported() {
             Ok(())
         } else {
             Err(HarnessError::UnsupportedCassetteFormatVersion {
-                found: self.format_version,
-                supported: SUPPORTED_FORMAT_VERSION,
+                found: self.format_version.as_u32(),
+                supported: CassetteFormatVersion::SUPPORTED.as_u32(),
             })
         }
     }
@@ -239,125 +286,4 @@ pub struct InteractionMetadata {
 }
 
 #[cfg(test)]
-mod tests {
-    //! Unit tests for cassette schema round-trips and validation.
-
-    use super::*;
-    use rstest::rstest;
-    use serde_json::json;
-
-    #[rstest]
-    fn non_stream_interaction_round_trips_without_loss() {
-        let cassette = Cassette {
-            interactions: vec![sample_non_stream_interaction()],
-            ..Cassette::new()
-        };
-        let mut bytes = Vec::new();
-        cassette
-            .write_to(&mut bytes)
-            .expect("cassette serialization should succeed");
-
-        let decoded = Cassette::from_reader(bytes.as_slice())
-            .expect("cassette deserialization should succeed");
-
-        assert_eq!(decoded, cassette);
-    }
-
-    #[rstest]
-    fn stream_interaction_round_trips_without_loss() {
-        let cassette = Cassette {
-            interactions: vec![sample_stream_interaction()],
-            ..Cassette::new()
-        };
-        let mut bytes = Vec::new();
-        cassette
-            .write_to(&mut bytes)
-            .expect("cassette serialization should succeed");
-
-        let decoded = Cassette::from_reader(bytes.as_slice())
-            .expect("cassette deserialization should succeed");
-
-        assert_eq!(decoded, cassette);
-    }
-
-    #[rstest]
-    fn unsupported_format_version_is_rejected() {
-        let json = r#"{"format_version":2,"interactions":[]}"#;
-
-        let error =
-            Cassette::from_reader(json.as_bytes()).expect_err("unsupported version must fail");
-
-        assert!(matches!(
-            error,
-            HarnessError::UnsupportedCassetteFormatVersion {
-                found: 2,
-                supported: SUPPORTED_FORMAT_VERSION,
-            }
-        ));
-    }
-
-    #[rstest]
-    fn malformed_cassette_is_rejected() {
-        let json = r#"{"interactions":[]}"#;
-
-        let error =
-            Cassette::from_reader(json.as_bytes()).expect_err("missing format_version must fail");
-
-        assert!(matches!(error, HarnessError::InvalidCassette { .. }));
-    }
-
-    fn sample_non_stream_interaction() -> Interaction {
-        let request = RecordedRequest {
-            method: "POST".to_owned(),
-            path: "/v1/chat/completions".to_owned(),
-            query: "stream=false".to_owned(),
-            headers: vec![("content-type".to_owned(), "application/json".to_owned())],
-            body: br#"{"model":"gpt-test","stream":false}"#.to_vec(),
-            parsed_json: Some(json!({"model": "gpt-test", "stream": false})),
-            canonical_request: None,
-            stable_hash: None,
-        };
-        let response = RecordedResponse::NonStream {
-            status: 200,
-            headers: vec![("content-type".to_owned(), "application/json".to_owned())],
-            body: br#"{"id":"chatcmpl-1","choices":[]}"#.to_vec(),
-            parsed_json: Some(json!({"id": "chatcmpl-1", "choices": []})),
-        };
-        let metadata = InteractionMetadata {
-            protocol_id: "openai.chat_completions.v1".to_owned(),
-            upstream_id: "openrouter".to_owned(),
-            recorded_at: "2026-03-10T00:00:00Z".to_owned(),
-            relative_offset_ms: 0,
-        };
-        Interaction {
-            request,
-            response,
-            metadata,
-        }
-    }
-
-    fn sample_stream_interaction() -> Interaction {
-        let mut interaction = sample_non_stream_interaction();
-        interaction.response = RecordedResponse::Stream {
-            status: 200,
-            headers: vec![("content-type".to_owned(), "text/event-stream".to_owned())],
-            events: vec![
-                StreamEvent::Comment {
-                    text: "OPENROUTER PROCESSING".to_owned(),
-                },
-                StreamEvent::Data {
-                    raw: "{\"choices\":[{\"delta\":{\"content\":\"hi\"}}]}".to_owned(),
-                    parsed_json: Some(json!({"choices": [{"delta": {"content": "hi"}}]})),
-                },
-            ],
-            raw_transcript: b": OPENROUTER PROCESSING\n\ndata: {\"choices\":[{\"delta\":{\"content\":\"hi\"}}]}\n\n"
-                .to_vec(),
-            timing: Some(StreamTiming {
-                ttft_ms: 12,
-                chunk_offsets_ms: vec![12, 17],
-            }),
-        };
-        interaction.metadata.relative_offset_ms = 17;
-        interaction
-    }
-}
+mod tests;

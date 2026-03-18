@@ -38,7 +38,9 @@ use std::net::SocketAddr;
 
 use camino::Utf8PathBuf;
 
-use crate::cassette::{CassetteReader, filesystem::FilesystemCassetteStore};
+use crate::cassette::{
+    CassetteReader, filesystem::FilesystemCassetteStore, filesystem::probe_record_write_access,
+};
 
 /// A running harness instance.
 ///
@@ -145,6 +147,7 @@ fn prepare_cassette(cfg: &HarnessConfig, cassette_path: &Utf8PathBuf) -> Harness
         config::Mode::Record => {
             let store = FilesystemCassetteStore::open_or_create_for_record(cassette_path)?;
             let _cassette = store.load()?;
+            probe_record_write_access(cassette_path)?;
             Ok(())
         }
         config::Mode::Replay | config::Mode::Verify => {
@@ -308,6 +311,7 @@ mod tests {
     #[rstest]
     #[tokio::test]
     async fn start_harness_replay_unsupported_cassette_version_fails() {
+        let supported = crate::cassette::CassetteFormatVersion::SUPPORTED.as_u32();
         let cassette_name = unique_cassette_name("replay-unsupported");
         seed_replay_cassette(&cassette_name);
         let file = cap_std::fs_utf8::Dir::open_ambient_dir(".", cap_std::ambient_authority())
@@ -333,8 +337,9 @@ mod tests {
             error,
             HarnessError::UnsupportedCassetteFormatVersion {
                 found: 9,
-                supported: crate::cassette::SUPPORTED_FORMAT_VERSION,
+                supported: found_supported,
             }
+            if found_supported == supported
         ));
     }
 

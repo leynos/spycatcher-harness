@@ -156,13 +156,17 @@ fn the_error_mentions_format_version(cassette_world: &CassetteWorld, version: u3
     path = "tests/features/cassette_schema_versioning.feature",
     name = "Replay startup succeeds with a supported cassette"
 )]
-fn replay_startup_succeeds_with_a_supported_cassette(cassette_world: CassetteWorld) {}
+fn replay_startup_succeeds_with_a_supported_cassette(cassette_world: CassetteWorld) {
+    let _ = cassette_world;
+}
 
 #[scenario(
     path = "tests/features/cassette_schema_versioning.feature",
     name = "Replay startup rejects an unsupported cassette version"
 )]
-fn replay_startup_rejects_an_unsupported_cassette_version(cassette_world: CassetteWorld) {}
+fn replay_startup_rejects_an_unsupported_cassette_version(cassette_world: CassetteWorld) {
+    let _ = cassette_world;
+}
 
 fn unique_cassette_name(prefix: &str) -> String {
     let index = NEXT_TEST_CASSETTE.fetch_add(1, Ordering::Relaxed);
