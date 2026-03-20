@@ -106,7 +106,26 @@ impl Cassette {
             })
         }
     }
+}
 
+/// Maps a [`serde_json::Error`] to the appropriate [`HarnessError`] variant.
+///
+/// I/O errors are wrapped in [`HarnessError::Io`]; all other errors
+/// (schema mismatches, missing fields, type errors) become
+/// [`HarnessError::InvalidCassette`].
+fn map_serde_error(error: serde_json::Error) -> HarnessError {
+    if error.is_io() {
+        HarnessError::Io {
+            source: error.into(),
+        }
+    } else {
+        HarnessError::InvalidCassette {
+            message: error.to_string(),
+        }
+    }
+}
+
+impl Cassette {
     /// Deserializes and validates a cassette from a reader.
     ///
     /// # Errors
@@ -117,17 +136,7 @@ impl Cassette {
     /// [`HarnessError::UnsupportedCassetteFormatVersion`] when the version is
     /// unknown.
     pub fn from_reader(reader: impl Read) -> HarnessResult<Self> {
-        let cassette: Self = serde_json::from_reader(reader).map_err(|error| {
-            if error.is_io() {
-                HarnessError::Io {
-                    source: error.into(),
-                }
-            } else {
-                HarnessError::InvalidCassette {
-                    message: error.to_string(),
-                }
-            }
-        })?;
+        let cassette: Self = serde_json::from_reader(reader).map_err(map_serde_error)?;
         cassette.validate()?;
         Ok(cassette)
     }
@@ -139,17 +148,7 @@ impl Cassette {
     /// Returns [`HarnessError::Io`] when writing fails, and
     /// [`HarnessError::InvalidCassette`] when serialization fails.
     pub fn write_to(&self, writer: impl Write) -> HarnessResult<()> {
-        serde_json::to_writer_pretty(writer, self).map_err(|error| {
-            if error.is_io() {
-                HarnessError::Io {
-                    source: error.into(),
-                }
-            } else {
-                HarnessError::InvalidCassette {
-                    message: error.to_string(),
-                }
-            }
-        })
+        serde_json::to_writer_pretty(writer, self).map_err(map_serde_error)
     }
 }
 
