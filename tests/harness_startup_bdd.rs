@@ -12,31 +12,26 @@
 )]
 
 use std::net::SocketAddr;
-use std::sync::atomic::{AtomicUsize, Ordering};
 
 use camino::Utf8PathBuf;
 use rstest::fixture;
 use rstest_bdd::Slot;
 use rstest_bdd_macros::{ScenarioState, given, scenario, then, when};
-use uuid::Uuid;
 
 use spycatcher_harness::config::ListenAddr;
 use spycatcher_harness::{
     HarnessConfig, HarnessError, HarnessResult, RunningHarness, start_harness,
 };
 
-static NEXT_TEST_CASSETTE: AtomicUsize = AtomicUsize::new(1);
+#[path = "support/bdd_fixtures.rs"]
+mod bdd_fixtures;
+#[path = "support/test_utils.rs"]
+mod test_utils;
+
+use bdd_fixtures::unique_cassette_name;
+use test_utils::build_runtime;
 
 // -- Helpers ----------------------------------------------------------------
-
-/// Builds a single-threaded Tokio runtime for use in synchronous BDD
-/// step functions.
-fn build_runtime() -> tokio::runtime::Runtime {
-    tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()
-        .expect("failed to build tokio runtime")
-}
 
 fn make_record_config(prefix: &str, listen: Option<ListenAddr>) -> (HarnessConfig, Utf8PathBuf) {
     let cassette_name = unique_cassette_name(prefix);
@@ -229,9 +224,3 @@ fn shutdown_a_running_harness(harness_world: HarnessWorld) {}
     name = "Start harness preserves listen address"
 )]
 fn start_harness_preserves_listen_address(harness_world: HarnessWorld) {}
-
-fn unique_cassette_name(prefix: &str) -> String {
-    let index = NEXT_TEST_CASSETTE.fetch_add(1, Ordering::Relaxed);
-    let uuid = Uuid::new_v4();
-    format!("{prefix}-{index}-{uuid}")
-}

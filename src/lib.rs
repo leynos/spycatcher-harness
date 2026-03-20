@@ -38,9 +38,7 @@ use std::net::SocketAddr;
 
 use camino::Utf8PathBuf;
 
-use crate::cassette::{
-    CassetteReader, filesystem::FilesystemCassetteStore, filesystem::probe_record_write_access,
-};
+use crate::cassette::{filesystem::FilesystemCassetteStore, filesystem::probe_record_write_access};
 
 /// A running harness instance.
 ///
@@ -145,14 +143,12 @@ fn validate_config(cfg: &HarnessConfig) -> HarnessResult<()> {
 fn prepare_cassette(cfg: &HarnessConfig, cassette_path: &Utf8PathBuf) -> HarnessResult<()> {
     match cfg.mode {
         config::Mode::Record => {
-            let store = FilesystemCassetteStore::open_or_create_for_record(cassette_path)?;
-            let _cassette = store.load()?;
+            FilesystemCassetteStore::open_or_create_for_record(cassette_path)?;
             probe_record_write_access(cassette_path)?;
             Ok(())
         }
         config::Mode::Replay | config::Mode::Verify => {
-            let store = FilesystemCassetteStore::open_for_replay(cassette_path)?;
-            let _cassette = store.load()?;
+            FilesystemCassetteStore::open_for_replay(cassette_path)?;
             Ok(())
         }
     }
@@ -168,6 +164,8 @@ mod tests {
 
     use rstest::rstest;
     use uuid::Uuid;
+
+    use crate::cassette::CassetteReader;
 
     static NEXT_TEST_CASSETTE: AtomicUsize = AtomicUsize::new(1);
 
@@ -313,21 +311,12 @@ mod tests {
     async fn start_harness_replay_unsupported_cassette_version_fails() {
         let supported = crate::cassette::CassetteFormatVersion::SUPPORTED.as_u32();
         let cassette_name = unique_cassette_name("replay-unsupported");
-        seed_replay_cassette(&cassette_name);
-        let file = cap_std::fs_utf8::Dir::open_ambient_dir(".", cap_std::ambient_authority())
-            .expect("ambient root should open")
-            .open_dir("target/test-harness")
-            .expect("test harness directory should open")
-            .create(&cassette_name)
-            .expect("cassette file should open for overwrite");
-        serde_json::to_writer_pretty(
-            file,
-            &serde_json::json!({
-                "format_version": 9,
-                "interactions": [],
-            }),
-        )
-        .expect("invalid cassette should write");
+        let cassette_path = seed_replay_cassette(&cassette_name);
+        let mut store = FilesystemCassetteStore::open_or_create_for_record(&cassette_path)
+            .expect("record mode should open cassette");
+        let mut cassette = store.load().expect("cassette should load");
+        cassette.format_version = crate::cassette::CassetteFormatVersion::from(9);
+        store.save(cassette).expect("invalid cassette should write");
 
         let error = start_harness(replay_config(cassette_name))
             .await

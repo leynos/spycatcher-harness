@@ -7,8 +7,6 @@
     reason = "BDD step functions use expect for step precondition enforcement"
 )]
 
-use std::sync::atomic::{AtomicUsize, Ordering};
-
 use camino::Utf8PathBuf;
 use cap_std::{ambient_authority, fs_utf8::Dir};
 use rstest::fixture;
@@ -18,18 +16,14 @@ use spycatcher_harness::cassette::Cassette;
 use spycatcher_harness::{
     HarnessConfig, HarnessError, HarnessResult, RunningHarness, start_harness,
 };
-use uuid::Uuid;
 
-static NEXT_TEST_CASSETTE: AtomicUsize = AtomicUsize::new(1);
+#[path = "support/bdd_fixtures.rs"]
+mod bdd_fixtures;
+#[path = "support/test_utils.rs"]
+mod test_utils;
 
-/// Builds a single-threaded Tokio runtime for use in synchronous BDD
-/// step functions.
-fn build_runtime() -> tokio::runtime::Runtime {
-    tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()
-        .expect("failed to build tokio runtime")
-}
+use bdd_fixtures::unique_cassette_name;
+use test_utils::build_runtime;
 
 #[derive(Default, ScenarioState)]
 struct CassetteWorld {
@@ -166,12 +160,6 @@ fn replay_startup_succeeds_with_a_supported_cassette(cassette_world: CassetteWor
 )]
 fn replay_startup_rejects_an_unsupported_cassette_version(cassette_world: CassetteWorld) {
     let _ = cassette_world;
-}
-
-fn unique_cassette_name(prefix: &str) -> String {
-    let index = NEXT_TEST_CASSETTE.fetch_add(1, Ordering::Relaxed);
-    let uuid = Uuid::new_v4();
-    format!("{prefix}-{index}-{uuid}")
 }
 
 fn write_cassette(cassette_path: &Utf8PathBuf, value: &serde_json::Value) {

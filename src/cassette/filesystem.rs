@@ -78,6 +78,22 @@ impl FilesystemCassetteStore {
         })
     }
 
+    /// Replaces the in-memory cassette and persists it atomically.
+    ///
+    /// # Errors
+    ///
+    /// Returns a harness error when the updated cassette cannot be written.
+    #[cfg(test)]
+    pub(crate) fn save(&mut self, cassette: Cassette) -> HarnessResult<()> {
+        let previous = self.cassette.clone();
+        self.cassette = cassette;
+        if let Err(error) = self.flush() {
+            self.cassette = previous;
+            return Err(error);
+        }
+        Ok(())
+    }
+
     fn flush(&mut self) -> HarnessResult<()> {
         let temp_name = format!("{}.tmp", self.file_name);
         let mut temp_file = self.parent_dir.create(&temp_name)?;
@@ -176,12 +192,21 @@ fn cassette_name(cassette_path: &Utf8Path) -> HarnessResult<String> {
 }
 
 fn probe_suffix() -> u128 {
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
+    use std::thread;
     use std::time::{SystemTime, UNIX_EPOCH};
 
-    SystemTime::now()
+    let timestamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
-        .as_nanos()
+        .as_nanos();
+    let pid = u128::from(std::process::id());
+    let mut thread_hasher = DefaultHasher::new();
+    thread::current().id().hash(&mut thread_hasher);
+    let thread = u128::from(thread_hasher.finish());
+
+    timestamp ^ (pid << 64) ^ thread
 }
 
 #[cfg(test)]
