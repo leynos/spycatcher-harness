@@ -15,6 +15,7 @@
 //! let cfg = HarnessConfig::default();
 //! let harness = start_harness(cfg).await?;
 //! // … use the harness …
+//! // The default replay config assumes a compatible cassette already exists.
 //! harness.shutdown().await?;
 //! # Ok(())
 //! # }
@@ -36,6 +37,8 @@ pub use error::{HarnessError, HarnessResult};
 use std::net::SocketAddr;
 
 use camino::Utf8PathBuf;
+
+use crate::cassette::{filesystem::FilesystemCassetteStore, filesystem::probe_record_write_access};
 
 /// A running harness instance.
 ///
@@ -69,15 +72,23 @@ impl RunningHarness {
 
 /// Starts the harness with the given configuration.
 ///
-/// Validates the configuration and prepares the harness for operation.
-/// In the current skeleton no HTTP server is bound; the returned
-/// address reflects the configured listen address.
+/// Validates the configuration, prepares cassette access for the selected
+/// mode, and prepares the harness for operation. In the current skeleton no
+/// HTTP server is bound; the returned address reflects the configured listen
+/// address.
 ///
 /// # Errors
 ///
-/// Returns [`HarnessError::InvalidConfig`] if the configuration is
-/// invalid (e.g. empty cassette name, path traversal in cassette name,
-/// or record mode without upstream configuration).
+/// Returns [`HarnessError::InvalidConfig`] if the configuration is invalid
+/// (for example empty cassette name, path traversal in cassette name, or
+/// record mode without upstream configuration).
+///
+/// Returns [`HarnessError::CassetteNotFound`],
+/// [`HarnessError::InvalidCassette`], or
+/// [`HarnessError::UnsupportedCassetteFormatVersion`] when replay or verify
+/// mode cannot load a compatible cassette from disk. In record mode, these
+/// errors can also occur when an existing cassette file is found but is
+/// malformed or uses an unsupported format version.
 ///
 /// # Examples
 ///
@@ -100,6 +111,7 @@ pub async fn start_harness(cfg: HarnessConfig) -> HarnessResult<RunningHarness> 
     validate_config(&cfg)?;
 
     let cassette_path = cfg.cassette_dir.join(&cfg.cassette_name);
+    prepare_cassette(&cfg, &cassette_path)?;
 
     Ok(RunningHarness {
         addr: cfg.listen.as_socket_addr(),
@@ -127,22 +139,43 @@ fn validate_config(cfg: &HarnessConfig) -> HarnessResult<()> {
     Ok(())
 }
 
+/// Prepares the cassette store for the selected operating mode.
+fn prepare_cassette(cfg: &HarnessConfig, cassette_path: &Utf8PathBuf) -> HarnessResult<()> {
+    match cfg.mode {
+        config::Mode::Record => {
+            FilesystemCassetteStore::open_or_create_for_record(cassette_path)?;
+            probe_record_write_access(cassette_path)?;
+            Ok(())
+        }
+        config::Mode::Replay | config::Mode::Verify => {
+            FilesystemCassetteStore::open_for_replay(cassette_path)?;
+            Ok(())
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     //! Unit tests for harness lifecycle (startup, shutdown, address binding).
 
     use super::*;
     use std::net::SocketAddr;
+    use std::sync::atomic::{AtomicUsize, Ordering};
 
     use rstest::rstest;
+    use uuid::Uuid;
+
+    use crate::cassette::CassetteReader;
+
+    static NEXT_TEST_CASSETTE: AtomicUsize = AtomicUsize::new(1);
 
     #[rstest]
     #[tokio::test]
-    async fn start_harness_with_valid_config_succeeds() {
-        let cfg = HarnessConfig::default();
+    async fn start_harness_with_record_config_succeeds() {
+        let cfg = record_config(unique_cassette_name("record-valid"));
         let _harness = start_harness(cfg)
             .await
-            .expect("startup with default config should succeed");
+            .expect("startup with valid record config should succeed");
     }
 
     #[rstest]
@@ -193,35 +226,38 @@ mod tests {
     #[rstest]
     #[tokio::test]
     async fn start_harness_record_mode_with_upstream_succeeds() {
-        let cfg = HarnessConfig {
-            mode: config::Mode::Record,
-            upstream: Some(config::UpstreamConfig::default()),
-            ..HarnessConfig::default()
-        };
+        let cassette_name = unique_cassette_name("record-upstream");
+        let cfg = record_config(cassette_name.clone());
         let _harness = start_harness(cfg)
             .await
             .expect("startup should succeed with upstream");
-    }
-
-    #[rstest]
-    #[tokio::test]
-    async fn start_harness_cassette_path_joins_dir_and_name() {
-        let cfg = HarnessConfig {
-            cassette_dir: Utf8PathBuf::from("test/cassettes"),
-            cassette_name: "smoke_001".to_owned(),
-            ..HarnessConfig::default()
-        };
-        let harness = start_harness(cfg).await.expect("startup should succeed");
-        assert_eq!(
-            harness.cassette_path,
-            Utf8PathBuf::from("test/cassettes/smoke_001"),
+        let cassette_path = Utf8PathBuf::from("target/test-harness").join(cassette_name);
+        assert!(
+            cassette_path.is_file(),
+            "record startup should create cassette file"
         );
     }
 
     #[rstest]
     #[tokio::test]
+    async fn start_harness_cassette_path_joins_dir_and_name() {
+        let cassette_name = unique_cassette_name("path-join");
+        let cassette_dir = Utf8PathBuf::from("target/test-harness");
+        seed_replay_cassette(&cassette_name);
+        let cfg = HarnessConfig {
+            cassette_dir: cassette_dir.clone(),
+            cassette_name: cassette_name.clone(),
+            mode: config::Mode::Replay,
+            ..HarnessConfig::default()
+        };
+        let harness = start_harness(cfg).await.expect("startup should succeed");
+        assert_eq!(harness.cassette_path, cassette_dir.join(cassette_name));
+    }
+
+    #[rstest]
+    #[tokio::test]
     async fn shutdown_succeeds() {
-        let cfg = HarnessConfig::default();
+        let cfg = record_config(unique_cassette_name("shutdown"));
         let harness = start_harness(cfg).await.expect("startup should succeed");
         harness.shutdown().await.expect("shutdown should succeed");
     }
@@ -232,9 +268,99 @@ mod tests {
         let expected = SocketAddr::from(([10, 0, 0, 1], 9090));
         let cfg = HarnessConfig {
             listen: expected.into(),
-            ..HarnessConfig::default()
+            ..record_config(unique_cassette_name("listen"))
         };
         let harness = start_harness(cfg).await.expect("startup should succeed");
         assert_eq!(harness.addr, expected);
+    }
+
+    #[rstest]
+    #[tokio::test]
+    async fn start_harness_with_supported_replay_cassette_succeeds() {
+        let cassette_name = unique_cassette_name("replay-supported");
+        seed_replay_cassette(&cassette_name);
+
+        let harness = start_harness(replay_config(cassette_name.clone()))
+            .await
+            .expect("supported replay cassette should start");
+
+        assert_eq!(
+            harness.cassette_path,
+            Utf8PathBuf::from("target/test-harness").join(cassette_name),
+        );
+    }
+
+    #[rstest]
+    #[tokio::test]
+    async fn start_harness_replay_missing_cassette_fails() {
+        let cassette_name = unique_cassette_name("replay-missing");
+
+        let error = start_harness(replay_config(cassette_name.clone()))
+            .await
+            .expect_err("missing replay cassette should fail");
+
+        assert!(matches!(
+            error,
+            HarnessError::CassetteNotFound { cassette_name: found }
+                if found == cassette_name
+        ));
+    }
+
+    #[rstest]
+    #[tokio::test]
+    async fn start_harness_replay_unsupported_cassette_version_fails() {
+        let supported = crate::cassette::CassetteFormatVersion::SUPPORTED.as_u32();
+        let cassette_name = unique_cassette_name("replay-unsupported");
+        let cassette_path = seed_replay_cassette(&cassette_name);
+        let mut store = FilesystemCassetteStore::open_or_create_for_record(&cassette_path)
+            .expect("record mode should open cassette");
+        let mut cassette = store.load().expect("cassette should load");
+        cassette.format_version = crate::cassette::CassetteFormatVersion::from(9);
+        store.save(cassette).expect("invalid cassette should write");
+
+        let error = start_harness(replay_config(cassette_name))
+            .await
+            .expect_err("unsupported replay cassette should fail");
+
+        assert!(matches!(
+            error,
+            HarnessError::UnsupportedCassetteFormatVersion {
+                found: 9,
+                supported: found_supported,
+            }
+            if found_supported == supported
+        ));
+    }
+
+    fn record_config(cassette_name: String) -> HarnessConfig {
+        HarnessConfig {
+            mode: config::Mode::Record,
+            cassette_dir: Utf8PathBuf::from("target/test-harness"),
+            cassette_name,
+            upstream: Some(config::UpstreamConfig::default()),
+            ..HarnessConfig::default()
+        }
+    }
+
+    fn replay_config(cassette_name: String) -> HarnessConfig {
+        HarnessConfig {
+            mode: config::Mode::Replay,
+            cassette_dir: Utf8PathBuf::from("target/test-harness"),
+            cassette_name,
+            ..HarnessConfig::default()
+        }
+    }
+
+    fn unique_cassette_name(prefix: &str) -> String {
+        let index = NEXT_TEST_CASSETTE.fetch_add(1, Ordering::Relaxed);
+        let uuid = Uuid::new_v4();
+        format!("{prefix}-{index}-{uuid}")
+    }
+
+    fn seed_replay_cassette(cassette_name: &str) -> Utf8PathBuf {
+        let cassette_path = Utf8PathBuf::from("target/test-harness").join(cassette_name);
+        let _store = FilesystemCassetteStore::open_or_create_for_record(&cassette_path)
+            .expect("seeding replay cassette should succeed");
+        cassette_path
     }
 }

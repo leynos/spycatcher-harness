@@ -47,6 +47,22 @@ pub enum HarnessError {
         interaction_id: usize,
     },
 
+    /// The cassette could not be parsed or was missing required fields.
+    #[error("invalid cassette: {message}")]
+    InvalidCassette {
+        /// Description of the cassette validation problem.
+        message: String,
+    },
+
+    /// The cassette uses a schema version this build does not support.
+    #[error("unsupported cassette format version {found}; supported version is {supported}")]
+    UnsupportedCassetteFormatVersion {
+        /// The version value found on disk.
+        found: u32,
+        /// The format version supported by this build.
+        supported: u32,
+    },
+
     /// A request to the upstream provider failed.
     #[error("upstream request failed")]
     UpstreamRequestFailed,
@@ -55,6 +71,7 @@ pub enum HarnessError {
     #[error("io failure")]
     Io {
         /// The underlying I/O error.
+        #[from]
         #[source]
         source: std::io::Error,
     },
@@ -79,6 +96,14 @@ mod tests {
     #[case::request_mismatch(
         HarnessError::RequestMismatch { interaction_id: 42 },
         "request mismatch at interaction 42",
+    )]
+    #[case::invalid_cassette(
+        HarnessError::InvalidCassette { message: "missing format_version".to_owned() },
+        "invalid cassette: missing format_version",
+    )]
+    #[case::unsupported_cassette_format(
+        HarnessError::UnsupportedCassetteFormatVersion { found: 2, supported: 1 },
+        "unsupported cassette format version 2; supported version is 1",
     )]
     #[case::upstream_failed(HarnessError::UpstreamRequestFailed, "upstream request failed")]
     #[case::io(
