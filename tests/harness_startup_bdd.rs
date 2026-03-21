@@ -6,10 +6,6 @@
     clippy::expect_used,
     reason = "BDD step functions use expect for step precondition enforcement"
 )]
-#![allow(
-    unused_variables,
-    reason = "rstest-bdd scenario macro introduces variables consumed by fixture resolution"
-)]
 
 use std::net::SocketAddr;
 
@@ -205,22 +201,30 @@ fn the_harness_address_is(harness_world: &HarnessWorld, addr: SocketAddr) {
     path = "tests/features/harness_startup.feature",
     name = "Start harness with valid configuration"
 )]
-fn start_harness_with_valid_configuration(harness_world: HarnessWorld) {}
+fn start_harness_with_valid_configuration(harness_world: HarnessWorld) {
+    let _ = harness_world;
+}
 
 #[scenario(
     path = "tests/features/harness_startup.feature",
     name = "Start harness with empty cassette name fails"
 )]
-fn start_harness_with_empty_cassette_name_fails(harness_world: HarnessWorld) {}
+fn start_harness_with_empty_cassette_name_fails(harness_world: HarnessWorld) {
+    let _ = harness_world;
+}
 
 #[scenario(
     path = "tests/features/harness_startup.feature",
     name = "Shutdown a running harness"
 )]
-fn shutdown_a_running_harness(harness_world: HarnessWorld) {}
+fn shutdown_a_running_harness(harness_world: HarnessWorld) {
+    let _ = harness_world;
+}
 
 #[scenario(
     path = "tests/features/harness_startup.feature",
     name = "Start harness preserves listen address"
 )]
-fn start_harness_preserves_listen_address(harness_world: HarnessWorld) {}
+fn start_harness_preserves_listen_address(harness_world: HarnessWorld) {
+    let _ = harness_world;
+}

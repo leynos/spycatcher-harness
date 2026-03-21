@@ -119,7 +119,7 @@ impl CassetteReader for FilesystemCassetteStore {
 
 impl CassetteAppender for FilesystemCassetteStore {
     fn append(&mut self, interaction: Interaction) -> HarnessResult<()> {
-        self.cassette.append(interaction.clone());
+        self.cassette.append(interaction);
         if let Err(error) = self.flush() {
             self.cassette.interactions.pop();
             return Err(error);
