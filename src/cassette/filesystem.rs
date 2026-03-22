@@ -133,14 +133,43 @@ impl CassetteAppender for FilesystemCassetteStore {
 /// This probes the same parent directory permissions used by append
 /// persistence so startup can fail early on read-only targets.
 pub(crate) fn probe_record_write_access(cassette_path: &Utf8Path) -> HarnessResult<()> {
+    use std::io::{Read, Write};
+
     let (parent_dir, file_name) = open_rooted_parent(cassette_path, true)?;
     let probe_name = format!("{}.startup-probe-{}.tmp", file_name, probe_suffix());
-    let probe_file = parent_dir.create(&probe_name);
+    let restore_name = format!("{}.startup-restore-{}.tmp", file_name, probe_suffix());
+    let original_contents = match parent_dir.open(&file_name) {
+        Ok(mut file) => {
+            let mut contents = Vec::new();
+            file.read_to_end(&mut contents)
+                .map_err(HarnessError::from)?;
+            Some(contents)
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
+        Err(error) => return Err(HarnessError::from(error)),
+    };
 
-    match probe_file {
+    match parent_dir.create(&probe_name) {
         Ok(file) => {
             drop(file);
-            parent_dir.remove_file(&probe_name)?;
+            if let Err(error) = parent_dir.rename(&probe_name, &parent_dir, &file_name) {
+                drop(parent_dir.remove_file(&probe_name));
+                return Err(HarnessError::from(error));
+            }
+            if let Some(contents) = original_contents {
+                let mut restore_file = parent_dir.create(&restore_name)?;
+                restore_file
+                    .write_all(&contents)
+                    .map_err(HarnessError::from)?;
+                restore_file.sync_all().map_err(HarnessError::from)?;
+                drop(restore_file);
+                if let Err(error) = parent_dir.rename(&restore_name, &parent_dir, &file_name) {
+                    drop(parent_dir.remove_file(&restore_name));
+                    return Err(HarnessError::from(error));
+                }
+            } else {
+                parent_dir.remove_file(&file_name)?;
+            }
             Ok(())
         }
         Err(error) => Err(HarnessError::from(error)),
@@ -232,13 +261,14 @@ mod tests {
     fn record_mode_creates_an_empty_versioned_cassette() {
         let cassette_path = unique_cassette_path("create");
 
-        let store = FilesystemCassetteStore::open_or_create_for_record(&cassette_path)
+        FilesystemCassetteStore::open_or_create_for_record(&cassette_path)
             .expect("record mode should create a missing cassette");
+        let persisted = FilesystemCassetteStore::open_for_replay(&cassette_path)
+            .expect("created cassette should reopen for replay")
+            .load()
+            .expect("persisted cassette should decode");
 
-        assert_eq!(
-            store.load().expect("created cassette should load"),
-            Cassette::new(),
-        );
+        assert_eq!(persisted, Cassette::new());
     }
 
     #[rstest]

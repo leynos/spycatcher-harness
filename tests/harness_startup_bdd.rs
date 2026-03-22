@@ -152,7 +152,7 @@ fn the_cassette_path_matches_the_configured_directory_and_name(harness_world: &H
         .expect("expected_cassette_path must be set");
     assert_eq!(
         path, expected,
-        "cassette path should join default dir and name",
+        "cassette path should match the configured test directory and cassette name",
     );
 }
 
