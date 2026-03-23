@@ -93,7 +93,6 @@ impl FilesystemCassetteStore {
         }
         Ok(())
     }
-
     fn flush(&mut self) -> HarnessResult<()> {
         let temp_name = format!("{}.tmp", self.file_name);
         let mut temp_file = self.parent_dir.create(&temp_name)?;
@@ -138,7 +137,9 @@ fn restore_original_contents(
 ) -> HarnessResult<()> {
     use std::io::Write;
     let mut restore_file = parent_dir.create(restore_name)?;
-    restore_file.write_all(contents).map_err(HarnessError::from)?;
+    restore_file
+        .write_all(contents)
+        .map_err(HarnessError::from)?;
     restore_file.sync_all().map_err(HarnessError::from)?;
     drop(restore_file);
     if let Err(error) = parent_dir.rename(restore_name, parent_dir, file_name) {
@@ -171,10 +172,10 @@ fn commit_probe(
         return Err(HarnessError::from(error));
     }
     match original_contents {
-        Some(contents) => {
-            restore_original_contents(parent_dir, restore_name, file_name, &contents)
-        }
-        None => parent_dir.remove_file(file_name).map_err(HarnessError::from),
+        Some(contents) => restore_original_contents(parent_dir, restore_name, file_name, &contents),
+        None => parent_dir
+            .remove_file(file_name)
+            .map_err(HarnessError::from),
     }
 }
 
@@ -190,7 +191,8 @@ pub(crate) fn probe_record_write_access(cassette_path: &Utf8Path) -> HarnessResu
     let original_contents = match parent_dir.open(&file_name) {
         Ok(mut file) => {
             let mut contents = Vec::new();
-            file.read_to_end(&mut contents).map_err(HarnessError::from)?;
+            file.read_to_end(&mut contents)
+                .map_err(HarnessError::from)?;
             Some(contents)
         }
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
@@ -199,7 +201,13 @@ pub(crate) fn probe_record_write_access(cassette_path: &Utf8Path) -> HarnessResu
     match parent_dir.create(&probe_name) {
         Ok(file) => {
             drop(file);
-            commit_probe(&parent_dir, &probe_name, &file_name, &restore_name, original_contents)
+            commit_probe(
+                &parent_dir,
+                &probe_name,
+                &file_name,
+                &restore_name,
+                original_contents,
+            )
         }
         Err(error) => Err(HarnessError::from(error)),
     }
@@ -248,7 +256,6 @@ fn cassette_name(cassette_path: &Utf8Path) -> HarnessResult<String> {
             message: "cassette name must not be empty".to_owned(),
         })
 }
-
 fn probe_suffix() -> u128 {
     use std::collections::hash_map::DefaultHasher;
     use std::hash::{Hash, Hasher};
@@ -267,21 +274,17 @@ fn probe_suffix() -> u128 {
 
 #[cfg(test)]
 mod tests {
-    //! Unit tests for the filesystem cassette adapter.
-
+    //! Filesystem cassette adapter tests.
     use super::*;
-    use std::sync::atomic::{AtomicUsize, Ordering};
-
-    use camino::Utf8PathBuf;
-    use rstest::rstest;
-    use serde_json::json;
-    use uuid::Uuid;
-
     use crate::HarnessError;
     use crate::cassette::{
         InteractionMetadata, RecordedRequest, RecordedResponse, StreamEvent, StreamTiming,
     };
-
+    use camino::Utf8PathBuf;
+    use rstest::rstest;
+    use serde_json::json;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use uuid::Uuid;
     static NEXT_TEST_DIR: AtomicUsize = AtomicUsize::new(1);
 
     #[rstest]
@@ -319,7 +322,9 @@ mod tests {
         let mut store = FilesystemCassetteStore::open_or_create_for_record(&cassette_path)
             .expect("record mode should create cassette");
         store.cassette.format_version = crate::cassette::CassetteFormatVersion::from(99);
-        store.flush().expect("writing unsupported cassette should succeed");
+        store
+            .flush()
+            .expect("writing unsupported cassette should succeed");
         let error = FilesystemCassetteStore::open_for_replay(&cassette_path)
             .expect_err("unsupported cassette version should fail");
         assert!(matches!(
@@ -353,7 +358,6 @@ mod tests {
         let uuid = Uuid::new_v4();
         Utf8PathBuf::from(format!("target/test-cassettes/{name}-{index}-{uuid}.json"))
     }
-
     fn sample_interaction(content: &str) -> Interaction {
         Interaction {
             request: RecordedRequest {
