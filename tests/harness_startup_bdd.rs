@@ -6,13 +6,10 @@
     clippy::expect_used,
     reason = "BDD step functions use expect for step precondition enforcement"
 )]
-#![allow(
-    unused_variables,
-    reason = "rstest-bdd scenario macro introduces variables consumed by fixture resolution"
-)]
 
 use std::net::SocketAddr;
 
+use camino::Utf8PathBuf;
 use rstest::fixture;
 use rstest_bdd::Slot;
 use rstest_bdd_macros::{ScenarioState, given, scenario, then, when};
@@ -22,15 +19,29 @@ use spycatcher_harness::{
     HarnessConfig, HarnessError, HarnessResult, RunningHarness, start_harness,
 };
 
+#[path = "support/bdd_fixtures.rs"]
+mod bdd_fixtures;
+#[path = "support/test_utils.rs"]
+mod test_utils;
+
+use bdd_fixtures::unique_cassette_name;
+use test_utils::build_runtime;
+
 // -- Helpers ----------------------------------------------------------------
 
-/// Builds a single-threaded Tokio runtime for use in synchronous BDD
-/// step functions.
-fn build_runtime() -> tokio::runtime::Runtime {
-    tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()
-        .expect("failed to build tokio runtime")
+fn make_record_config(prefix: &str, listen: Option<ListenAddr>) -> (HarnessConfig, Utf8PathBuf) {
+    let cassette_name = unique_cassette_name(prefix);
+    let cassette_dir = Utf8PathBuf::from("target/test-harness-bdd");
+    let expected_cassette_path = cassette_dir.join(&cassette_name);
+    let cfg = HarnessConfig {
+        listen: listen.unwrap_or_default(),
+        mode: spycatcher_harness::config::Mode::Record,
+        cassette_dir,
+        cassette_name,
+        upstream: Some(spycatcher_harness::config::UpstreamConfig::default()),
+        ..HarnessConfig::default()
+    };
+    (cfg, expected_cassette_path)
 }
 
 // -- World fixture ----------------------------------------------------------
@@ -40,6 +51,7 @@ struct HarnessWorld {
     config: Slot<HarnessConfig>,
     start_result: Slot<HarnessResult<RunningHarness>>,
     shutdown_result: Slot<HarnessResult<()>>,
+    expected_cassette_path: Slot<Utf8PathBuf>,
 }
 
 #[fixture]
@@ -51,7 +63,11 @@ fn harness_world() -> HarnessWorld {
 
 #[given("a valid harness configuration")]
 fn a_valid_harness_configuration(harness_world: &HarnessWorld) {
-    harness_world.config.set(HarnessConfig::default());
+    let (cfg, expected_cassette_path) = make_record_config("valid", None);
+    harness_world
+        .expected_cassette_path
+        .set(expected_cassette_path);
+    harness_world.config.set(cfg);
 }
 
 #[given("a harness configuration with an empty cassette name")]
@@ -76,10 +92,10 @@ fn the_harness_has_been_started(harness_world: &HarnessWorld) {
 
 #[given("a harness configuration with listen address {addr}")]
 fn a_harness_configuration_with_listen_address(harness_world: &HarnessWorld, addr: SocketAddr) {
-    let cfg = HarnessConfig {
-        listen: ListenAddr::from(addr),
-        ..HarnessConfig::default()
-    };
+    let (cfg, expected_cassette_path) = make_record_config("listen", Some(ListenAddr::from(addr)));
+    harness_world
+        .expected_cassette_path
+        .set(expected_cassette_path);
     harness_world.config.set(cfg);
 }
 
@@ -130,10 +146,13 @@ fn the_cassette_path_matches_the_configured_directory_and_name(harness_world: &H
                 .clone()
         })
         .expect("start_result must be set");
+    let expected = harness_world
+        .expected_cassette_path
+        .with_ref(Utf8PathBuf::clone)
+        .expect("expected_cassette_path must be set");
     assert_eq!(
-        path.as_str(),
-        "fixtures/llm/default",
-        "cassette path should join default dir and name",
+        path, expected,
+        "cassette path should match the configured test directory and cassette name",
     );
 }
 
@@ -182,22 +201,30 @@ fn the_harness_address_is(harness_world: &HarnessWorld, addr: SocketAddr) {
     path = "tests/features/harness_startup.feature",
     name = "Start harness with valid configuration"
 )]
-fn start_harness_with_valid_configuration(harness_world: HarnessWorld) {}
+fn start_harness_with_valid_configuration(harness_world: HarnessWorld) {
+    let _ = harness_world;
+}
 
 #[scenario(
     path = "tests/features/harness_startup.feature",
     name = "Start harness with empty cassette name fails"
 )]
-fn start_harness_with_empty_cassette_name_fails(harness_world: HarnessWorld) {}
+fn start_harness_with_empty_cassette_name_fails(harness_world: HarnessWorld) {
+    let _ = harness_world;
+}
 
 #[scenario(
     path = "tests/features/harness_startup.feature",
     name = "Shutdown a running harness"
 )]
-fn shutdown_a_running_harness(harness_world: HarnessWorld) {}
+fn shutdown_a_running_harness(harness_world: HarnessWorld) {
+    let _ = harness_world;
+}
 
 #[scenario(
     path = "tests/features/harness_startup.feature",
     name = "Start harness preserves listen address"
 )]
-fn start_harness_preserves_listen_address(harness_world: HarnessWorld) {}
+fn start_harness_preserves_listen_address(harness_world: HarnessWorld) {
+    let _ = harness_world;
+}
