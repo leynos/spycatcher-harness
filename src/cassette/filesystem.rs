@@ -128,53 +128,54 @@ impl CassetteAppender for FilesystemCassetteStore {
     }
 }
 
+/// Names of the files involved in a single write-access probe.
+struct ProbeNames<'a> {
+    probe: &'a str,
+    target: &'a str,
+    restore: &'a str,
+}
+
 /// Writes `contents` back to `file_name` via an atomic rename through
 /// `restore_name`. Cleans up `restore_name` on rename failure.
 fn restore_original_contents(
     parent_dir: &Dir,
-    restore_name: &str,
-    file_name: &str,
+    names: &ProbeNames<'_>,
     contents: &[u8],
 ) -> HarnessResult<()> {
     use std::io::Write;
-    let mut restore_file = parent_dir.create(restore_name)?;
+    let mut restore_file = parent_dir.create(names.restore)?;
     restore_file
         .write_all(contents)
         .map_err(HarnessError::from)?;
     restore_file.sync_all().map_err(HarnessError::from)?;
     drop(restore_file);
-    if let Err(error) = parent_dir.rename(restore_name, parent_dir, file_name) {
-        drop(parent_dir.remove_file(restore_name));
+    if let Err(error) = parent_dir.rename(names.restore, parent_dir, names.target) {
+        drop(parent_dir.remove_file(names.restore));
         return Err(HarnessError::from(error));
     }
     Ok(())
 }
+
 /// Renames the probe file over `file_name`, then either restores the
 /// original contents or removes the target. Cleans up the probe on
 /// rename failure.
-#[expect(
-    clippy::too_many_arguments,
-    reason = "helper exists solely to reduce nesting depth; all parameters are necessary"
-)]
 #[expect(
     clippy::option_if_let_else,
     reason = "map_or_else with closures increases cognitive load compared to explicit match"
 )]
 fn commit_probe(
     parent_dir: &Dir,
-    probe_name: &str,
-    file_name: &str,
-    restore_name: &str,
+    names: &ProbeNames<'_>,
     original_contents: Option<Vec<u8>>,
 ) -> HarnessResult<()> {
-    if let Err(error) = parent_dir.rename(probe_name, parent_dir, file_name) {
-        drop(parent_dir.remove_file(probe_name));
+    if let Err(error) = parent_dir.rename(names.probe, parent_dir, names.target) {
+        drop(parent_dir.remove_file(names.probe));
         return Err(HarnessError::from(error));
     }
     match original_contents {
-        Some(contents) => restore_original_contents(parent_dir, restore_name, file_name, &contents),
+        Some(contents) => restore_original_contents(parent_dir, names, &contents),
         None => parent_dir
-            .remove_file(file_name)
+            .remove_file(names.target)
             .map_err(HarnessError::from),
     }
 }
@@ -188,7 +189,12 @@ pub(crate) fn probe_record_write_access(cassette_path: &Utf8Path) -> HarnessResu
     let (parent_dir, file_name) = open_rooted_parent(cassette_path, true)?;
     let probe_name = format!("{}.startup-probe-{}.tmp", file_name, probe_suffix());
     let restore_name = format!("{}.startup-restore-{}.tmp", file_name, probe_suffix());
-    let original_contents = match parent_dir.open(&file_name) {
+    let names = ProbeNames {
+        probe: &probe_name,
+        target: &file_name,
+        restore: &restore_name,
+    };
+    let original_contents = match parent_dir.open(names.target) {
         Ok(mut file) => {
             let mut contents = Vec::new();
             file.read_to_end(&mut contents)
@@ -198,16 +204,10 @@ pub(crate) fn probe_record_write_access(cassette_path: &Utf8Path) -> HarnessResu
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
         Err(error) => return Err(HarnessError::from(error)),
     };
-    match parent_dir.create(&probe_name) {
+    match parent_dir.create(names.probe) {
         Ok(file) => {
             drop(file);
-            commit_probe(
-                &parent_dir,
-                &probe_name,
-                &file_name,
-                &restore_name,
-                original_contents,
-            )
+            commit_probe(&parent_dir, &names, original_contents)
         }
         Err(error) => Err(HarnessError::from(error)),
     }
