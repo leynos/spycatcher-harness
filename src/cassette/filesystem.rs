@@ -20,6 +20,18 @@ pub(crate) struct FilesystemCassetteStore {
 impl FilesystemCassetteStore {
     /// Opens an existing cassette for replay using read-only access.
     ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// use camino::Utf8Path;
+    /// use spycatcher_harness::cassette::filesystem::FilesystemCassetteStore;
+    ///
+    /// let store = FilesystemCassetteStore::open_for_replay(
+    ///     Utf8Path::new("cassettes/my_test.json")
+    /// )?;
+    /// # Ok::<(), spycatcher_harness::HarnessError>(())
+    /// ```
+    ///
     /// # Errors
     ///
     /// Returns a harness error when the cassette cannot be opened or decoded.
@@ -28,6 +40,18 @@ impl FilesystemCassetteStore {
     }
 
     /// Opens an existing cassette for record mode, or creates an empty one.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// use camino::Utf8Path;
+    /// use spycatcher_harness::cassette::filesystem::FilesystemCassetteStore;
+    ///
+    /// let store = FilesystemCassetteStore::open_or_create_for_record(
+    ///     Utf8Path::new("cassettes/my_test.json")
+    /// )?;
+    /// # Ok::<(), spycatcher_harness::HarnessError>(())
+    /// ```
     ///
     /// # Errors
     ///
@@ -95,7 +119,15 @@ impl FilesystemCassetteStore {
     }
     fn flush(&mut self) -> HarnessResult<()> {
         let temp_name = format!("{}.tmp", self.file_name);
+        let permissions = self
+            .parent_dir
+            .metadata(&self.file_name)
+            .ok()
+            .map(|m| m.permissions());
         let mut temp_file = self.parent_dir.create(&temp_name)?;
+        if let Some(perms) = permissions {
+            temp_file.set_permissions(perms)?;
+        }
         let write_result = self
             .cassette
             .write_to(&mut temp_file)
@@ -128,89 +160,23 @@ impl CassetteAppender for FilesystemCassetteStore {
     }
 }
 
-/// Names of the files involved in a single write-access probe.
-struct ProbeNames<'a> {
-    probe: &'a str,
-    target: &'a str,
-    restore: &'a str,
-}
-
-/// Writes `contents` back to `file_name` via an atomic rename through
-/// `restore_name`. Cleans up `restore_name` on rename failure.
-fn restore_original_contents(
-    parent_dir: &Dir,
-    names: &ProbeNames<'_>,
-    contents: &[u8],
-) -> HarnessResult<()> {
-    use std::io::Write;
-    let mut restore_file = parent_dir.create(names.restore)?;
-    restore_file
-        .write_all(contents)
-        .map_err(HarnessError::from)?;
-    restore_file.sync_all().map_err(HarnessError::from)?;
-    drop(restore_file);
-    if let Err(error) = parent_dir.rename(names.restore, parent_dir, names.target) {
-        drop(parent_dir.remove_file(names.restore));
-        return Err(HarnessError::from(error));
-    }
-    Ok(())
-}
-
-/// Renames the probe file over `file_name`, then either restores the
-/// original contents or removes the target. Cleans up the probe on
-/// rename failure.
-#[expect(
-    clippy::option_if_let_else,
-    reason = "map_or_else with closures increases cognitive load compared to explicit match"
-)]
-fn commit_probe(
-    parent_dir: &Dir,
-    names: &ProbeNames<'_>,
-    original_contents: Option<Vec<u8>>,
-) -> HarnessResult<()> {
-    if let Err(error) = parent_dir.rename(names.probe, parent_dir, names.target) {
-        drop(parent_dir.remove_file(names.probe));
-        return Err(HarnessError::from(error));
-    }
-    match original_contents {
-        Some(contents) => restore_original_contents(parent_dir, names, &contents),
-        None => parent_dir
-            .remove_file(names.target)
-            .map_err(HarnessError::from),
-    }
-}
-
 /// Verifies that record mode can create and remove sibling files.
 ///
 /// This probes the same parent directory permissions used by append
 /// persistence so startup can fail early on read-only targets.
+///
+/// # Examples
+///
+/// ```ignore
+/// use camino::Utf8Path;
+/// use spycatcher_harness::cassette::filesystem::probe_record_write_access;
+///
+/// probe_record_write_access(Utf8Path::new("cassettes/my_test.json"))?;
+/// # Ok::<(), spycatcher_harness::HarnessError>(())
+/// ```
 pub(crate) fn probe_record_write_access(cassette_path: &Utf8Path) -> HarnessResult<()> {
-    use std::io::Read;
-    let (parent_dir, file_name) = open_rooted_parent(cassette_path, true)?;
-    let probe_name = format!("{}.startup-probe-{}.tmp", file_name, probe_suffix());
-    let restore_name = format!("{}.startup-restore-{}.tmp", file_name, probe_suffix());
-    let names = ProbeNames {
-        probe: &probe_name,
-        target: &file_name,
-        restore: &restore_name,
-    };
-    let original_contents = match parent_dir.open(names.target) {
-        Ok(mut file) => {
-            let mut contents = Vec::new();
-            file.read_to_end(&mut contents)
-                .map_err(HarnessError::from)?;
-            Some(contents)
-        }
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
-        Err(error) => return Err(HarnessError::from(error)),
-    };
-    match parent_dir.create(names.probe) {
-        Ok(file) => {
-            drop(file);
-            commit_probe(&parent_dir, &names, original_contents)
-        }
-        Err(error) => Err(HarnessError::from(error)),
-    }
+    let mut store = FilesystemCassetteStore::open_or_create_for_record(cassette_path)?;
+    store.flush()
 }
 
 /// Returns `true` when `path` refers to the current directory and therefore
@@ -256,22 +222,6 @@ fn cassette_name(cassette_path: &Utf8Path) -> HarnessResult<String> {
             message: "cassette name must not be empty".to_owned(),
         })
 }
-fn probe_suffix() -> u128 {
-    use std::collections::hash_map::DefaultHasher;
-    use std::hash::{Hash, Hasher};
-    use std::thread;
-    use std::time::{SystemTime, UNIX_EPOCH};
-    let timestamp = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_nanos();
-    let pid = u128::from(std::process::id());
-    let mut thread_hasher = DefaultHasher::new();
-    thread::current().id().hash(&mut thread_hasher);
-    let thread = u128::from(thread_hasher.finish());
-    timestamp ^ (pid << 64) ^ thread
-}
-
 #[cfg(test)]
 mod tests {
     //! Filesystem cassette adapter tests.
