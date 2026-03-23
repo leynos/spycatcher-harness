@@ -128,49 +128,78 @@ impl CassetteAppender for FilesystemCassetteStore {
     }
 }
 
+/// Writes `contents` back to `file_name` via an atomic rename through
+/// `restore_name`. Cleans up `restore_name` on rename failure.
+fn restore_original_contents(
+    parent_dir: &Dir,
+    restore_name: &str,
+    file_name: &str,
+    contents: &[u8],
+) -> HarnessResult<()> {
+    use std::io::Write;
+    let mut restore_file = parent_dir.create(restore_name)?;
+    restore_file.write_all(contents).map_err(HarnessError::from)?;
+    restore_file.sync_all().map_err(HarnessError::from)?;
+    drop(restore_file);
+    if let Err(error) = parent_dir.rename(restore_name, parent_dir, file_name) {
+        drop(parent_dir.remove_file(restore_name));
+        return Err(HarnessError::from(error));
+    }
+    Ok(())
+}
+
+/// Renames the probe file over `file_name`, then either restores the
+/// original contents or removes the target. Cleans up the probe on
+/// rename failure.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "helper exists solely to reduce nesting depth; all parameters are necessary"
+)]
+#[expect(
+    clippy::option_if_let_else,
+    reason = "map_or_else with closures increases cognitive load compared to explicit match"
+)]
+fn commit_probe(
+    parent_dir: &Dir,
+    probe_name: &str,
+    file_name: &str,
+    restore_name: &str,
+    original_contents: Option<Vec<u8>>,
+) -> HarnessResult<()> {
+    if let Err(error) = parent_dir.rename(probe_name, parent_dir, file_name) {
+        drop(parent_dir.remove_file(probe_name));
+        return Err(HarnessError::from(error));
+    }
+    match original_contents {
+        Some(contents) => {
+            restore_original_contents(parent_dir, restore_name, file_name, &contents)
+        }
+        None => parent_dir.remove_file(file_name).map_err(HarnessError::from),
+    }
+}
+
 /// Verifies that record mode can create and remove sibling files.
 ///
 /// This probes the same parent directory permissions used by append
 /// persistence so startup can fail early on read-only targets.
 pub(crate) fn probe_record_write_access(cassette_path: &Utf8Path) -> HarnessResult<()> {
-    use std::io::{Read, Write};
-
+    use std::io::Read;
     let (parent_dir, file_name) = open_rooted_parent(cassette_path, true)?;
     let probe_name = format!("{}.startup-probe-{}.tmp", file_name, probe_suffix());
     let restore_name = format!("{}.startup-restore-{}.tmp", file_name, probe_suffix());
     let original_contents = match parent_dir.open(&file_name) {
         Ok(mut file) => {
             let mut contents = Vec::new();
-            file.read_to_end(&mut contents)
-                .map_err(HarnessError::from)?;
+            file.read_to_end(&mut contents).map_err(HarnessError::from)?;
             Some(contents)
         }
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
         Err(error) => return Err(HarnessError::from(error)),
     };
-
     match parent_dir.create(&probe_name) {
         Ok(file) => {
             drop(file);
-            if let Err(error) = parent_dir.rename(&probe_name, &parent_dir, &file_name) {
-                drop(parent_dir.remove_file(&probe_name));
-                return Err(HarnessError::from(error));
-            }
-            if let Some(contents) = original_contents {
-                let mut restore_file = parent_dir.create(&restore_name)?;
-                restore_file
-                    .write_all(&contents)
-                    .map_err(HarnessError::from)?;
-                restore_file.sync_all().map_err(HarnessError::from)?;
-                drop(restore_file);
-                if let Err(error) = parent_dir.rename(&restore_name, &parent_dir, &file_name) {
-                    drop(parent_dir.remove_file(&restore_name));
-                    return Err(HarnessError::from(error));
-                }
-            } else {
-                parent_dir.remove_file(&file_name)?;
-            }
-            Ok(())
+            commit_probe(&parent_dir, &probe_name, &file_name, &restore_name, original_contents)
         }
         Err(error) => Err(HarnessError::from(error)),
     }
@@ -225,7 +254,6 @@ fn probe_suffix() -> u128 {
     use std::hash::{Hash, Hasher};
     use std::thread;
     use std::time::{SystemTime, UNIX_EPOCH};
-
     let timestamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
@@ -234,7 +262,6 @@ fn probe_suffix() -> u128 {
     let mut thread_hasher = DefaultHasher::new();
     thread::current().id().hash(&mut thread_hasher);
     let thread = u128::from(thread_hasher.finish());
-
     timestamp ^ (pid << 64) ^ thread
 }
 
@@ -260,14 +287,12 @@ mod tests {
     #[rstest]
     fn record_mode_creates_an_empty_versioned_cassette() {
         let cassette_path = unique_cassette_path("create");
-
         FilesystemCassetteStore::open_or_create_for_record(&cassette_path)
             .expect("record mode should create a missing cassette");
         let persisted = FilesystemCassetteStore::open_for_replay(&cassette_path)
             .expect("created cassette should reopen for replay")
             .load()
             .expect("persisted cassette should decode");
-
         assert_eq!(persisted, Cassette::new());
     }
 
@@ -278,15 +303,12 @@ mod tests {
             .expect("record mode should open cassette");
         let first = sample_interaction("first");
         let second = sample_interaction("second");
-
         CassetteAppender::append(&mut store, first.clone()).expect("first append should succeed");
         CassetteAppender::append(&mut store, second.clone()).expect("second append should succeed");
-
         let reloaded = FilesystemCassetteStore::open_for_replay(&cassette_path)
             .expect("replay load should succeed")
             .load()
             .expect("reloaded cassette should decode");
-
         assert_eq!(reloaded.interactions, vec![first, second]);
     }
 
@@ -297,13 +319,9 @@ mod tests {
         let mut store = FilesystemCassetteStore::open_or_create_for_record(&cassette_path)
             .expect("record mode should create cassette");
         store.cassette.format_version = crate::cassette::CassetteFormatVersion::from(99);
-        store
-            .flush()
-            .expect("writing unsupported cassette should succeed");
-
+        store.flush().expect("writing unsupported cassette should succeed");
         let error = FilesystemCassetteStore::open_for_replay(&cassette_path)
             .expect_err("unsupported cassette version should fail");
-
         assert!(matches!(
             error,
             HarnessError::UnsupportedCassetteFormatVersion {
@@ -321,10 +339,8 @@ mod tests {
             .file_name()
             .expect("generated cassette path should include a file name")
             .to_owned();
-
         let error = FilesystemCassetteStore::open_for_replay(&cassette_path)
             .expect_err("missing cassette should fail");
-
         assert!(matches!(
             error,
             HarnessError::CassetteNotFound { cassette_name }
