@@ -104,6 +104,7 @@ impl FilesystemCassetteStore {
             drop(self.parent_dir.remove_file(&temp_name));
             return Err(error);
         }
+        drop(temp_file);
         self.parent_dir
             .rename(&temp_name, &self.parent_dir, &self.file_name)?;
         Ok(())
@@ -148,7 +149,6 @@ fn restore_original_contents(
     }
     Ok(())
 }
-
 /// Renames the probe file over `file_name`, then either restores the
 /// original contents or removes the target. Cleans up the probe on
 /// rename failure.
