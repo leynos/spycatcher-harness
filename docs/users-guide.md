@@ -70,6 +70,58 @@ Replay startup expectations:
   implicit `.json` suffix.
 - The stored cassette must use the currently supported `format_version`.
 
+### Canonical request hashing
+
+The cassette module exposes deterministic canonicalization helpers for replay
+matching and diagnostics:
+
+```rust
+use serde_json::json;
+use spycatcher_harness::cassette::{
+    IgnorePathConfig, RecordedRequest, canonicalize, stable_hash,
+};
+
+let request = RecordedRequest {
+    method: "post".to_owned(),
+    path: "/v1/chat/completions".to_owned(),
+    query: "b=2&a=1".to_owned(),
+    headers: Vec::new(),
+    body: br#"{"metadata":{"run_id":"42"},"model":"gpt-test"}"#.to_vec(),
+    parsed_json: Some(json!({
+        "metadata": {"run_id": "42"},
+        "model": "gpt-test"
+    })),
+    canonical_request: None,
+    stable_hash: None,
+};
+
+let ignore_paths = IgnorePathConfig {
+    ignored_body_paths: vec!["/metadata/run_id".to_owned()],
+};
+let canonical = canonicalize(&request, &ignore_paths);
+let hash = stable_hash(&canonical);
+
+assert_eq!(canonical.method, "POST");
+assert_eq!(canonical.canonical_query, "a=1&b=2");
+assert_eq!(hash.len(), 64);
+```
+
+Canonicalization rules:
+
+- Methods are uppercased before hashing.
+- Query parameters are parsed, sorted by key then value, and re-encoded.
+- JSON bodies are compacted with object keys sorted recursively.
+- Ignore paths use JSON Pointer syntax (RFC 6901), for example
+  `/metadata/run_id`.
+- Non-JSON bodies keep `canonical_body` as `None`; the stable hash is then
+  derived from the method, path, and canonical query only.
+
+`RecordedRequest::populate_canonical_fields(&IgnorePathConfig)` fills the
+reserved `canonical_request` and `stable_hash` fields in-place. This is the
+current public configuration surface for ignore paths; `HarnessConfig` remains
+source-compatible in this release, so canonicalization configuration is not yet
+threaded through harness startup.
+
 ### Error handling
 
 All public API functions return `HarnessResult<T>`, which is an alias for

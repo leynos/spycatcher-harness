@@ -5,7 +5,7 @@ This ExecPlan (execution plan) is a living document. The sections
 `Decision Log`, and `Outcomes & Retrospective` must be kept up to date as work
 proceeds.
 
-Status: DRAFT
+Status: COMPLETE
 
 ## Purpose / big picture
 
@@ -20,14 +20,14 @@ replay matching (task `1.2.3`) and mismatch diagnostics (task `2.2.2`).
 Observable success after delivery:
 
 - Calling `canonicalize(&request, &ignore_paths)` produces a
-  `CanonicalRequest` value that normalizes query parameters (sorted by
-  key then value), normalizes JSON key ordering and whitespace, and drops
-  configured ignore paths.
+  `CanonicalRequest` value that normalizes query parameters (sorted by key then
+  value), normalizes JSON key ordering and whitespace, and drops configured
+  ignore paths.
 - Calling `stable_hash(&canonical_request)` produces a hex-encoded SHA-256
   string.
 - Two `RecordedRequest` values that differ only in JSON key ordering,
-  insignificant whitespace, query parameter ordering, or ignored metadata
-  paths produce identical hashes.
+  insignificant whitespace, query parameter ordering, or ignored metadata paths
+  produce identical hashes.
 - Two `RecordedRequest` values that differ in method, path, non-ignored JSON
   fields, or non-ignored query parameters produce different hashes.
 - The `canonical_request` and `stable_hash` fields on `RecordedRequest`
@@ -74,9 +74,9 @@ Observable success after delivery:
   `start_harness`, `RunningHarness::shutdown`, or the types of the reserved
   `canonical_request` / `stable_hash` fields, stop and escalate.
 - Dependencies: if more than two new crates are needed beyond `sha2` (for
-  SHA-256) and `hex` (or equivalent for hex encoding), stop and escalate.
-  Note: `sha2` may bundle hex encoding via its `Digest` trait, reducing
-  this to one new crate.
+  SHA-256) and `hex` (or equivalent for hex encoding), stop and escalate. Note:
+  `sha2` may bundle hex encoding via its `Digest` trait, reducing this to one
+  new crate.
 - Iteration: if `make lint` or `make test` still fails after five repair
   cycles, stop and escalate with the failing evidence.
 - Ambiguity: if the ignore-path semantics are unclear (for example, whether
@@ -86,9 +86,9 @@ Observable success after delivery:
 ## Risks
 
 - Risk: the `sha2` crate may trigger new Clippy warnings under the project's
-  strict lint configuration. Severity: low. Likelihood: medium. Mitigation:
-  pin a recent stable version of `sha2` and check `make lint` immediately
-  after adding the dependency.
+  strict lint configuration. Severity: low. Likelihood: medium. Mitigation: pin
+  a recent stable version of `sha2` and check `make lint` immediately after
+  adding the dependency.
 
 - Risk: canonical JSON serialization using `serde_json` may not produce
   deterministic output for all `Value` variants (for example, floating-point
@@ -110,19 +110,42 @@ Observable success after delivery:
 
 ## Progress
 
-- [ ] Drafted ExecPlan for roadmap task `1.2.2`.
+- [x] Drafted ExecPlan for roadmap task `1.2.2`.
+- [x] Added `sha2` and implemented pure canonicalization and hashing in
+      `src/cassette/canonical.rs` with private helper submodules.
+- [x] Added `RecordedRequest::populate_canonical_fields` so callers can fill
+      the reserved cassette fields without adapter dependencies.
+- [x] Added unit coverage for canonical query ordering, JSON key sorting,
+      ignore-path removal, stable hashes, and non-JSON request bodies.
+- [x] Added BDD coverage for equivalent requests, divergent requests, and
+      ignore-path stability.
+- [x] Updated the design document, user guide, and roadmap.
 
 ## Surprises & discoveries
 
-(None yet.)
+- Adding ignore-path fields to `HarnessConfig` or `ReplayConfig` would break
+  source compatibility for external callers constructing those public structs
+  with struct literals. The implementation therefore exposes ignore-path
+  configuration through the additive `IgnorePathConfig` domain type in this
+  task and leaves harness-startup threading for follow-on work.
 
 ## Decision log
 
-(None yet.)
+- Chose a hand-rolled query parser/encoder instead of the `url` crate to keep
+  the dependency graph narrow and avoid the heavy `idna`/ICU stack for this
+  pure canonicalization feature.
+- Kept canonicalization as pure domain logic under `src/cassette/` and did
+  not thread configuration through startup yet because public struct
+  compatibility outweighed the planned config expansion.
 
 ## Outcomes & retrospective
 
-(To be completed upon delivery.)
+- Delivery adds deterministic request canonicalization and SHA-256 hashing to
+  the cassette domain API without changing the existing harness startup API.
+- `IgnorePathConfig` is the public configuration surface for ignored JSON
+  paths in this release.
+- The implementation supports JSON Pointer removal for nested object paths and
+  numeric array indices.
 
 ## Context and orientation
 
@@ -135,9 +158,9 @@ Key files and their roles:
 
 - `src/cassette/mod.rs` (289 lines) — defines the cassette domain model:
   `Cassette`, `CassetteFormatVersion`, `Interaction`, `RecordedRequest`,
-  `RecordedResponse`, `StreamEvent`, `StreamTiming`, `InteractionMetadata`,
-  and the `CassetteReader`/`CassetteAppender` trait ports. The
-  `RecordedRequest` type already has two reserved `Option` fields:
+  `RecordedResponse`, `StreamEvent`, `StreamTiming`, `InteractionMetadata`, and
+  the `CassetteReader`/`CassetteAppender` trait ports. The `RecordedRequest`
+  type already has two reserved `Option` fields:
   `canonical_request: Option<Value>` and `stable_hash: Option<String>`.
 
 - `src/cassette/filesystem.rs` (351 lines) — filesystem adapter implementing
@@ -202,8 +225,8 @@ canonicalization pipeline:
 
 ### Stage A: add the `sha2` dependency and verify lint compatibility
 
-Add `sha2` to `[dependencies]` in `Cargo.toml`. Run `make lint` to verify
-that the new dependency does not introduce Clippy warnings under the project's
+Add `sha2` to `[dependencies]` in `Cargo.toml`. Run `make lint` to verify that
+the new dependency does not introduce Clippy warnings under the project's
 strict lint profile. If `sha2` bundles hex encoding (via the `Digest` trait's
 `finalize` returning a `GenericArray` that can be hex-formatted), no separate
 `hex` crate is needed; otherwise add `hex` as well.
@@ -254,9 +277,8 @@ pub struct CanonicalRequest {
 
 Define the following functions:
 
-- `canonicalize(request: &RecordedRequest, ignore_config: &IgnorePathConfig)
-  -> CanonicalRequest` — produces a canonical request by normalizing the query
-  string and the parsed JSON body.
+- `canonicalize(...)` returns a `CanonicalRequest` by normalizing the query
+  string and parsed JSON body.
 - `stable_hash(canonical: &CanonicalRequest) -> String` — produces a
   hex-encoded SHA-256 hash over a deterministic byte representation of the
   canonical request.
@@ -266,12 +288,11 @@ Internal helpers (private):
 - `canonicalize_query(raw_query: &str) -> String` — parses query pairs, sorts
   by key then value, re-encodes.
 - `normalize_json(value: &Value, ignore_paths: &[String]) -> Option<Value>` —
-  deep-clones a `serde_json::Value`, removes paths listed in
-  `ignore_paths`, and returns the result. Returns `None` if the input is
-  `None`.
+  deep-clones a `serde_json::Value`, removes paths listed in `ignore_paths`,
+  and returns the result. Returns `None` if the input is `None`.
 - `canonical_json_bytes(value: &Value) -> Vec<u8>` — serializes a
-  `serde_json::Value` with sorted keys and stable formatting. This is the
-  byte representation used in the hash input.
+  `serde_json::Value` with sorted keys and stable formatting. This is the byte
+  representation used in the hash input.
 - `remove_json_pointer(value: &mut Value, pointer: &str)` — removes a single
   JSON Pointer path from a mutable `Value`.
 
@@ -281,13 +302,11 @@ The hash input byte string is the concatenation of:
 method + "\n" + path + "\n" + canonical_query + "\n" + canonical_json_bytes
 ```
 
-When `canonical_body` is `None` (non-JSON request), the
-`canonical_json_bytes` component is empty (zero bytes). This ensures that
-non-JSON requests still produce stable hashes based on method, path, and
-query.
+When `canonical_body` is `None` (non-JSON request), the `canonical_json_bytes`
+component is empty (zero bytes). This ensures that non-JSON requests still
+produce stable hashes based on method, path, and query.
 
-Wire the new module into `src/cassette/mod.rs` with
-`pub mod canonical;`.
+Wire the new module into `src/cassette/mod.rs` with `pub mod canonical;`.
 
 Go/no-go: the module compiles (`cargo check`) without errors. No tests yet.
 
@@ -296,21 +315,21 @@ Go/no-go: the module compiles (`cargo check`) without errors. No tests yet.
 Implement the functions defined in Stage B. The implementation details:
 
 1. `canonicalize_query`: split the raw query string on `&`, then split each
-   pair on the first `=`. Collect into a `Vec<(String, String)>`, sort by
-   key then by value (lexicographic, byte-order). Re-encode as
+   pair on the first `=`. Collect into a `Vec<(String, String)>`, sort by key
+   then by value (lexicographic, byte-order). Re-encode as
    `key1=value1&key2=value2`. Empty query strings produce an empty string.
    Percent-encoding is preserved as-is; decoding and re-encoding is out of
-   scope for this task (the design document does not require URL
-   normalization beyond ordering).
+   scope for this task (the design document does not require URL normalization
+   beyond ordering).
 
 2. `normalize_json`: clone the input `Value`, then for each ignore path call
    `remove_json_pointer`. The pointer removal walks the `Value` tree and
    removes the leaf. If the pointer does not match, do nothing (no error).
 
 3. `remove_json_pointer`: parse the RFC 6901 pointer (split on `/`, unescape
-   `~1` → `/` and `~0` → `~`), walk the `Value` tree following object keys,
-   and remove the final key from its parent object. Array indices are not
-   supported in this initial implementation; document this limitation.
+   `~1` → `/` and `~0` → `~`), walk the `Value` tree following object keys, and
+   remove the final key from its parent object. Array indices are not supported
+   in this initial implementation; document this limitation.
 
 4. `canonical_json_bytes`: write the `Value` to a byte buffer using a custom
    recursive serializer that:
@@ -321,22 +340,21 @@ Implement the functions defined in Stage B. The implementation details:
    - emits `null`, `true`, `false` as literals.
 
    The simplest correct approach: recursively walk the `Value`, and for
-   `Value::Object` entries, sort the keys before writing. This avoids
-   depending on `serde_json::to_string` key ordering guarantees (which are
+   `Value::Object` entries, sort the keys before writing. This avoids depending
+   on `serde_json::to_string` key ordering guarantees (which are
    insertion-order for `Map`, not sorted).
 
 5. `stable_hash`: construct the hash input byte string as specified, compute
-   SHA-256 using `sha2::Sha256`, and format the digest as lowercase
-   hexadecimal.
+   SHA-256 using `sha2::Sha256`, and format the digest as lowercase hexadecimal.
 
 Go/no-go: the module compiles. Proceed to Stage D.
 
 ### Stage D: lock behaviour with failing tests (red)
 
-Write `rstest` unit tests in `src/cassette/canonical.rs` (in a `#[cfg(test)]
-mod tests` block) or in a sibling `src/cassette/canonical_tests.rs` if the
-tests would push the file over 400 lines. Use `rstest` fixtures and
-parameterized cases.
+Write `rstest` unit tests in `src/cassette/canonical.rs` (in a
+`#[cfg(test)] mod tests` block) or in a sibling
+`src/cassette/canonical_tests.rs` if the tests would push the file over 400
+lines. Use `rstest` fixtures and parameterized cases.
 
 Test cases for `canonicalize_query`:
 
@@ -425,9 +443,9 @@ Go/no-go: `make test` passes. `make lint` passes.
 
 ### Stage G: add BDD behavioural tests
 
-Add a Gherkin feature file at `tests/features/canonical_request_hashing.feature`
-that describes the observable behaviour from the harness boundary. Example
-scenarios:
+Add a Gherkin feature file at
+`tests/features/canonical_request_hashing.feature` that describes the
+observable behaviour from the harness boundary. Example scenarios:
 
 ```gherkin
 Feature: Canonical request generation and stable hashing
@@ -452,10 +470,9 @@ Feature: Canonical request generation and stable hashing
     Then both stable hashes are identical
 ```
 
-Create the BDD test driver at
-`tests/canonical_request_hashing_bdd.rs` using `rstest-bdd` step
-definitions. The BDD tests exercise the public `canonicalize` and
-`stable_hash` functions from the cassette module.
+Create the BDD test driver at `tests/canonical_request_hashing_bdd.rs` using
+`rstest-bdd` step definitions. The BDD tests exercise the public `canonicalize`
+and `stable_hash` functions from the cassette module.
 
 Go/no-go: `make test` passes with all BDD scenarios green.
 
@@ -464,8 +481,8 @@ Go/no-go: `make test` passes with all BDD scenarios green.
 Update `docs/spycatcher-harness-design.md`:
 
 - In the "Canonicalization and hashing" section, record the final hash input
-  format (`method + "\n" + path + "\n" + canonical_query + "\n" +
-  canonical_json_bytes`).
+  format
+  (`method + "\n" + path + "\n" + canonical_query + "\n" + canonical_json_bytes`).
 - Record the ignore-path semantics (JSON Pointer, no array index support in
   this release).
 - Record the canonical JSON serialization rules (sorted keys, compact form,
@@ -598,10 +615,9 @@ pub mod canonical;
 Quality criteria (what "done" means):
 
 - Tests: `make test` passes all unit, BDD, and doc tests. The new test
-  module `cassette::canonical::tests` contains at least 15 test cases
-  covering query normalization, JSON normalization, ignore-path removal,
-  canonicalization equivalence, canonicalization divergence, and hash
-  stability.
+  module `cassette::canonical::tests` contains at least 15 test cases covering
+  query normalization, JSON normalization, ignore-path removal,
+  canonicalization equivalence, canonicalization divergence, and hash stability.
 - BDD: `tests/canonical_request_hashing_bdd.rs` scenarios pass, covering
   equivalent hashes, divergent hashes, and ignore-path stability.
 - Lint: `make lint` passes without warnings.
@@ -623,8 +639,8 @@ make nixie 2>&1 | tee /tmp/1-2-2-nixie.log
 
 ## Idempotence and recovery
 
-All stages are safe to repeat. The canonicalization module is additive; it
-does not modify existing types or behaviour. If a stage fails partway through,
+All stages are safe to repeat. The canonicalization module is additive; it does
+not modify existing types or behaviour. If a stage fails partway through,
 re-running from that stage's starting point is safe.
 
 The `sha2` dependency addition is idempotent (Cargo deduplicates). Test
@@ -647,8 +663,8 @@ Where:
 - `<PATH>` is the request path without query string (for example
   `/v1/chat/completions`).
 - `<CANONICAL_QUERY>` is the query string after parsing, sorting by key then
-  value, and re-encoding (for example `model=gpt-4&stream=true`). Empty if
-  no query parameters.
+  value, and re-encoding (for example `model=gpt-4&stream=true`). Empty if no
+  query parameters.
 - `<CANONICAL_JSON_BYTES>` is the compact JSON serialization of the
   normalized request body with sorted keys, or empty (zero bytes) if the
   request body is not JSON.
@@ -678,5 +694,5 @@ distinguishable from a request whose JSON body serializes to an empty string.
 - Ignore paths are applied before canonical serialization, so removed fields
   do not participate in the hash.
 - Example: with ignore path `/metadata/run_id`, the JSON body
-  `{"model": "gpt-4", "metadata": {"run_id": "abc123"}}` is canonicalized
-  as `{"metadata":{},"model":"gpt-4"}`.
+  `{"model": "gpt-4", "metadata": {"run_id": "abc123"}}` is canonicalized as
+  `{"metadata":{},"model":"gpt-4"}`.
