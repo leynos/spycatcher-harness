@@ -25,58 +25,55 @@ fn canonical_hash_world() -> CanonicalHashWorld {
     CanonicalHashWorld::default()
 }
 
-#[given("two equivalent recorded requests with different query ordering")]
-fn two_equivalent_recorded_requests_with_different_query_ordering(
-    canonical_hash_world: &CanonicalHashWorld,
-) {
-    set_request_pair(
-        canonical_hash_world,
-        RequestSpec {
-            method: "post",
-            query: "b=2&a=1",
-            body: json!({"model": "gpt-test", "stream": false}),
-        },
-        RequestSpec {
-            method: "POST",
-            query: "a=1&b=2",
-            body: json!({"stream": false, "model": "gpt-test"}),
-        },
-    );
+macro_rules! given_request_pair {
+    (
+        $step:literal,
+        $fn_name:ident,
+        left:  { method: $lm:literal, query: $lq:literal, body: $lb:tt },
+        right: { method: $rm:literal, query: $rq:literal, body: $rb:tt }
+        $(,)?
+    ) => {
+        #[given($step)]
+        fn $fn_name(canonical_hash_world: &CanonicalHashWorld) {
+            set_request_pair(
+                canonical_hash_world,
+                RequestSpec {
+                    method: $lm,
+                    query: $lq,
+                    body: json!($lb),
+                },
+                RequestSpec {
+                    method: $rm,
+                    query: $rq,
+                    body: json!($rb),
+                },
+            );
+        }
+    };
 }
 
-#[given("two materially different recorded requests")]
-fn two_materially_different_recorded_requests(canonical_hash_world: &CanonicalHashWorld) {
-    set_request_pair(
-        canonical_hash_world,
-        RequestSpec {
-            method: "POST",
-            query: "a=1&b=2",
-            body: json!({"model": "gpt-test", "stream": false}),
-        },
-        RequestSpec {
-            method: "POST",
-            query: "a=1&b=2",
-            body: json!({"model": "different-model", "stream": false}),
-        },
-    );
-}
+given_request_pair!(
+    "two equivalent recorded requests with different query ordering",
+    two_equivalent_recorded_requests_with_different_query_ordering,
+    left:  { method: "post",  query: "b=2&a=1", body: {"model": "gpt-test", "stream": false} },
+    right: { method: "POST",  query: "a=1&b=2", body: {"stream": false, "model": "gpt-test"} },
+);
 
-#[given("two requests that differ only in metadata run ids")]
-fn two_requests_that_differ_only_in_metadata_run_ids(canonical_hash_world: &CanonicalHashWorld) {
-    set_request_pair(
-        canonical_hash_world,
-        RequestSpec {
-            method: "POST",
-            query: "a=1&b=2",
-            body: json!({"metadata": {"run_id": "left"}, "model": "gpt-test", "stream": false}),
-        },
-        RequestSpec {
-            method: "POST",
-            query: "b=2&a=1",
-            body: json!({"stream": false, "metadata": {"run_id": "right"}, "model": "gpt-test"}),
-        },
-    );
-}
+given_request_pair!(
+    "two materially different recorded requests",
+    two_materially_different_recorded_requests,
+    left:  { method: "POST", query: "a=1&b=2", body: {"model": "gpt-test",        "stream": false} },
+    right: { method: "POST", query: "a=1&b=2", body: {"model": "different-model", "stream": false} },
+);
+
+given_request_pair!(
+    "two requests that differ only in metadata run ids",
+    two_requests_that_differ_only_in_metadata_run_ids,
+    left:  { method: "POST", query: "a=1&b=2",
+              body: {"metadata": {"run_id": "left"},  "model": "gpt-test", "stream": false} },
+    right: { method: "POST", query: "b=2&a=1",
+              body: {"stream": false, "metadata": {"run_id": "right"}, "model": "gpt-test"} },
+);
 
 #[given("ignore paths configured as {ignore_path}")]
 fn ignore_paths_configured_as(canonical_hash_world: &CanonicalHashWorld, ignore_path: String) {
