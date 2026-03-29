@@ -64,29 +64,5 @@ fn push_hex_nibble(output: &mut String, nibble: u8, case: HexCase) {
 }
 
 fn push_hex_nibble_u32(output: &mut String, nibble: u32, case: HexCase) {
-    let hex = match (nibble & 0x0F, case) {
-        (0, _) => '0',
-        (1, _) => '1',
-        (2, _) => '2',
-        (3, _) => '3',
-        (4, _) => '4',
-        (5, _) => '5',
-        (6, _) => '6',
-        (7, _) => '7',
-        (8, _) => '8',
-        (9, _) => '9',
-        (10, HexCase::Lower) => 'a',
-        (11, HexCase::Lower) => 'b',
-        (12, HexCase::Lower) => 'c',
-        (13, HexCase::Lower) => 'd',
-        (14, HexCase::Lower) => 'e',
-        (15, HexCase::Lower) => 'f',
-        (10, HexCase::Upper) => 'A',
-        (11, HexCase::Upper) => 'B',
-        (12, HexCase::Upper) => 'C',
-        (13, HexCase::Upper) => 'D',
-        (14, HexCase::Upper) => 'E',
-        _ => 'F',
-    };
-    output.push(hex);
+    push_hex_nibble(output, (nibble & 0x0F) as u8, case);
 }

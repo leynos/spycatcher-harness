@@ -77,22 +77,51 @@ fn unescape_pointer_token(token: &str) -> Option<String> {
     Some(unescaped)
 }
 
+fn build_grouped_removals(removals: &[PointerRemoval]) -> BTreeMap<Vec<String>, Vec<Vec<String>>> {
+    let mut grouped = BTreeMap::<Vec<String>, Vec<Vec<String>>>::new();
+    for removal in removals {
+        if let Some(parent_tokens) = &removal.parent_array {
+            grouped
+                .entry(parent_tokens.clone())
+                .or_default()
+                .push(removal.tokens.clone());
+        }
+    }
+    grouped
+}
+
+fn emit_grouped_entries(
+    parent_tokens: Vec<String>,
+    ordered: &mut Vec<Vec<String>>,
+    grouped: &mut BTreeMap<Vec<String>, Vec<Vec<String>>>,
+    emitted: &mut BTreeSet<Vec<String>>,
+) {
+    if let Some(entries) = grouped.remove(&parent_tokens)
+        && emitted.insert(parent_tokens)
+    {
+        ordered.extend(entries);
+    }
+}
+
+fn emit_removal(
+    removal: PointerRemoval,
+    ordered: &mut Vec<Vec<String>>,
+    grouped: &mut BTreeMap<Vec<String>, Vec<Vec<String>>>,
+    emitted: &mut BTreeSet<Vec<String>>,
+) {
+    match removal.parent_array {
+        Some(parent_tokens) => emit_grouped_entries(parent_tokens, ordered, grouped, emitted),
+        None => ordered.push(removal.tokens),
+    }
+}
+
 fn ordered_pointer_removals(ignored_body_paths: &[String]) -> Vec<Vec<String>> {
     let removals: Vec<PointerRemoval> = ignored_body_paths
         .iter()
         .filter_map(|path| parse_json_pointer(path))
         .map(PointerRemoval::new)
         .collect();
-    let mut grouped_removals = BTreeMap::<Vec<String>, Vec<Vec<String>>>::new();
-
-    for removal in &removals {
-        if let Some(parent_tokens) = &removal.parent_array {
-            grouped_removals
-                .entry(parent_tokens.clone())
-                .or_default()
-                .push(removal.tokens.clone());
-        }
-    }
+    let mut grouped_removals = build_grouped_removals(&removals);
 
     for entries in grouped_removals.values_mut() {
         entries.sort_unstable_by_key(|entry| std::cmp::Reverse(array_entry_index(entry)));
@@ -101,16 +130,12 @@ fn ordered_pointer_removals(ignored_body_paths: &[String]) -> Vec<Vec<String>> {
     let mut ordered = Vec::with_capacity(removals.len());
     let mut emitted_groups = BTreeSet::new();
     for removal in removals {
-        match removal.parent_array {
-            Some(parent_tokens) => {
-                if emitted_groups.insert(parent_tokens.clone())
-                    && let Some(entries) = grouped_removals.remove(&parent_tokens)
-                {
-                    ordered.extend(entries);
-                }
-            }
-            None => ordered.push(removal.tokens),
-        }
+        emit_removal(
+            removal,
+            &mut ordered,
+            &mut grouped_removals,
+            &mut emitted_groups,
+        );
     }
 
     ordered

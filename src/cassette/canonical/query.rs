@@ -28,42 +28,50 @@ fn parse_query_pairs(query: &str) -> Vec<(String, String)> {
         .collect()
 }
 
-fn percent_decode_canonical(input: &str) -> String {
+fn try_decode_percent_at(bytes: &[u8], index: usize) -> Option<u8> {
+    if bytes.get(index).copied()? != b'%' {
+        return None;
+    }
+    let high = bytes.get(index + 1).copied().and_then(decode_hex_digit)?;
+    let low = bytes.get(index + 2).copied().and_then(decode_hex_digit)?;
+    Some((high << 4) | low)
+}
+
+fn decode_percent_bytes(input: &str) -> Vec<u8> {
     let bytes = input.as_bytes();
     let mut output = Vec::with_capacity(bytes.len());
     let mut index = 0;
-
-    while let Some(current_byte) = bytes.get(index).copied() {
-        match current_byte {
-            b'%' => {
-                let high_digit = bytes.get(index + 1).copied().and_then(decode_hex_digit);
-                let low_digit = bytes.get(index + 2).copied().and_then(decode_hex_digit);
-                if let (Some(high_nibble), Some(low_nibble)) = (high_digit, low_digit) {
-                    output.push((high_nibble << 4) | low_nibble);
-                    index += 3;
-                } else {
-                    output.push(current_byte);
-                    index += 1;
-                }
-            }
-            byte => {
-                output.push(byte);
-                index += 1;
-            }
-        }
+    while index < bytes.len() {
+        let Some(current_byte) = bytes.get(index).copied() else {
+            break;
+        };
+        let (byte, advance) =
+            try_decode_percent_at(bytes, index).map_or((current_byte, 1), |b| (b, 3));
+        output.push(byte);
+        index += advance;
     }
+    output
+}
 
-    let mut canonical = String::with_capacity(output.len());
-    for byte in output {
-        if is_unreserved(byte) {
-            canonical.push(char::from(byte));
-        } else {
-            canonical.push('%');
-            push_hex_byte(&mut canonical, byte, HexCase::Upper);
-        }
+fn push_canonical_byte(canonical: &mut String, byte: u8) {
+    if is_unreserved(byte) {
+        canonical.push(char::from(byte));
+    } else {
+        canonical.push('%');
+        push_hex_byte(canonical, byte, HexCase::Upper);
     }
+}
 
+fn encode_canonical_bytes(bytes: &[u8]) -> String {
+    let mut canonical = String::with_capacity(bytes.len() * 3);
+    for &byte in bytes {
+        push_canonical_byte(&mut canonical, byte);
+    }
     canonical
+}
+
+fn percent_decode_canonical(input: &str) -> String {
+    encode_canonical_bytes(&decode_percent_bytes(input))
 }
 
 fn encode_query_pairs(pairs: &[(String, String)]) -> String {

@@ -25,6 +25,29 @@ fn request_with_json_body() -> RecordedRequest {
     }
 }
 
+#[expect(
+    clippy::too_many_arguments,
+    reason = "test helper intentionally collapses repeated RecordedRequest boilerplate"
+)]
+fn make_request(
+    method: &str,
+    path: &str,
+    query: &str,
+    body: Vec<u8>,
+    parsed_json: Option<serde_json::Value>,
+) -> RecordedRequest {
+    RecordedRequest {
+        method: method.to_owned(),
+        path: path.to_owned(),
+        query: query.to_owned(),
+        headers: Vec::new(),
+        body,
+        parsed_json,
+        canonical_request: None,
+        stable_hash: None,
+    }
+}
+
 #[rstest]
 fn canonicalize_sorts_query_pairs_and_json_keys(request_with_json_body: RecordedRequest) {
     let canonical = canonicalize(&request_with_json_body, &IgnorePathConfig::default());
@@ -62,54 +85,41 @@ fn canonicalize_removes_ignored_json_pointer_paths(request_with_json_body: Recor
 }
 
 #[rstest]
-fn canonicalize_ignores_empty_json_pointer_paths(request_with_json_body: RecordedRequest) {
+#[case(
+    vec![String::new()],
+    "empty ignore paths should be ignored rather than dropping the body"
+)]
+#[case(
+    vec!["/metadata/~2bad".to_owned()],
+    "invalid ignore paths should not mutate the body"
+)]
+fn canonicalize_ignores_misconfigured_json_pointer_paths(
+    request_with_json_body: RecordedRequest,
+    #[case] ignored_body_paths: Vec<String>,
+    #[case] message: &str,
+) {
     let canonical = canonicalize(
         &request_with_json_body,
-        &IgnorePathConfig {
-            ignored_body_paths: vec![String::new()],
-        },
+        &IgnorePathConfig { ignored_body_paths },
     );
-
     assert_eq!(
         canonical.canonical_body, request_with_json_body.parsed_json,
-        "empty ignore paths should be ignored rather than dropping the body"
-    );
-}
-
-#[rstest]
-fn canonicalize_ignores_invalid_json_pointer_paths(request_with_json_body: RecordedRequest) {
-    let canonical = canonicalize(
-        &request_with_json_body,
-        &IgnorePathConfig {
-            ignored_body_paths: vec!["/metadata/~2bad".to_owned()],
-        },
-    );
-
-    assert_eq!(
-        canonical.canonical_body, request_with_json_body.parsed_json,
-        "invalid ignore paths should not mutate the body"
+        "{message}"
     );
 }
 
 #[rstest]
 fn canonicalize_removes_multiple_array_entries_without_index_shift() {
-    let request = RecordedRequest {
-        method: "POST".to_owned(),
-        path: "/v1/chat/completions".to_owned(),
-        query: String::new(),
-        headers: Vec::new(),
-        body: br#"{"items":[{"id":"zero"},{"id":"one"},{"id":"two"}],"model":"gpt-test"}"#.to_vec(),
-        parsed_json: Some(json!({
-            "items": [
-                {"id": "zero"},
-                {"id": "one"},
-                {"id": "two"}
-            ],
+    let request = make_request(
+        "POST",
+        "/v1/chat/completions",
+        "",
+        br#"{"items":[{"id":"zero"},{"id":"one"},{"id":"two"}],"model":"gpt-test"}"#.to_vec(),
+        Some(json!({
+            "items": [{"id": "zero"}, {"id": "one"}, {"id": "two"}],
             "model": "gpt-test"
         })),
-        canonical_request: None,
-        stable_hash: None,
-    };
+    );
 
     let canonical = canonicalize(
         &request,
@@ -129,17 +139,7 @@ fn canonicalize_removes_multiple_array_entries_without_index_shift() {
 
 #[rstest]
 fn canonicalize_preserves_literal_plus_signs_in_query_parameters() {
-    let request = RecordedRequest {
-        method: "GET".to_owned(),
-        path: "/v1/search".to_owned(),
-        query: "q=C++&lang=en+GB".to_owned(),
-        headers: Vec::new(),
-        body: Vec::new(),
-        parsed_json: None,
-        canonical_request: None,
-        stable_hash: None,
-    };
-
+    let request = make_request("GET", "/v1/search", "q=C++&lang=en+GB", Vec::new(), None);
     let canonical = canonicalize(&request, &IgnorePathConfig::default());
 
     assert_eq!(canonical.canonical_query, "lang=en%2BGB&q=C%2B%2B");
@@ -234,17 +234,7 @@ fn populate_canonical_fields_sets_reserved_request_fields(
 
 #[rstest]
 fn canonicalize_non_json_body_leaves_body_absent() {
-    let request = RecordedRequest {
-        method: "POST".to_owned(),
-        path: "/v1/embeddings".to_owned(),
-        query: String::new(),
-        headers: Vec::new(),
-        body: b"plain text".to_vec(),
-        parsed_json: None,
-        canonical_request: None,
-        stable_hash: None,
-    };
-
+    let request = make_request("POST", "/v1/embeddings", "", b"plain text".to_vec(), None);
     let canonical = canonicalize(&request, &IgnorePathConfig::default());
 
     assert_eq!(canonical.canonical_body, None);
