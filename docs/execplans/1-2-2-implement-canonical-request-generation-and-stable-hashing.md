@@ -60,7 +60,7 @@ Observable success after delivery:
   implementations in other languages can reproduce it.
 - Tests must use `rstest` for unit coverage and `rstest-bdd` for
   behaviour observable from the harness boundary.
-- Filesystem access must use `cap_std`/`camino`. No `std::fs` or `std::path`.
+- Filesystem access must use `cap-std`/`camino`. No `std::fs` or `std::path`.
 - Comments and documentation must use en-GB-oxendict spelling.
 - No single source file may exceed 400 lines.
 - Before completion, run the full commit gates: `make fmt`, `make check-fmt`,
@@ -112,7 +112,7 @@ Observable success after delivery:
 
 - [x] Drafted ExecPlan for roadmap task `1.2.2`.
 - [x] Added `sha2` and implemented pure canonicalization and hashing in
-      `src/cassette/canonical.rs` with private helper submodules.
+      `src/cassette/canonical/mod.rs` with private helper submodules.
 - [x] Added `RecordedRequest::populate_canonical_fields` so callers can fill
       the reserved cassette fields without adapter dependencies.
 - [x] Added unit coverage for canonical query ordering, JSON key sorting,
@@ -151,8 +151,9 @@ Observable success after delivery:
 
 ### Repository layout relevant to this task
 
-The repository is a Rust workspace (edition 2024, Rust 1.88) with a library
-crate (`src/lib.rs`) and a binary crate (`src/bin/spycatcher_harness.rs`).
+The repository is a single Rust package (edition 2024, Rust 1.88) with a
+library crate (`src/lib.rs`) and a binary target
+(`src/bin/spycatcher_harness.rs`).
 
 Key files and their roles:
 
@@ -236,11 +237,13 @@ Go/no-go: `make lint` passes with the new dependency. No code changes beyond
 
 ### Stage B: define domain types and the canonicalization interface
 
-Create a new submodule `src/cassette/canonical.rs` within the cassette module
-tree. This module will contain the canonicalization and hashing logic as pure
-domain functions with no adapter dependencies.
+Implement the canonicalization submodule at `src/cassette/canonical/mod.rs`
+with private helpers in sibling files (`hex.rs`, `json.rs`, `query.rs`). This
+module contains the pure domain functions for request normalization and hashing
+with no adapter dependencies.
 
-Define the following public items in `src/cassette/canonical.rs`:
+Expose the following public items from `src/cassette/mod.rs` via the canonical
+submodule:
 
 ```rust
 use serde_json::Value;
@@ -275,38 +278,37 @@ pub struct CanonicalRequest {
 }
 ```
 
-Define the following functions:
+Define the following public functions and methods:
 
 - `canonicalize(...)` returns a `CanonicalRequest` by normalizing the query
   string and parsed JSON body.
 - `stable_hash(canonical: &CanonicalRequest) -> String` — produces a
   hex-encoded SHA-256 hash over a deterministic byte representation of the
   canonical request.
+- `RecordedRequest::populate_canonical_fields(&IgnorePathConfig)` stores the
+  derived canonical request and stable hash back onto the request model.
 
 Internal helpers (private):
 
 - `canonicalize_query(raw_query: &str) -> String` — parses query pairs, sorts
-  by key then value, re-encodes.
-- `normalize_json(value: &Value, ignore_paths: &[String]) -> Option<Value>` —
-  deep-clones a `serde_json::Value`, removes paths listed in `ignore_paths`,
-  and returns the result. Returns `None` if the input is `None`.
-- `canonical_json_bytes(value: &Value) -> Vec<u8>` — serializes a
-  `serde_json::Value` with sorted keys and stable formatting. This is the byte
-  representation used in the hash input.
-- `remove_json_pointer(value: &mut Value, pointer: &str)` — removes a single
-  JSON Pointer path from a mutable `Value`.
+  by key then value, percent-decodes triplets, preserves literal `+`, and
+  re-encodes non-unreserved bytes with uppercase hex escapes.
+- `canonicalize_body(value: Value, ignore_paths: &[String]) -> Value` —
+  removes configured JSON Pointer paths, then recursively sorts object keys.
+- `serialize_json_canonical(value: &Value) -> String` — serializes a
+  canonicalized `serde_json::Value` into a compact, deterministic JSON string.
+- `remove_pointer(value: &mut Value, tokens: &[String])` — removes a single
+  parsed JSON Pointer path from a mutable `Value`.
 
-The hash input byte string is the concatenation of:
+The implemented hash input byte string is the labeled UTF-8 sequence:
 
 ```plaintext
-method + "\n" + path + "\n" + canonical_query + "\n" + canonical_json_bytes
+METHOD\n{method}\nPATH\n{path}\nQUERY\n{canonical_query}\nBODY\n{canonical_json}
 ```
 
-When `canonical_body` is `None` (non-JSON request), the `canonical_json_bytes`
-component is empty (zero bytes). This ensures that non-JSON requests still
-produce stable hashes based on method, path, and query.
-
-Wire the new module into `src/cassette/mod.rs` with `pub mod canonical;`.
+When `canonical_body` is `None` (non-JSON request), the body component is
+empty. This ensures that non-JSON requests still produce stable hashes based on
+method, path, and query.
 
 Go/no-go: the module compiles (`cargo check`) without errors. No tests yet.
 
@@ -351,7 +353,7 @@ Go/no-go: the module compiles. Proceed to Stage D.
 
 ### Stage D: lock behaviour with failing tests (red)
 
-Write `rstest` unit tests in `src/cassette/canonical.rs` (in a
+Write `rstest` unit tests in `src/cassette/canonical/mod.rs` (in a
 `#[cfg(test)] mod tests` block) or in a sibling
 `src/cassette/canonical_tests.rs` if the tests would push the file over 400
 lines. Use `rstest` fixtures and parameterized cases.
@@ -539,7 +541,7 @@ Expected end state:
 Add to `Cargo.toml` `[dependencies]`:
 
 ```toml
-sha2 = "0.10.8"
+sha2 = "0.10.9"
 ```
 
 The `sha2` crate provides the SHA-256 implementation. The `Digest` trait's
@@ -549,7 +551,7 @@ using the `LowerHex` implementation or by iterating bytes with
 
 ### New types and functions (domain layer)
 
-In `src/cassette/canonical.rs`:
+In `src/cassette/canonical/mod.rs`:
 
 ```rust
 use serde::{Deserialize, Serialize};
@@ -579,11 +581,12 @@ pub fn canonicalize(
 
 /// Produces a hex-encoded SHA-256 hash of the canonical request.
 pub fn stable_hash(canonical: &CanonicalRequest) -> String;
+
+/// Computes and stores canonical request fields on a recorded request.
+impl RecordedRequest {
+    pub fn populate_canonical_fields(&mut self, ignore_config: &IgnorePathConfig);
+}
 ```
-
-### Configuration additions
-
-In `src/config.rs`:
 
 ```rust
 /// Configuration for request canonicalization and matching.
@@ -595,19 +598,20 @@ pub struct CanonicalizationConfig {
 
 Added as a field on `HarnessConfig`:
 
-```rust
-pub struct HarnessConfig {
-    // … existing fields …
-    pub canonicalization: CanonicalizationConfig,
-}
-```
+No `HarnessConfig` field was added. To preserve source compatibility for
+existing callers that construct `HarnessConfig` with struct literals, the
+implementation exposes `IgnorePathConfig` directly as an additive cassette
+domain type and leaves harness startup configuration unchanged.
 
 ### Module registration
 
-In `src/cassette/mod.rs`, add:
+In `src/cassette/mod.rs`, keep the canonicalization module private and
+re-export the supported API surface:
 
 ```rust
-pub mod canonical;
+mod canonical;
+
+pub use canonical::{CanonicalRequest, IgnorePathConfig, canonicalize, stable_hash};
 ```
 
 ## Validation and acceptance

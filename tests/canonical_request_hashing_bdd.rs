@@ -1,8 +1,4 @@
 //! BDD scenarios for canonical request generation and stable hashing.
-#![expect(
-    clippy::expect_used,
-    reason = "BDD step functions use expect for step precondition enforcement"
-)]
 
 use rstest::fixture;
 use rstest_bdd::Slot;
@@ -84,6 +80,10 @@ fn ignore_paths_configured_as(canonical_hash_world: &CanonicalHashWorld, ignore_
 }
 
 #[when("both requests are canonicalized")]
+#[expect(
+    clippy::expect_used,
+    reason = "BDD steps enforce scenario preconditions with explicit messages"
+)]
 fn both_requests_are_canonicalized(canonical_hash_world: &CanonicalHashWorld) {
     let left_request = canonical_hash_world
         .left_request
@@ -107,13 +107,19 @@ fn both_requests_are_canonicalized(canonical_hash_world: &CanonicalHashWorld) {
 
 #[then("both stable hashes are identical")]
 fn both_stable_hashes_are_identical(canonical_hash_world: &CanonicalHashWorld) {
-    let (left_hash, right_hash) = extract_hashes(canonical_hash_world);
+    let (left_hash, right_hash) = match extract_hashes(canonical_hash_world) {
+        Ok(hashes) => hashes,
+        Err(message) => panic!("{message}"),
+    };
     assert_eq!(left_hash, right_hash);
 }
 
 #[then("the stable hashes differ")]
 fn the_stable_hashes_differ(canonical_hash_world: &CanonicalHashWorld) {
-    let (left_hash, right_hash) = extract_hashes(canonical_hash_world);
+    let (left_hash, right_hash) = match extract_hashes(canonical_hash_world) {
+        Ok(hashes) => hashes,
+        Err(message) => panic!("{message}"),
+    };
     assert_ne!(left_hash, right_hash);
 }
 
@@ -143,6 +149,10 @@ fn ignore_paths_remove_metadata_drift_from_hashing(canonical_hash_world: Canonic
     let _ = canonical_hash_world;
 }
 
+#[expect(
+    clippy::expect_used,
+    reason = "BDD fixtures fail fast when the inline JSON cannot serialize"
+)]
 fn request(method: &str, query: &str, parsed_json: serde_json::Value) -> RecordedRequest {
     RecordedRequest {
         method: method.to_owned(),
@@ -165,17 +175,15 @@ fn set_request_pair(world: &CanonicalHashWorld, left: RequestSpec<'_>, right: Re
         .set(request(right.method, right.query, right.body));
 }
 
-fn extract_hashes(world: &CanonicalHashWorld) -> (String, String) {
-    let left_hash = world
-        .left_hash
-        .with_ref(Clone::clone)
-        .expect("left hash must be set");
-    let right_hash = world
-        .right_hash
-        .with_ref(Clone::clone)
-        .expect("right hash must be set");
+fn extract_hashes(world: &CanonicalHashWorld) -> Result<(String, String), &'static str> {
+    let maybe_left_hash = world.left_hash.with_ref(Clone::clone);
+    let maybe_right_hash = world.right_hash.with_ref(Clone::clone);
 
-    (left_hash, right_hash)
+    match (maybe_left_hash, maybe_right_hash) {
+        (Some(left_hash), Some(right_hash)) => Ok((left_hash, right_hash)),
+        (None, _) => Err("left hash must be set"),
+        (_, None) => Err("right hash must be set"),
+    }
 }
 
 struct RequestSpec<'a> {

@@ -1,22 +1,19 @@
 //! JSON canonicalization helpers for request hashing.
 
+use std::collections::{BTreeMap, BTreeSet};
+
 use serde_json::{Map, Number, Value, json};
 
 use super::CanonicalRequest;
+use super::hex::{HexCase, push_hex_u32};
 
-pub(super) fn canonicalize_body(body: Value, ignored_body_paths: &[String]) -> Option<Value> {
-    if ignored_body_paths.iter().any(String::is_empty) {
-        return None;
+pub(super) fn canonicalize_body(body: Value, ignored_body_paths: &[String]) -> Value {
+    let mut canonical = body;
+    for pointer_tokens in ordered_pointer_removals(ignored_body_paths) {
+        remove_pointer(&mut canonical, &pointer_tokens);
     }
 
-    let mut canonical = sort_json_value(body);
-    for path in ignored_body_paths {
-        if let Some(pointer_tokens) = parse_json_pointer(path) {
-            remove_pointer(&mut canonical, &pointer_tokens);
-        }
-    }
-
-    Some(sort_json_value(canonical))
+    sort_json_value(canonical)
 }
 
 pub(super) fn serialize_json_canonical(value: &Value) -> String {
@@ -32,16 +29,6 @@ pub(super) fn canonical_request_value(canonical: &CanonicalRequest) -> Value {
         "canonical_query": canonical.canonical_query,
         "canonical_body": canonical.canonical_body,
     })
-}
-
-pub(super) fn encode_hex(bytes: impl AsRef<[u8]>) -> String {
-    let bytes_ref = bytes.as_ref();
-    let mut output = String::with_capacity(bytes_ref.len() * 2);
-    for byte in bytes_ref {
-        push_hex_nibble(&mut output, byte >> 4);
-        push_hex_nibble(&mut output, byte & 0x0F);
-    }
-    output
 }
 
 fn sort_json_value(value: Value) -> Value {
@@ -61,7 +48,7 @@ fn sort_json_value(value: Value) -> Value {
 }
 
 fn parse_json_pointer(path: &str) -> Option<Vec<String>> {
-    if !path.starts_with('/') {
+    if path.is_empty() || !path.starts_with('/') {
         return None;
     }
 
@@ -88,6 +75,74 @@ fn unescape_pointer_token(token: &str) -> Option<String> {
     }
 
     Some(unescaped)
+}
+
+fn ordered_pointer_removals(ignored_body_paths: &[String]) -> Vec<Vec<String>> {
+    let removals: Vec<PointerRemoval> = ignored_body_paths
+        .iter()
+        .filter_map(|path| parse_json_pointer(path))
+        .map(PointerRemoval::new)
+        .collect();
+    let mut grouped_removals = BTreeMap::<Vec<String>, Vec<Vec<String>>>::new();
+
+    for removal in &removals {
+        if let Some(parent_tokens) = &removal.parent_array {
+            grouped_removals
+                .entry(parent_tokens.clone())
+                .or_default()
+                .push(removal.tokens.clone());
+        }
+    }
+
+    for entries in grouped_removals.values_mut() {
+        entries.sort_unstable_by_key(|entry| std::cmp::Reverse(array_entry_index(entry)));
+    }
+
+    let mut ordered = Vec::with_capacity(removals.len());
+    let mut emitted_groups = BTreeSet::new();
+    for removal in removals {
+        match removal.parent_array {
+            Some(parent_tokens) => {
+                if emitted_groups.insert(parent_tokens.clone())
+                    && let Some(entries) = grouped_removals.remove(&parent_tokens)
+                {
+                    ordered.extend(entries);
+                }
+            }
+            None => ordered.push(removal.tokens),
+        }
+    }
+
+    ordered
+}
+
+fn whole_array_entry_parent(tokens: &[String]) -> Option<Vec<String>> {
+    let (_, parent_tokens) = tokens.split_last()?;
+
+    if parent_tokens.is_empty() || array_entry_index(tokens).is_none() {
+        return None;
+    }
+
+    Some(parent_tokens.to_vec())
+}
+
+fn array_entry_index(tokens: &[String]) -> Option<usize> {
+    tokens.last()?.parse::<usize>().ok()
+}
+
+struct PointerRemoval {
+    tokens: Vec<String>,
+    parent_array: Option<Vec<String>>,
+}
+
+impl PointerRemoval {
+    fn new(tokens: Vec<String>) -> Self {
+        let parent_array = whole_array_entry_parent(&tokens);
+        Self {
+            tokens,
+            parent_array,
+        }
+    }
 }
 
 fn remove_pointer(value: &mut Value, tokens: &[String]) {
@@ -192,57 +247,10 @@ fn write_json_string(output: &mut String, text: &str) {
             '\t' => output.push_str("\\t"),
             control_char if control_char <= '\u{1F}' => {
                 output.push_str("\\u");
-                push_hex_u32(output, u32::from(control_char));
+                push_hex_u32(output, u32::from(control_char), HexCase::Lower);
             }
             other => output.push(other),
         }
     }
     output.push('"');
-}
-
-fn push_hex_nibble(output: &mut String, nibble: u8) {
-    let hex = match nibble & 0x0F {
-        0 => '0',
-        1 => '1',
-        2 => '2',
-        3 => '3',
-        4 => '4',
-        5 => '5',
-        6 => '6',
-        7 => '7',
-        8 => '8',
-        9 => '9',
-        10 => 'a',
-        11 => 'b',
-        12 => 'c',
-        13 => 'd',
-        14 => 'e',
-        _ => 'f',
-    };
-    output.push(hex);
-}
-
-fn push_hex_u32(output: &mut String, value: u32) {
-    for shift in [12_u32, 8, 4, 0] {
-        let nibble = (value >> shift) & 0x0F;
-        let hex = match nibble {
-            0 => '0',
-            1 => '1',
-            2 => '2',
-            3 => '3',
-            4 => '4',
-            5 => '5',
-            6 => '6',
-            7 => '7',
-            8 => '8',
-            9 => '9',
-            10 => 'a',
-            11 => 'b',
-            12 => 'c',
-            13 => 'd',
-            14 => 'e',
-            _ => 'f',
-        };
-        output.push(hex);
-    }
 }

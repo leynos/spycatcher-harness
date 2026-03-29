@@ -265,9 +265,9 @@ Current implementation notes:
 - Hash input is the UTF-8 byte stream
   `METHOD\n{method}\nPATH\n{path}\nQUERY\n{query}\nBODY\n{body}`.
 - Methods are uppercased before hashing.
-- Query parameters are percent-decoded, sorted by key then value, then
-  re-encoded with uppercase hex escapes.
-- JSON bodies are normalised by recursively sorting object keys and removing
+- Query parameters decode percent triplets, preserve literal `+`, sort by key
+  then value, then re-encoded with uppercase hex escapes.
+- JSON bodies are normalized by recursively sorting object keys and removing
   configured JSON Pointer paths before compact serialization.
 - Ignore-path configuration is currently exposed as the additive domain type
   `IgnorePathConfig` rather than via `HarnessConfig`, preserving the existing

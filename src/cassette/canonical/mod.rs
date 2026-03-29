@@ -5,6 +5,7 @@
 //! transport dependencies so the same canonical form can be reused by future
 //! record and replay adapters.
 
+mod hex;
 mod json;
 mod query;
 
@@ -13,7 +14,8 @@ use serde_json::Value;
 use sha2::{Digest, Sha256};
 
 use super::RecordedRequest;
-use json::{canonical_request_value, canonicalize_body, encode_hex, serialize_json_canonical};
+use hex::encode_hex;
+use json::{canonical_request_value, canonicalize_body, serialize_json_canonical};
 use query::canonicalize_query;
 
 /// Configuration for request-body fields ignored during canonicalization.
@@ -140,7 +142,7 @@ pub fn canonicalize(
         canonical_body: request
             .parsed_json
             .clone()
-            .and_then(|value| canonicalize_body(value, &ignore_config.ignored_body_paths)),
+            .map(|value| canonicalize_body(value, &ignore_config.ignored_body_paths)),
     }
 }
 

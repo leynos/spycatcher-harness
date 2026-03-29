@@ -109,7 +109,8 @@ assert_eq!(hash.len(), 64);
 Canonicalization rules:
 
 - Methods are uppercased before hashing.
-- Query parameters are parsed, sorted by key then value, and re-encoded.
+- Query parameters decode percent triplets, preserve literal `+`, are sorted
+  by key then value, and are re-encoded with uppercase hex escapes.
 - JSON bodies are compacted with object keys sorted recursively.
 - Ignore paths use JSON Pointer syntax (RFC 6901), for example
   `/metadata/run_id`.
