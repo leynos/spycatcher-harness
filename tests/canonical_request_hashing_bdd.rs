@@ -29,44 +29,53 @@ fn canonical_hash_world() -> CanonicalHashWorld {
 fn two_equivalent_recorded_requests_with_different_query_ordering(
     canonical_hash_world: &CanonicalHashWorld,
 ) {
-    canonical_hash_world.left_request.set(request(
-        "post",
-        "b=2&a=1",
-        json!({"model": "gpt-test", "stream": false}),
-    ));
-    canonical_hash_world.right_request.set(request(
-        "POST",
-        "a=1&b=2",
-        json!({"stream": false, "model": "gpt-test"}),
-    ));
+    set_request_pair(
+        canonical_hash_world,
+        RequestSpec {
+            method: "post",
+            query: "b=2&a=1",
+            body: json!({"model": "gpt-test", "stream": false}),
+        },
+        RequestSpec {
+            method: "POST",
+            query: "a=1&b=2",
+            body: json!({"stream": false, "model": "gpt-test"}),
+        },
+    );
 }
 
 #[given("two materially different recorded requests")]
 fn two_materially_different_recorded_requests(canonical_hash_world: &CanonicalHashWorld) {
-    canonical_hash_world.left_request.set(request(
-        "POST",
-        "a=1&b=2",
-        json!({"model": "gpt-test", "stream": false}),
-    ));
-    canonical_hash_world.right_request.set(request(
-        "POST",
-        "a=1&b=2",
-        json!({"model": "different-model", "stream": false}),
-    ));
+    set_request_pair(
+        canonical_hash_world,
+        RequestSpec {
+            method: "POST",
+            query: "a=1&b=2",
+            body: json!({"model": "gpt-test", "stream": false}),
+        },
+        RequestSpec {
+            method: "POST",
+            query: "a=1&b=2",
+            body: json!({"model": "different-model", "stream": false}),
+        },
+    );
 }
 
 #[given("two requests that differ only in metadata run ids")]
 fn two_requests_that_differ_only_in_metadata_run_ids(canonical_hash_world: &CanonicalHashWorld) {
-    canonical_hash_world.left_request.set(request(
-        "POST",
-        "a=1&b=2",
-        json!({"metadata": {"run_id": "left"}, "model": "gpt-test", "stream": false}),
-    ));
-    canonical_hash_world.right_request.set(request(
-        "POST",
-        "b=2&a=1",
-        json!({"stream": false, "metadata": {"run_id": "right"}, "model": "gpt-test"}),
-    ));
+    set_request_pair(
+        canonical_hash_world,
+        RequestSpec {
+            method: "POST",
+            query: "a=1&b=2",
+            body: json!({"metadata": {"run_id": "left"}, "model": "gpt-test", "stream": false}),
+        },
+        RequestSpec {
+            method: "POST",
+            query: "b=2&a=1",
+            body: json!({"stream": false, "metadata": {"run_id": "right"}, "model": "gpt-test"}),
+        },
+    );
 }
 
 #[given("ignore paths configured as {ignore_path}")]
@@ -101,29 +110,13 @@ fn both_requests_are_canonicalized(canonical_hash_world: &CanonicalHashWorld) {
 
 #[then("both stable hashes are identical")]
 fn both_stable_hashes_are_identical(canonical_hash_world: &CanonicalHashWorld) {
-    let left_hash = canonical_hash_world
-        .left_hash
-        .with_ref(Clone::clone)
-        .expect("left hash must be set");
-    let right_hash = canonical_hash_world
-        .right_hash
-        .with_ref(Clone::clone)
-        .expect("right hash must be set");
-
+    let (left_hash, right_hash) = extract_hashes(canonical_hash_world);
     assert_eq!(left_hash, right_hash);
 }
 
 #[then("the stable hashes differ")]
 fn the_stable_hashes_differ(canonical_hash_world: &CanonicalHashWorld) {
-    let left_hash = canonical_hash_world
-        .left_hash
-        .with_ref(Clone::clone)
-        .expect("left hash must be set");
-    let right_hash = canonical_hash_world
-        .right_hash
-        .with_ref(Clone::clone)
-        .expect("right hash must be set");
-
+    let (left_hash, right_hash) = extract_hashes(canonical_hash_world);
     assert_ne!(left_hash, right_hash);
 }
 
@@ -164,4 +157,32 @@ fn request(method: &str, query: &str, parsed_json: serde_json::Value) -> Recorde
         canonical_request: None,
         stable_hash: None,
     }
+}
+
+fn set_request_pair(world: &CanonicalHashWorld, left: RequestSpec<'_>, right: RequestSpec<'_>) {
+    world
+        .left_request
+        .set(request(left.method, left.query, left.body));
+    world
+        .right_request
+        .set(request(right.method, right.query, right.body));
+}
+
+fn extract_hashes(world: &CanonicalHashWorld) -> (String, String) {
+    let left_hash = world
+        .left_hash
+        .with_ref(Clone::clone)
+        .expect("left hash must be set");
+    let right_hash = world
+        .right_hash
+        .with_ref(Clone::clone)
+        .expect("right hash must be set");
+
+    (left_hash, right_hash)
+}
+
+struct RequestSpec<'a> {
+    method: &'a str,
+    query: &'a str,
+    body: serde_json::Value,
 }

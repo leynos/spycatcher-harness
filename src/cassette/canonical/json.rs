@@ -137,38 +137,42 @@ fn remove_array_entry(items: &mut Vec<Value>, index: usize) {
 fn write_json_canonical(output: &mut String, value: &Value) {
     match value {
         Value::Null => output.push_str("null"),
-        Value::Bool(flag) => {
-            if *flag {
-                output.push_str("true");
-            } else {
-                output.push_str("false");
-            }
-        }
+        Value::Bool(flag) => output.push_str(if *flag { "true" } else { "false" }),
         Value::Number(number) => write_json_number(output, number),
         Value::String(text) => write_json_string(output, text),
-        Value::Array(items) => {
-            output.push('[');
-            for (index, item) in items.iter().enumerate() {
-                if index > 0 {
-                    output.push(',');
-                }
-                write_json_canonical(output, item);
-            }
-            output.push(']');
-        }
-        Value::Object(object) => {
-            output.push('{');
-            for (index, (key, entry_value)) in object.iter().enumerate() {
-                if index > 0 {
-                    output.push(',');
-                }
-                write_json_string(output, key);
-                output.push(':');
-                write_json_canonical(output, entry_value);
-            }
-            output.push('}');
+        Value::Array(items) => write_json_array(output, items),
+        Value::Object(object) => write_json_object(output, object),
+    }
+}
+
+fn write_json_array(output: &mut String, items: &[Value]) {
+    output.push('[');
+    let mut iter = items.iter();
+    if let Some(first) = iter.next() {
+        write_json_canonical(output, first);
+        for item in iter {
+            output.push(',');
+            write_json_canonical(output, item);
         }
     }
+    output.push(']');
+}
+
+fn write_json_object(output: &mut String, object: &serde_json::Map<String, Value>) {
+    output.push('{');
+    let mut iter = object.iter();
+    if let Some((first_key, first_val)) = iter.next() {
+        write_json_string(output, first_key);
+        output.push(':');
+        write_json_canonical(output, first_val);
+        for (key, entry_value) in iter {
+            output.push(',');
+            write_json_string(output, key);
+            output.push(':');
+            write_json_canonical(output, entry_value);
+        }
+    }
+    output.push('}');
 }
 
 fn write_json_number(output: &mut String, number: &Number) {
