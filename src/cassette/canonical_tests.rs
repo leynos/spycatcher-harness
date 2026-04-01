@@ -5,7 +5,7 @@ use serde_json::json;
 
 use super::canonicalize;
 use super::stable_hash;
-use super::{IgnorePathConfig, RecordedRequest};
+use super::{CanonicalError, IgnorePathConfig, RecordedRequest};
 
 #[fixture]
 fn request_with_json_body() -> RecordedRequest {
@@ -50,7 +50,8 @@ fn make_request(
 
 #[rstest]
 fn canonicalize_sorts_query_pairs_and_json_keys(request_with_json_body: RecordedRequest) {
-    let canonical = canonicalize(&request_with_json_body, &IgnorePathConfig::default());
+    let canonical =
+        canonicalize(&request_with_json_body, &IgnorePathConfig::default()).expect("valid config");
 
     assert_eq!(canonical.method, "POST");
     assert_eq!(canonical.path, "/v1/chat/completions");
@@ -72,7 +73,8 @@ fn canonicalize_removes_ignored_json_pointer_paths(request_with_json_body: Recor
         &IgnorePathConfig {
             ignored_body_paths: vec!["/metadata/run_id".to_owned()],
         },
-    );
+    )
+    .expect("valid config");
 
     assert_eq!(
         canonical.canonical_body,
@@ -85,26 +87,30 @@ fn canonicalize_removes_ignored_json_pointer_paths(request_with_json_body: Recor
 }
 
 #[rstest]
-#[case(
-    vec![String::new()],
-    "empty ignore paths should be ignored rather than dropping the body"
-)]
-#[case(
-    vec!["/metadata/~2bad".to_owned()],
-    "invalid ignore paths should not mutate the body"
-)]
-fn canonicalize_ignores_misconfigured_json_pointer_paths(
-    request_with_json_body: RecordedRequest,
-    #[case] ignored_body_paths: Vec<String>,
-    #[case] message: &str,
-) {
-    let canonical = canonicalize(
-        &request_with_json_body,
-        &IgnorePathConfig { ignored_body_paths },
+#[case(String::new())]
+#[case("metadata/run_id".to_owned())]
+fn canonicalize_rejects_invalid_json_pointer_paths(#[case] ignored_body_path: String) {
+    let request = make_request(
+        "POST",
+        "/v1/chat/completions",
+        "",
+        br#"{"metadata":{"run_id":"abc"},"model":"gpt-test"}"#.to_vec(),
+        Some(json!({
+            "metadata": {"run_id": "abc"},
+            "model": "gpt-test"
+        })),
     );
+
+    let canonical = canonicalize(
+        &request,
+        &IgnorePathConfig {
+            ignored_body_paths: vec![ignored_body_path.clone()],
+        },
+    );
+
     assert_eq!(
-        canonical.canonical_body, request_with_json_body.parsed_json,
-        "{message}"
+        canonical,
+        Err(CanonicalError::InvalidPointerPath(ignored_body_path))
     );
 }
 
@@ -126,7 +132,8 @@ fn canonicalize_removes_multiple_array_entries_without_index_shift() {
         &IgnorePathConfig {
             ignored_body_paths: vec!["/items/0".to_owned(), "/items/1".to_owned()],
         },
-    );
+    )
+    .expect("valid config");
 
     assert_eq!(
         canonical.canonical_body,
@@ -140,7 +147,7 @@ fn canonicalize_removes_multiple_array_entries_without_index_shift() {
 #[rstest]
 fn canonicalize_preserves_literal_plus_signs_in_query_parameters() {
     let request = make_request("GET", "/v1/search", "q=C++&lang=en+GB", Vec::new(), None);
-    let canonical = canonicalize(&request, &IgnorePathConfig::default());
+    let canonical = canonicalize(&request, &IgnorePathConfig::default()).expect("valid config");
 
     assert_eq!(canonical.canonical_query, "lang=en%2BGB&q=C%2B%2B");
 }
@@ -179,8 +186,8 @@ fn stable_hash_ignores_json_key_order_query_order_and_ignored_fields() {
         ignored_body_paths: vec!["/metadata/run_id".to_owned()],
     };
 
-    let left_hash = stable_hash(&canonicalize(&left, &ignore_config));
-    let right_hash = stable_hash(&canonicalize(&right, &ignore_config));
+    let left_hash = stable_hash(&canonicalize(&left, &ignore_config).expect("valid config"));
+    let right_hash = stable_hash(&canonicalize(&right, &ignore_config).expect("valid config"));
 
     assert_eq!(left_hash, right_hash);
 }
@@ -196,11 +203,11 @@ fn stable_hash_changes_when_non_ignored_request_content_changes(
         "stream": false
     }));
 
-    let original_hash = stable_hash(&canonicalize(
-        &request_with_json_body,
-        &IgnorePathConfig::default(),
-    ));
-    let changed_hash = stable_hash(&canonicalize(&changed, &IgnorePathConfig::default()));
+    let original_hash = stable_hash(
+        &canonicalize(&request_with_json_body, &IgnorePathConfig::default()).expect("valid config"),
+    );
+    let changed_hash =
+        stable_hash(&canonicalize(&changed, &IgnorePathConfig::default()).expect("valid config"));
 
     assert_ne!(original_hash, changed_hash);
 }
@@ -209,9 +216,11 @@ fn stable_hash_changes_when_non_ignored_request_content_changes(
 fn populate_canonical_fields_sets_reserved_request_fields(
     mut request_with_json_body: RecordedRequest,
 ) {
-    request_with_json_body.populate_canonical_fields(&IgnorePathConfig {
-        ignored_body_paths: vec!["/metadata/run_id".to_owned()],
-    });
+    request_with_json_body
+        .populate_canonical_fields(&IgnorePathConfig {
+            ignored_body_paths: vec!["/metadata/run_id".to_owned()],
+        })
+        .expect("valid config");
 
     assert_eq!(
         request_with_json_body.stable_hash.as_deref(),
@@ -235,7 +244,7 @@ fn populate_canonical_fields_sets_reserved_request_fields(
 #[rstest]
 fn canonicalize_non_json_body_leaves_body_absent() {
     let request = make_request("POST", "/v1/embeddings", "", b"plain text".to_vec(), None);
-    let canonical = canonicalize(&request, &IgnorePathConfig::default());
+    let canonical = canonicalize(&request, &IgnorePathConfig::default()).expect("valid config");
 
     assert_eq!(canonical.canonical_body, None);
 }

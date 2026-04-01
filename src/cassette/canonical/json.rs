@@ -16,6 +16,10 @@ pub(super) fn canonicalize_body(body: Value, ignored_body_paths: &[String]) -> V
     sort_json_value(canonical)
 }
 
+pub(super) fn is_valid_json_pointer(path: &str) -> bool {
+    parse_json_pointer(path).is_some()
+}
+
 pub(super) fn serialize_json_canonical(value: &Value) -> String {
     let mut output = String::new();
     write_json_canonical(&mut output, value);
@@ -118,7 +122,7 @@ fn emit_removal(
 fn ordered_pointer_removals(ignored_body_paths: &[String]) -> Vec<Vec<String>> {
     let removals: Vec<PointerRemoval> = ignored_body_paths
         .iter()
-        .filter_map(|path| parse_json_pointer(path))
+        .map(|path| parse_valid_json_pointer(path))
         .map(PointerRemoval::new)
         .collect();
     let mut grouped_removals = build_grouped_removals(&removals);
@@ -139,6 +143,15 @@ fn ordered_pointer_removals(ignored_body_paths: &[String]) -> Vec<Vec<String>> {
     }
 
     ordered
+}
+
+fn parse_valid_json_pointer(path: &str) -> Vec<String> {
+    let pointer_tokens = parse_json_pointer(path);
+    debug_assert!(
+        pointer_tokens.is_some(),
+        "invalid JSON Pointer path should be rejected before canonical body processing"
+    );
+    pointer_tokens.unwrap_or_default()
 }
 
 fn whole_array_entry_parent(tokens: &[String]) -> Option<Vec<String>> {

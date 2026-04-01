@@ -12,6 +12,7 @@ mod query;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
+use thiserror::Error;
 
 use super::RecordedRequest;
 use hex::encode_hex;
@@ -37,6 +38,14 @@ use query::canonicalize_query;
 pub struct IgnorePathConfig {
     /// JSON Pointer paths to remove from the request body before hashing.
     pub ignored_body_paths: Vec<String>,
+}
+
+/// Errors raised while canonicalizing recorded requests.
+#[derive(Debug, Error, PartialEq, Eq)]
+pub enum CanonicalError {
+    /// A configured ignore path is not a valid JSON Pointer.
+    #[error("invalid JSON Pointer path: {0:?}")]
+    InvalidPointerPath(String),
 }
 
 /// A request reduced to a deterministic shape for matching and hashing.
@@ -70,12 +79,18 @@ pub struct CanonicalRequest {
 impl RecordedRequest {
     /// Computes and stores the canonical request and stable hash fields.
     ///
+    /// # Errors
+    ///
+    /// Returns [`CanonicalError::InvalidPointerPath`] when any configured
+    /// ignore path is not a valid RFC 6901 JSON Pointer.
+    ///
     /// # Examples
     ///
     /// ```
     /// use serde_json::json;
     /// use spycatcher_harness::cassette::{IgnorePathConfig, RecordedRequest};
     ///
+    /// # fn example() -> Result<(), spycatcher_harness::cassette::CanonicalError> {
     /// let mut request = RecordedRequest {
     ///     method: "post".to_owned(),
     ///     path: "/v1/chat/completions".to_owned(),
@@ -89,19 +104,30 @@ impl RecordedRequest {
     ///
     /// request.populate_canonical_fields(&IgnorePathConfig {
     ///     ignored_body_paths: vec!["/metadata/run_id".to_owned()],
-    /// });
+    /// })?;
     ///
     /// assert!(request.canonical_request.is_some());
     /// assert!(request.stable_hash.is_some());
+    /// # Ok(())
+    /// # }
     /// ```
-    pub fn populate_canonical_fields(&mut self, ignore_config: &IgnorePathConfig) {
-        let canonical = canonicalize(self, ignore_config);
+    pub fn populate_canonical_fields(
+        &mut self,
+        ignore_config: &IgnorePathConfig,
+    ) -> Result<(), CanonicalError> {
+        let canonical = canonicalize(self, ignore_config)?;
         self.stable_hash = Some(stable_hash(&canonical));
         self.canonical_request = Some(canonical_request_value(&canonical));
+        Ok(())
     }
 }
 
 /// Canonicalizes a recorded request into a deterministic representation.
+///
+/// # Errors
+///
+/// Returns [`CanonicalError::InvalidPointerPath`] when any configured ignore
+/// path is not a valid RFC 6901 JSON Pointer.
 ///
 /// # Examples
 ///
@@ -109,6 +135,7 @@ impl RecordedRequest {
 /// use serde_json::json;
 /// use spycatcher_harness::cassette::{IgnorePathConfig, RecordedRequest, canonicalize};
 ///
+/// # fn example() -> Result<(), spycatcher_harness::cassette::CanonicalError> {
 /// let request = RecordedRequest {
 ///     method: "post".to_owned(),
 ///     path: "/v1/chat/completions".to_owned(),
@@ -125,17 +152,20 @@ impl RecordedRequest {
 ///     &IgnorePathConfig {
 ///         ignored_body_paths: vec!["/metadata/run_id".to_owned()],
 ///     },
-/// );
+/// )?;
 ///
 /// assert_eq!(canonical.method, "POST");
 /// assert_eq!(canonical.canonical_query, "a=1&b=2");
+/// # Ok(())
+/// # }
 /// ```
-#[must_use]
 pub fn canonicalize(
     request: &RecordedRequest,
     ignore_config: &IgnorePathConfig,
-) -> CanonicalRequest {
-    CanonicalRequest {
+) -> Result<CanonicalRequest, CanonicalError> {
+    validate_ignore_paths(ignore_config)?;
+
+    Ok(CanonicalRequest {
         method: request.method.to_ascii_uppercase(),
         path: request.path.clone(),
         canonical_query: canonicalize_query(&request.query),
@@ -143,7 +173,21 @@ pub fn canonicalize(
             .parsed_json
             .clone()
             .map(|value| canonicalize_body(value, &ignore_config.ignored_body_paths)),
+    })
+}
+
+fn validate_ignore_paths(ignore_config: &IgnorePathConfig) -> Result<(), CanonicalError> {
+    for path in &ignore_config.ignored_body_paths {
+        if !is_valid_ignore_path(path) {
+            return Err(CanonicalError::InvalidPointerPath(path.clone()));
+        }
     }
+
+    Ok(())
+}
+
+fn is_valid_ignore_path(path: &str) -> bool {
+    !path.is_empty() && path.starts_with('/') && json::is_valid_json_pointer(path)
 }
 
 /// Computes the stable SHA-256 hash for a canonical request.

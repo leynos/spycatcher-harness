@@ -18,7 +18,9 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::{HarnessError, HarnessResult};
-pub use canonical::{CanonicalRequest, IgnorePathConfig, canonicalize, stable_hash};
+pub use canonical::{
+    CanonicalError, CanonicalRequest, IgnorePathConfig, canonicalize, stable_hash,
+};
 
 /// Schema version used to encode and validate cassette documents.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

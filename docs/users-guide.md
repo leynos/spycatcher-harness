@@ -81,6 +81,7 @@ use spycatcher_harness::cassette::{
     IgnorePathConfig, RecordedRequest, canonicalize, stable_hash,
 };
 
+# fn example() -> Result<(), spycatcher_harness::cassette::CanonicalError> {
 let request = RecordedRequest {
     method: "post".to_owned(),
     path: "/v1/chat/completions".to_owned(),
@@ -98,12 +99,14 @@ let request = RecordedRequest {
 let ignore_paths = IgnorePathConfig {
     ignored_body_paths: vec!["/metadata/run_id".to_owned()],
 };
-let canonical = canonicalize(&request, &ignore_paths);
+let canonical = canonicalize(&request, &ignore_paths)?;
 let hash = stable_hash(&canonical);
 
 assert_eq!(canonical.method, "POST");
 assert_eq!(canonical.canonical_query, "a=1&b=2");
 assert_eq!(hash.len(), 64);
+# Ok(())
+# }
 ```
 
 Canonicalization rules:
@@ -114,14 +117,19 @@ Canonicalization rules:
 - JSON bodies are compacted with object keys sorted recursively.
 - Ignore paths use JSON Pointer syntax (RFC 6901), for example
   `/metadata/run_id`.
+- `canonicalize` returns `Result<CanonicalRequest, CanonicalError>` and
+  `RecordedRequest::populate_canonical_fields` returns
+  `Result<(), CanonicalError>`.
+- Canonicalization returns `CanonicalError::InvalidPointerPath` when any
+  configured ignore path is empty or is not a valid RFC 6901 JSON Pointer.
 - Non-JSON bodies keep `canonical_body` as `None`; the stable hash is then
   derived from the method, path, and canonical query only.
 
 `RecordedRequest::populate_canonical_fields(&IgnorePathConfig)` fills the
-reserved `canonical_request` and `stable_hash` fields in-place. This is the
-current public configuration surface for ignore paths; `HarnessConfig` remains
-source-compatible in this release, so canonicalization configuration is not yet
-threaded through harness startup.
+reserved `canonical_request` and `stable_hash` fields in-place once the ignore
+paths validate successfully. This is the current public configuration surface
+for ignore paths; `HarnessConfig` remains source-compatible in this release, so
+canonicalization configuration is not yet threaded through harness startup.
 
 ### Error handling
 

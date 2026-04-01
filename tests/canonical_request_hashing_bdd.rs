@@ -98,8 +98,12 @@ fn both_requests_are_canonicalized(canonical_hash_world: &CanonicalHashWorld) {
         .take()
         .unwrap_or_default();
 
-    let left_hash = stable_hash(&canonicalize(&left_request, &ignore_config));
-    let right_hash = stable_hash(&canonicalize(&right_request, &ignore_config));
+    let left_hash = stable_hash(
+        &canonicalize(&left_request, &ignore_config).expect("BDD scenarios use valid configs"),
+    );
+    let right_hash = stable_hash(
+        &canonicalize(&right_request, &ignore_config).expect("BDD scenarios use valid configs"),
+    );
 
     canonical_hash_world.left_hash.set(left_hash);
     canonical_hash_world.right_hash.set(right_hash);
