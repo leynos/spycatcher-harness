@@ -221,7 +221,7 @@ fn parse_array_index_token(token: &str) -> Option<usize> {
         return None;
     }
 
-    if !digits.clone().all(|digit| digit.is_ascii_digit()) {
+    if !digits.all(|digit| digit.is_ascii_digit()) {
         return None;
     }
 

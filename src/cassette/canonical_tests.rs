@@ -114,6 +114,7 @@ fn canonicalize_rejects_invalid_json_pointer_paths(#[case] ignored_body_path: St
 }
 
 #[rstest]
+#[rstest]
 #[case(
     json!({
         "items": [{"id": "zero"}, {"id": "one"}, {"id": "two"}],
