@@ -7,6 +7,7 @@
 //! persistence.
 //! See `docs/spycatcher-harness-design.md`, section "Cassette definition".
 
+mod canonical;
 pub(crate) mod filesystem;
 
 use std::io::{Read, Write};
@@ -17,6 +18,9 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::{HarnessError, HarnessResult};
+pub use canonical::{
+    CanonicalError, CanonicalRequest, IgnorePathConfig, canonicalize, stable_hash,
+};
 
 /// Schema version used to encode and validate cassette documents.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -284,5 +288,7 @@ pub struct InteractionMetadata {
     pub relative_offset_ms: u64,
 }
 
+#[cfg(test)]
+mod canonical_tests;
 #[cfg(test)]
 mod tests;

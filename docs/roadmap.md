@@ -51,16 +51,16 @@ units with explicit dependencies and completion criteria.
     [Cassette definition](spycatcher-harness-design.md#cassette-definition),
     [Architecture overview](spycatcher-harness-design.md#architecture-overview).
 
-- [ ] 1.2.2. Implement canonical request generation and stable hashing.
+- [x] 1.2.2. Implement canonical request generation and stable hashing.
   - Depends on: 1.2.1.
   - Success criteria:
-    - [ ] Canonicalization includes query parameter normalization in addition
+    - [x] Canonicalization includes query parameter normalization in addition
           to request body normalization.
-    - [ ] Canonicalization normalizes JSON key ordering and insignificant
+    - [x] Canonicalization normalizes JSON key ordering and insignificant
           whitespace.
-    - [ ] Ignore-path configuration supports metadata drift without affecting
+    - [x] Ignore-path configuration supports metadata drift without affecting
           hash stability.
-    - [ ] Fixture tests confirm that equivalent requests produce identical
+    - [x] Fixture tests confirm that equivalent requests produce identical
           hashes and materially different requests do not.
   - Design references:
     [Canonicalization and hashing](spycatcher-harness-design.md#canonicalization-and-hashing).

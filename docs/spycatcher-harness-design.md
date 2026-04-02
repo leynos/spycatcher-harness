@@ -256,6 +256,23 @@ Recommended approach:
 - Hash (SHA-256) over:
   `method + path + canonical_query + canonical_json`.
 
+Current implementation notes:
+
+- The domain entry points are
+  `spycatcher_harness::cassette::canonicalize`,
+  `spycatcher_harness::cassette::stable_hash`, and
+  `RecordedRequest::populate_canonical_fields`.
+- Hash input is the UTF-8 byte stream
+  `METHOD\n{method}\nPATH\n{path}\nQUERY\n{query}\nBODY\n{body}`.
+- Methods are uppercased before hashing.
+- Query parameters decode percent triplets, preserve literal `+`, sort by key
+  then value, then re-encoded with uppercase hex escapes.
+- JSON bodies are normalized by recursively sorting object keys and removing
+  configured JSON Pointer paths before compact serialization.
+- Ignore-path configuration is currently exposed as the additive domain type
+  `IgnorePathConfig` rather than via `HarnessConfig`, preserving the existing
+  public startup API surface for callers using struct literals.
+
 ### Streaming capture and replay
 
 #### OpenRouter / OpenAI Chat Completions streaming
