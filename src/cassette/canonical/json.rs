@@ -4,16 +4,20 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use serde_json::{Map, Number, Value, json};
 
+use super::CanonicalError;
 use super::CanonicalRequest;
 use super::hex::{HexCase, push_hex_u32};
 
-pub(super) fn canonicalize_body(body: Value, ignored_body_paths: &[String]) -> Value {
+pub(super) fn canonicalize_body(
+    body: Value,
+    ignored_body_paths: &[String],
+) -> Result<Value, CanonicalError> {
     let mut canonical = body;
-    for pointer_tokens in ordered_pointer_removals(ignored_body_paths) {
+    for pointer_tokens in ordered_pointer_removals(ignored_body_paths)? {
         remove_pointer(&mut canonical, &pointer_tokens);
     }
 
-    sort_json_value(canonical)
+    Ok(sort_json_value(canonical))
 }
 
 pub(super) fn is_valid_json_pointer(path: &str) -> bool {
@@ -119,12 +123,13 @@ fn emit_removal(
     }
 }
 
-fn ordered_pointer_removals(ignored_body_paths: &[String]) -> Vec<Vec<String>> {
+fn ordered_pointer_removals(
+    ignored_body_paths: &[String],
+) -> Result<Vec<Vec<String>>, CanonicalError> {
     let removals: Vec<PointerRemoval> = ignored_body_paths
         .iter()
-        .map(|path| parse_valid_json_pointer(path))
-        .map(PointerRemoval::new)
-        .collect();
+        .map(|path| parse_valid_json_pointer(path).map(PointerRemoval::new))
+        .collect::<Result<Vec<_>, _>>()?;
     let mut grouped_removals = build_grouped_removals(&removals);
 
     for entries in grouped_removals.values_mut() {
@@ -142,16 +147,11 @@ fn ordered_pointer_removals(ignored_body_paths: &[String]) -> Vec<Vec<String>> {
         );
     }
 
-    ordered
+    Ok(ordered)
 }
 
-fn parse_valid_json_pointer(path: &str) -> Vec<String> {
-    let pointer_tokens = parse_json_pointer(path);
-    debug_assert!(
-        pointer_tokens.is_some(),
-        "invalid JSON Pointer path should be rejected before canonical body processing"
-    );
-    pointer_tokens.unwrap_or_default()
+fn parse_valid_json_pointer(path: &str) -> Result<Vec<String>, CanonicalError> {
+    parse_json_pointer(path).ok_or_else(|| CanonicalError::InvalidPointerPath(path.to_owned()))
 }
 
 fn whole_array_entry_parent(tokens: &[String]) -> Option<Vec<String>> {

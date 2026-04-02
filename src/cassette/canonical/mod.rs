@@ -172,7 +172,8 @@ pub fn canonicalize(
         canonical_body: request
             .parsed_json
             .clone()
-            .map(|value| canonicalize_body(value, &ignore_config.ignored_body_paths)),
+            .map(|value| canonicalize_body(value, &ignore_config.ignored_body_paths))
+            .transpose()?,
     })
 }
 

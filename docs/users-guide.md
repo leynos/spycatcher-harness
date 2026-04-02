@@ -126,10 +126,11 @@ Canonicalization rules:
   derived from the method, path, and canonical query only.
 
 `RecordedRequest::populate_canonical_fields(&IgnorePathConfig)` fills the
-reserved `canonical_request` and `stable_hash` fields in-place once the ignore
-paths validate successfully. This is the current public configuration surface
-for ignore paths; `HarnessConfig` remains source-compatible in this release, so
-canonicalization configuration is not yet threaded through harness startup.
+reserved `canonical_request` and `stable_hash` fields in-place after the ignore
+paths are successfully validated. This is the current public configuration
+surface for ignore paths; `HarnessConfig` remains source-compatible in this
+release, so canonicalization configuration is not yet threaded through harness
+startup.
 
 ### Error handling
 

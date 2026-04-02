@@ -25,24 +25,22 @@ fn request_with_json_body() -> RecordedRequest {
     }
 }
 
-#[expect(
-    clippy::too_many_arguments,
-    reason = "test helper intentionally collapses repeated RecordedRequest boilerplate"
-)]
-fn make_request(
-    method: &str,
-    path: &str,
-    query: &str,
+struct RequestSpec {
+    method: String,
+    path: String,
+    query: String,
     body: Vec<u8>,
     parsed_json: Option<serde_json::Value>,
-) -> RecordedRequest {
+}
+
+fn make_request(spec: RequestSpec) -> RecordedRequest {
     RecordedRequest {
-        method: method.to_owned(),
-        path: path.to_owned(),
-        query: query.to_owned(),
+        method: spec.method,
+        path: spec.path,
+        query: spec.query,
         headers: Vec::new(),
-        body,
-        parsed_json,
+        body: spec.body,
+        parsed_json: spec.parsed_json,
         canonical_request: None,
         stable_hash: None,
     }
@@ -90,16 +88,16 @@ fn canonicalize_removes_ignored_json_pointer_paths(request_with_json_body: Recor
 #[case(String::new())]
 #[case("metadata/run_id".to_owned())]
 fn canonicalize_rejects_invalid_json_pointer_paths(#[case] ignored_body_path: String) {
-    let request = make_request(
-        "POST",
-        "/v1/chat/completions",
-        "",
-        br#"{"metadata":{"run_id":"abc"},"model":"gpt-test"}"#.to_vec(),
-        Some(json!({
+    let request = make_request(RequestSpec {
+        method: "POST".to_owned(),
+        path: "/v1/chat/completions".to_owned(),
+        query: String::new(),
+        body: br#"{"metadata":{"run_id":"abc"},"model":"gpt-test"}"#.to_vec(),
+        parsed_json: Some(json!({
             "metadata": {"run_id": "abc"},
             "model": "gpt-test"
         })),
-    );
+    });
 
     let canonical = canonicalize(
         &request,
@@ -116,16 +114,16 @@ fn canonicalize_rejects_invalid_json_pointer_paths(#[case] ignored_body_path: St
 
 #[rstest]
 fn canonicalize_removes_multiple_array_entries_without_index_shift() {
-    let request = make_request(
-        "POST",
-        "/v1/chat/completions",
-        "",
-        br#"{"items":[{"id":"zero"},{"id":"one"},{"id":"two"}],"model":"gpt-test"}"#.to_vec(),
-        Some(json!({
+    let request = make_request(RequestSpec {
+        method: "POST".to_owned(),
+        path: "/v1/chat/completions".to_owned(),
+        query: String::new(),
+        body: br#"{"items":[{"id":"zero"},{"id":"one"},{"id":"two"}],"model":"gpt-test"}"#.to_vec(),
+        parsed_json: Some(json!({
             "items": [{"id": "zero"}, {"id": "one"}, {"id": "two"}],
             "model": "gpt-test"
         })),
-    );
+    });
 
     let canonical = canonicalize(
         &request,
@@ -146,7 +144,13 @@ fn canonicalize_removes_multiple_array_entries_without_index_shift() {
 
 #[rstest]
 fn canonicalize_preserves_literal_plus_signs_in_query_parameters() {
-    let request = make_request("GET", "/v1/search", "q=C++&lang=en+GB", Vec::new(), None);
+    let request = make_request(RequestSpec {
+        method: "GET".to_owned(),
+        path: "/v1/search".to_owned(),
+        query: "q=C++&lang=en+GB".to_owned(),
+        body: Vec::new(),
+        parsed_json: None,
+    });
     let canonical = canonicalize(&request, &IgnorePathConfig::default()).expect("valid config");
 
     assert_eq!(canonical.canonical_query, "lang=en%2BGB&q=C%2B%2B");
@@ -243,7 +247,13 @@ fn populate_canonical_fields_sets_reserved_request_fields(
 
 #[rstest]
 fn canonicalize_non_json_body_leaves_body_absent() {
-    let request = make_request("POST", "/v1/embeddings", "", b"plain text".to_vec(), None);
+    let request = make_request(RequestSpec {
+        method: "POST".to_owned(),
+        path: "/v1/embeddings".to_owned(),
+        query: String::new(),
+        body: b"plain text".to_vec(),
+        parsed_json: None,
+    });
     let canonical = canonicalize(&request, &IgnorePathConfig::default()).expect("valid config");
 
     assert_eq!(canonical.canonical_body, None);
