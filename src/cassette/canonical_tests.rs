@@ -143,6 +143,36 @@ fn canonicalize_removes_multiple_array_entries_without_index_shift() {
 }
 
 #[rstest]
+fn canonicalize_deduplicates_duplicate_array_removals() {
+    let request = make_request(RequestSpec {
+        method: "POST".to_owned(),
+        path: "/v1/chat/completions".to_owned(),
+        query: String::new(),
+        body: br#"{"items":[{"id":"zero"},{"id":"one"},{"id":"two"}],"model":"gpt-test"}"#.to_vec(),
+        parsed_json: Some(json!({
+            "items": [{"id": "zero"}, {"id": "one"}, {"id": "two"}],
+            "model": "gpt-test"
+        })),
+    });
+
+    let canonical = canonicalize(
+        &request,
+        &IgnorePathConfig {
+            ignored_body_paths: vec!["/items/1".to_owned(), "/items/1".to_owned()],
+        },
+    )
+    .expect("valid config");
+
+    assert_eq!(
+        canonical.canonical_body,
+        Some(json!({
+            "items": [{"id": "zero"}, {"id": "two"}],
+            "model": "gpt-test"
+        }))
+    );
+}
+
+#[rstest]
 fn canonicalize_removes_mixed_depth_array_paths_without_index_shift() {
     let request = make_request(RequestSpec {
         method: "POST".to_owned(),
@@ -173,6 +203,32 @@ fn canonicalize_removes_mixed_depth_array_paths_without_index_shift() {
             "items": [{"name": "keep"}, {"id": "two"}],
             "model": "gpt-test"
         }))
+    );
+}
+
+#[rstest]
+fn canonicalize_rejects_leading_zero_array_indices() {
+    let request = make_request(RequestSpec {
+        method: "POST".to_owned(),
+        path: "/v1/chat/completions".to_owned(),
+        query: String::new(),
+        body: br#"{"items":[{"id":"zero"},{"id":"one"}],"model":"gpt-test"}"#.to_vec(),
+        parsed_json: Some(json!({
+            "items": [{"id": "zero"}, {"id": "one"}],
+            "model": "gpt-test"
+        })),
+    });
+
+    let canonical = canonicalize(
+        &request,
+        &IgnorePathConfig {
+            ignored_body_paths: vec!["/items/01".to_owned()],
+        },
+    );
+
+    assert_eq!(
+        canonical,
+        Err(CanonicalError::InvalidPointerPath("/items/01".to_owned()))
     );
 }
 

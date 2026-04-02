@@ -14,7 +14,8 @@ pub(super) fn canonicalize_body(
 ) -> Result<Value, CanonicalError> {
     let mut canonical = body;
     for pointer_tokens in ordered_pointer_removals(ignored_body_paths)? {
-        remove_pointer(&mut canonical, &pointer_tokens);
+        let pointer_path = pointer_tokens_to_path(&pointer_tokens);
+        remove_pointer(&mut canonical, &pointer_tokens, &pointer_path)?;
     }
 
     Ok(sort_json_value(canonical))
@@ -128,19 +129,20 @@ fn emit_removal(
 fn ordered_pointer_removals(
     ignored_body_paths: &[String],
 ) -> Result<Vec<Vec<PointerToken>>, CanonicalError> {
-    let removals: Vec<PointerRemoval> = ignored_body_paths
+    let removals = ignored_body_paths
         .iter()
         .map(|path| parse_valid_json_pointer(path).map(PointerRemoval::new))
         .collect::<Result<Vec<_>, _>>()?;
-    let mut grouped_removals = build_grouped_removals(&removals);
+    let deduplicated_removals = deduplicate_removals(removals);
+    let mut grouped_removals = build_grouped_removals(&deduplicated_removals);
 
     for entries in grouped_removals.values_mut() {
         entries.sort_unstable_by_key(|entry| std::cmp::Reverse(array_entry_index(entry)));
     }
 
-    let mut ordered = Vec::with_capacity(removals.len());
+    let mut ordered = Vec::with_capacity(deduplicated_removals.len());
     let mut emitted_groups = BTreeSet::new();
-    for removal in removals {
+    for removal in deduplicated_removals {
         emit_removal(
             removal,
             &mut ordered,
@@ -160,16 +162,13 @@ fn parse_valid_json_pointer(path: &str) -> Result<Vec<PointerToken>, CanonicalEr
 
 fn whole_array_entry_parent(tokens: &[PointerToken]) -> Option<Vec<PointerToken>> {
     let (_, parent_tokens) = tokens.split_last()?;
-
-    if array_entry_index(tokens).is_none() {
-        return None;
-    }
+    array_entry_index(tokens)?;
 
     Some(parent_tokens.to_vec())
 }
 
 fn array_entry_index(tokens: &[PointerToken]) -> Option<usize> {
-    tokens.last()?.as_str().parse::<usize>().ok()
+    parse_array_index_token(tokens.last()?.as_str())
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
@@ -179,6 +178,50 @@ impl PointerToken {
     fn as_str(&self) -> &str {
         &self.0
     }
+}
+
+fn pointer_tokens_to_path(tokens: &[PointerToken]) -> String {
+    let mut path = String::new();
+    for token in tokens {
+        path.push('/');
+        path.push_str(
+            token
+                .as_str()
+                .replace('~', "~0")
+                .replace('/', "~1")
+                .as_str(),
+        );
+    }
+    path
+}
+
+fn deduplicate_removals(removals: Vec<PointerRemoval>) -> Vec<PointerRemoval> {
+    let mut seen = BTreeSet::new();
+    let mut deduplicated = Vec::with_capacity(removals.len());
+    for removal in removals {
+        if seen.insert(removal.tokens.clone()) {
+            deduplicated.push(removal);
+        }
+    }
+    deduplicated
+}
+
+fn parse_array_index_token(token: &str) -> Option<usize> {
+    if token == "0" {
+        return Some(0);
+    }
+
+    let mut digits = token.bytes();
+    let first = digits.next()?;
+    if !first.is_ascii_digit() || first == b'0' {
+        return None;
+    }
+
+    if !digits.clone().all(|digit| digit.is_ascii_digit()) {
+        return None;
+    }
+
+    token.parse::<usize>().ok()
 }
 
 struct PointerRemoval {
@@ -196,15 +239,19 @@ impl PointerRemoval {
     }
 }
 
-fn remove_pointer(value: &mut Value, tokens: &[PointerToken]) {
+fn remove_pointer(
+    value: &mut Value,
+    tokens: &[PointerToken],
+    pointer_path: &str,
+) -> Result<(), CanonicalError> {
     let Some((head, tail)) = tokens.split_first() else {
-        return;
+        return Ok(());
     };
 
     match value {
-        Value::Object(object) => remove_object_pointer(object, head, tail),
-        Value::Array(items) => remove_array_pointer(items, head, tail),
-        _ => {}
+        Value::Object(object) => remove_object_pointer(object, head, tail, pointer_path),
+        Value::Array(items) => remove_array_pointer(items, head, tail, pointer_path),
+        _ => Ok(()),
     }
 }
 
@@ -212,30 +259,40 @@ fn remove_object_pointer(
     object: &mut Map<String, Value>,
     head: &PointerToken,
     tail: &[PointerToken],
-) {
+    pointer_path: &str,
+) -> Result<(), CanonicalError> {
     if tail.is_empty() {
         object.remove(head.as_str());
-        return;
+        return Ok(());
     }
 
     if let Some(next) = object.get_mut(head.as_str()) {
-        remove_pointer(next, tail);
+        return remove_pointer(next, tail, pointer_path);
     }
+
+    Ok(())
 }
 
-fn remove_array_pointer(items: &mut Vec<Value>, head: &PointerToken, tail: &[PointerToken]) {
-    let Ok(index) = head.as_str().parse::<usize>() else {
-        return;
+fn remove_array_pointer(
+    items: &mut Vec<Value>,
+    head: &PointerToken,
+    tail: &[PointerToken],
+    pointer_path: &str,
+) -> Result<(), CanonicalError> {
+    let Some(index) = parse_array_index_token(head.as_str()) else {
+        return Err(CanonicalError::InvalidPointerPath(pointer_path.to_owned()));
     };
 
     if tail.is_empty() {
         remove_array_entry(items, index);
-        return;
+        return Ok(());
     }
 
     if let Some(next) = items.get_mut(index) {
-        remove_pointer(next, tail);
+        return remove_pointer(next, tail, pointer_path);
     }
+
+    Ok(())
 }
 
 fn remove_array_entry(items: &mut Vec<Value>, index: usize) {
