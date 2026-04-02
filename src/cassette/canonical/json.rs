@@ -22,7 +22,11 @@ pub(super) fn canonicalize_body(
 }
 
 pub(super) fn is_valid_json_pointer(path: &str) -> bool {
-    parse_json_pointer(path).is_some()
+    parse_json_pointer(path).is_some_and(|tokens| {
+        !tokens
+            .iter()
+            .any(|token| looks_like_invalid_array_index(token.as_str()))
+    })
 }
 
 pub(super) fn serialize_json_canonical(value: &Value) -> String {
@@ -222,6 +226,10 @@ fn parse_array_index_token(token: &str) -> Option<usize> {
     }
 
     token.parse::<usize>().ok()
+}
+
+fn looks_like_invalid_array_index(token: &str) -> bool {
+    token.len() > 1 && token.starts_with('0') && token.bytes().all(|digit| digit.is_ascii_digit())
 }
 
 struct PointerRemoval {
