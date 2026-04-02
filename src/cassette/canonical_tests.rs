@@ -114,7 +114,6 @@ fn canonicalize_rejects_invalid_json_pointer_paths(#[case] ignored_body_path: St
 }
 
 #[rstest]
-#[rstest]
 #[case(
     json!({
         "items": [{"id": "zero"}, {"id": "one"}, {"id": "two"}],
@@ -161,7 +160,7 @@ fn canonicalize_removes_array_entries_without_index_shift(
     #[case] parsed_json: serde_json::Value,
     #[case] ignored_body_paths: Vec<String>,
     #[case] expected_body: serde_json::Value,
-) {
+) -> Result<(), CanonicalError> {
     let request = make_request(RequestSpec {
         method: "POST".to_owned(),
         path: "/v1/chat/completions".to_owned(),
@@ -170,10 +169,11 @@ fn canonicalize_removes_array_entries_without_index_shift(
         parsed_json: Some(parsed_json),
     });
 
-    let canonical =
-        canonicalize(&request, &IgnorePathConfig { ignored_body_paths }).expect("valid config");
+    let canonical = canonicalize(&request, &IgnorePathConfig { ignored_body_paths })?;
 
     assert_eq!(canonical.canonical_body, Some(expected_body));
+
+    Ok(())
 }
 
 #[rstest]
