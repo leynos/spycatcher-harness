@@ -113,36 +113,6 @@ fn canonicalize_rejects_invalid_json_pointer_paths(#[case] ignored_body_path: St
 }
 
 #[rstest]
-fn canonicalize_removes_multiple_array_entries_without_index_shift() {
-    let request = make_request(RequestSpec {
-        method: "POST".to_owned(),
-        path: "/v1/chat/completions".to_owned(),
-        query: String::new(),
-        body: br#"{"items":[{"id":"zero"},{"id":"one"},{"id":"two"}],"model":"gpt-test"}"#.to_vec(),
-        parsed_json: Some(json!({
-            "items": [{"id": "zero"}, {"id": "one"}, {"id": "two"}],
-            "model": "gpt-test"
-        })),
-    });
-
-    let canonical = canonicalize(
-        &request,
-        &IgnorePathConfig {
-            ignored_body_paths: vec!["/items/0".to_owned(), "/items/1".to_owned()],
-        },
-    )
-    .expect("valid config");
-
-    assert_eq!(
-        canonical.canonical_body,
-        Some(json!({
-            "items": [{"id": "two"}],
-            "model": "gpt-test"
-        }))
-    );
-}
-
-#[rstest]
 fn canonicalize_deduplicates_duplicate_array_removals() {
     let request = make_request(RequestSpec {
         method: "POST".to_owned(),
@@ -167,40 +137,6 @@ fn canonicalize_deduplicates_duplicate_array_removals() {
         canonical.canonical_body,
         Some(json!({
             "items": [{"id": "zero"}, {"id": "two"}],
-            "model": "gpt-test"
-        }))
-    );
-}
-
-#[rstest]
-fn canonicalize_removes_mixed_depth_array_paths_without_index_shift() {
-    let request = make_request(RequestSpec {
-        method: "POST".to_owned(),
-        path: "/v1/chat/completions".to_owned(),
-        query: String::new(),
-        body: br#"{"items":[{"id":"zero"},{"id":"one","name":"keep"},{"id":"two"}],"model":"gpt-test"}"#.to_vec(),
-        parsed_json: Some(json!({
-            "items": [
-                {"id": "zero"},
-                {"id": "one", "name": "keep"},
-                {"id": "two"}
-            ],
-            "model": "gpt-test"
-        })),
-    });
-
-    let canonical = canonicalize(
-        &request,
-        &IgnorePathConfig {
-            ignored_body_paths: vec!["/items/0".to_owned(), "/items/1/id".to_owned()],
-        },
-    )
-    .expect("valid config");
-
-    assert_eq!(
-        canonical.canonical_body,
-        Some(json!({
-            "items": [{"name": "keep"}, {"id": "two"}],
             "model": "gpt-test"
         }))
     );
@@ -233,28 +169,54 @@ fn canonicalize_rejects_leading_zero_array_indices() {
 }
 
 #[rstest]
-fn canonicalize_removes_top_level_array_entries_without_index_shift() {
+#[case(
+    json!({
+        "items": [{"id": "zero"}, {"id": "one"}, {"id": "two"}],
+        "model": "gpt-test"
+    }),
+    vec!["/items/0".to_owned(), "/items/1".to_owned()],
+    json!({
+        "items": [{"id": "two"}],
+        "model": "gpt-test"
+    }),
+)]
+#[case(
+    json!({
+        "items": [
+            {"id": "zero"},
+            {"id": "one", "name": "keep"},
+            {"id": "two"}
+        ],
+        "model": "gpt-test"
+    }),
+    vec!["/items/0".to_owned(), "/items/1/id".to_owned()],
+    json!({
+        "items": [{"name": "keep"}, {"id": "two"}],
+        "model": "gpt-test"
+    }),
+)]
+#[case(
+    json!([{"id": "zero"}, {"id": "one"}, {"id": "two"}]),
+    vec!["/0".to_owned(), "/1".to_owned()],
+    json!([{"id": "two"}]),
+)]
+fn canonicalize_removes_array_entries_without_index_shift(
+    #[case] parsed_json: serde_json::Value,
+    #[case] ignored_body_paths: Vec<String>,
+    #[case] expected_body: serde_json::Value,
+) {
     let request = make_request(RequestSpec {
         method: "POST".to_owned(),
         path: "/v1/chat/completions".to_owned(),
         query: String::new(),
-        body: br#"[{"id":"zero"},{"id":"one"},{"id":"two"}]"#.to_vec(),
-        parsed_json: Some(json!([
-            {"id": "zero"},
-            {"id": "one"},
-            {"id": "two"}
-        ])),
+        body: Vec::new(),
+        parsed_json: Some(parsed_json),
     });
 
-    let canonical = canonicalize(
-        &request,
-        &IgnorePathConfig {
-            ignored_body_paths: vec!["/0".to_owned(), "/1".to_owned()],
-        },
-    )
-    .expect("valid config");
+    let canonical =
+        canonicalize(&request, &IgnorePathConfig { ignored_body_paths }).expect("valid config");
 
-    assert_eq!(canonical.canonical_body, Some(json!([{"id": "two"}])));
+    assert_eq!(canonical.canonical_body, Some(expected_body));
 }
 
 #[rstest]
