@@ -1,6 +1,6 @@
 //! Deterministic request canonicalization and stable hashing helpers.
 //!
-//! This module owns the pure domain logic used to normalise recorded
+//! This module owns the pure domain logic used to normalize recorded
 //! requests before matching. It deliberately avoids filesystem, CLI, and
 //! transport dependencies so the same canonical form can be reused by future
 //! record and replay adapters.
@@ -193,9 +193,8 @@ fn is_valid_ignore_path(path: &str) -> bool {
 
 /// Computes the stable SHA-256 hash for a canonical request.
 ///
-/// The hash input is the UTF-8 byte string:
-/// `METHOD\n{method}\nPATH\n{path}\nQUERY\n{query}\nBODY\n{body}`.
-/// The body portion is empty when the request is not JSON.
+/// The hash input is the canonical JSON serialization of the envelope:
+/// `{"canonical_body":...,"canonical_query":...,"method":...,"path":...}`.
 ///
 /// # Examples
 ///
@@ -216,16 +215,9 @@ fn is_valid_ignore_path(path: &str) -> bool {
 #[must_use]
 pub fn stable_hash(canonical: &CanonicalRequest) -> String {
     let mut hasher = Sha256::new();
-    hasher.update("METHOD\n");
-    hasher.update(&canonical.method);
-    hasher.update("\nPATH\n");
-    hasher.update(&canonical.path);
-    hasher.update("\nQUERY\n");
-    hasher.update(&canonical.canonical_query);
-    hasher.update("\nBODY\n");
-    if let Some(body) = &canonical.canonical_body {
-        hasher.update(serialize_json_canonical(body));
-    }
+    hasher.update(serialize_json_canonical(&canonical_request_value(
+        canonical,
+    )));
     let digest = hasher.finalize();
     encode_hex(digest.as_slice())
 }

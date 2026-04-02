@@ -5,7 +5,7 @@ use serde_json::json;
 
 use super::canonicalize;
 use super::stable_hash;
-use super::{CanonicalError, IgnorePathConfig, RecordedRequest};
+use super::{CanonicalError, CanonicalRequest, IgnorePathConfig, RecordedRequest};
 
 #[fixture]
 fn request_with_json_body() -> RecordedRequest {
@@ -143,6 +143,65 @@ fn canonicalize_removes_multiple_array_entries_without_index_shift() {
 }
 
 #[rstest]
+fn canonicalize_removes_mixed_depth_array_paths_without_index_shift() {
+    let request = make_request(RequestSpec {
+        method: "POST".to_owned(),
+        path: "/v1/chat/completions".to_owned(),
+        query: String::new(),
+        body: br#"{"items":[{"id":"zero"},{"id":"one","name":"keep"},{"id":"two"}],"model":"gpt-test"}"#.to_vec(),
+        parsed_json: Some(json!({
+            "items": [
+                {"id": "zero"},
+                {"id": "one", "name": "keep"},
+                {"id": "two"}
+            ],
+            "model": "gpt-test"
+        })),
+    });
+
+    let canonical = canonicalize(
+        &request,
+        &IgnorePathConfig {
+            ignored_body_paths: vec!["/items/0".to_owned(), "/items/1/id".to_owned()],
+        },
+    )
+    .expect("valid config");
+
+    assert_eq!(
+        canonical.canonical_body,
+        Some(json!({
+            "items": [{"name": "keep"}, {"id": "two"}],
+            "model": "gpt-test"
+        }))
+    );
+}
+
+#[rstest]
+fn canonicalize_removes_top_level_array_entries_without_index_shift() {
+    let request = make_request(RequestSpec {
+        method: "POST".to_owned(),
+        path: "/v1/chat/completions".to_owned(),
+        query: String::new(),
+        body: br#"[{"id":"zero"},{"id":"one"},{"id":"two"}]"#.to_vec(),
+        parsed_json: Some(json!([
+            {"id": "zero"},
+            {"id": "one"},
+            {"id": "two"}
+        ])),
+    });
+
+    let canonical = canonicalize(
+        &request,
+        &IgnorePathConfig {
+            ignored_body_paths: vec!["/0".to_owned(), "/1".to_owned()],
+        },
+    )
+    .expect("valid config");
+
+    assert_eq!(canonical.canonical_body, Some(json!([{"id": "two"}])));
+}
+
+#[rstest]
 fn canonicalize_preserves_literal_plus_signs_in_query_parameters() {
     let request = make_request(RequestSpec {
         method: "GET".to_owned(),
@@ -217,6 +276,24 @@ fn stable_hash_changes_when_non_ignored_request_content_changes(
 }
 
 #[rstest]
+fn stable_hash_distinguishes_newline_collision_candidates() {
+    let left = CanonicalRequest {
+        method: "POST\nPATH\n/left".to_owned(),
+        path: "body".to_owned(),
+        canonical_query: "query".to_owned(),
+        canonical_body: Some(json!({"value": "same"})),
+    };
+    let right = CanonicalRequest {
+        method: "POST".to_owned(),
+        path: "/left\nPATH\nbody".to_owned(),
+        canonical_query: "query".to_owned(),
+        canonical_body: Some(json!({"value": "same"})),
+    };
+
+    assert_ne!(stable_hash(&left), stable_hash(&right));
+}
+
+#[rstest]
 fn populate_canonical_fields_sets_reserved_request_fields(
     mut request_with_json_body: RecordedRequest,
 ) {
@@ -228,7 +305,7 @@ fn populate_canonical_fields_sets_reserved_request_fields(
 
     assert_eq!(
         request_with_json_body.stable_hash.as_deref(),
-        Some("ecf8cab2752928a41978e7dbcb5cda883e87ae69829d290226f80f93c0e64be8")
+        Some("f61ef018c056ab58448c0c0152d17225fbc8e9aecc83dc6f4713f9594e86990f")
     );
     assert_eq!(
         request_with_json_body.canonical_request,

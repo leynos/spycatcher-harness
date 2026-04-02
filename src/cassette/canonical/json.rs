@@ -149,6 +149,8 @@ fn ordered_pointer_removals(
         );
     }
 
+    ordered.sort_by_key(|tokens| std::cmp::Reverse(tokens.len()));
+
     Ok(ordered)
 }
 
@@ -159,7 +161,7 @@ fn parse_valid_json_pointer(path: &str) -> Result<Vec<PointerToken>, CanonicalEr
 fn whole_array_entry_parent(tokens: &[PointerToken]) -> Option<Vec<PointerToken>> {
     let (_, parent_tokens) = tokens.split_last()?;
 
-    if parent_tokens.is_empty() || array_entry_index(tokens).is_none() {
+    if array_entry_index(tokens).is_none() {
         return None;
     }
 
