@@ -55,7 +55,7 @@ fn sort_json_value(value: Value) -> Value {
     }
 }
 
-fn parse_json_pointer(path: &str) -> Option<Vec<String>> {
+fn parse_json_pointer(path: &str) -> Option<Vec<PointerToken>> {
     if path.is_empty() || !path.starts_with('/') {
         return None;
     }
@@ -66,7 +66,7 @@ fn parse_json_pointer(path: &str) -> Option<Vec<String>> {
         .collect::<Option<Vec<_>>>()
 }
 
-fn unescape_pointer_token(token: &str) -> Option<String> {
+fn unescape_pointer_token(token: &str) -> Option<PointerToken> {
     let mut unescaped = String::with_capacity(token.len());
     let mut chars = token.chars();
 
@@ -82,11 +82,13 @@ fn unescape_pointer_token(token: &str) -> Option<String> {
         }
     }
 
-    Some(unescaped)
+    Some(PointerToken(unescaped))
 }
 
-fn build_grouped_removals(removals: &[PointerRemoval]) -> BTreeMap<Vec<String>, Vec<Vec<String>>> {
-    let mut grouped = BTreeMap::<Vec<String>, Vec<Vec<String>>>::new();
+fn build_grouped_removals(
+    removals: &[PointerRemoval],
+) -> BTreeMap<Vec<PointerToken>, Vec<Vec<PointerToken>>> {
+    let mut grouped = BTreeMap::<Vec<PointerToken>, Vec<Vec<PointerToken>>>::new();
     for removal in removals {
         if let Some(parent_tokens) = &removal.parent_array {
             grouped
@@ -99,10 +101,10 @@ fn build_grouped_removals(removals: &[PointerRemoval]) -> BTreeMap<Vec<String>, 
 }
 
 fn emit_grouped_entries(
-    parent_tokens: Vec<String>,
-    ordered: &mut Vec<Vec<String>>,
-    grouped: &mut BTreeMap<Vec<String>, Vec<Vec<String>>>,
-    emitted: &mut BTreeSet<Vec<String>>,
+    parent_tokens: Vec<PointerToken>,
+    ordered: &mut Vec<Vec<PointerToken>>,
+    grouped: &mut BTreeMap<Vec<PointerToken>, Vec<Vec<PointerToken>>>,
+    emitted: &mut BTreeSet<Vec<PointerToken>>,
 ) {
     if let Some(entries) = grouped.remove(&parent_tokens)
         && emitted.insert(parent_tokens)
@@ -113,9 +115,9 @@ fn emit_grouped_entries(
 
 fn emit_removal(
     removal: PointerRemoval,
-    ordered: &mut Vec<Vec<String>>,
-    grouped: &mut BTreeMap<Vec<String>, Vec<Vec<String>>>,
-    emitted: &mut BTreeSet<Vec<String>>,
+    ordered: &mut Vec<Vec<PointerToken>>,
+    grouped: &mut BTreeMap<Vec<PointerToken>, Vec<Vec<PointerToken>>>,
+    emitted: &mut BTreeSet<Vec<PointerToken>>,
 ) {
     match removal.parent_array {
         Some(parent_tokens) => emit_grouped_entries(parent_tokens, ordered, grouped, emitted),
@@ -125,7 +127,7 @@ fn emit_removal(
 
 fn ordered_pointer_removals(
     ignored_body_paths: &[String],
-) -> Result<Vec<Vec<String>>, CanonicalError> {
+) -> Result<Vec<Vec<PointerToken>>, CanonicalError> {
     let removals: Vec<PointerRemoval> = ignored_body_paths
         .iter()
         .map(|path| parse_valid_json_pointer(path).map(PointerRemoval::new))
@@ -150,11 +152,11 @@ fn ordered_pointer_removals(
     Ok(ordered)
 }
 
-fn parse_valid_json_pointer(path: &str) -> Result<Vec<String>, CanonicalError> {
+fn parse_valid_json_pointer(path: &str) -> Result<Vec<PointerToken>, CanonicalError> {
     parse_json_pointer(path).ok_or_else(|| CanonicalError::InvalidPointerPath(path.to_owned()))
 }
 
-fn whole_array_entry_parent(tokens: &[String]) -> Option<Vec<String>> {
+fn whole_array_entry_parent(tokens: &[PointerToken]) -> Option<Vec<PointerToken>> {
     let (_, parent_tokens) = tokens.split_last()?;
 
     if parent_tokens.is_empty() || array_entry_index(tokens).is_none() {
@@ -164,17 +166,26 @@ fn whole_array_entry_parent(tokens: &[String]) -> Option<Vec<String>> {
     Some(parent_tokens.to_vec())
 }
 
-fn array_entry_index(tokens: &[String]) -> Option<usize> {
-    tokens.last()?.parse::<usize>().ok()
+fn array_entry_index(tokens: &[PointerToken]) -> Option<usize> {
+    tokens.last()?.as_str().parse::<usize>().ok()
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+struct PointerToken(String);
+
+impl PointerToken {
+    fn as_str(&self) -> &str {
+        &self.0
+    }
 }
 
 struct PointerRemoval {
-    tokens: Vec<String>,
-    parent_array: Option<Vec<String>>,
+    tokens: Vec<PointerToken>,
+    parent_array: Option<Vec<PointerToken>>,
 }
 
 impl PointerRemoval {
-    fn new(tokens: Vec<String>) -> Self {
+    fn new(tokens: Vec<PointerToken>) -> Self {
         let parent_array = whole_array_entry_parent(&tokens);
         Self {
             tokens,
@@ -183,7 +194,7 @@ impl PointerRemoval {
     }
 }
 
-fn remove_pointer(value: &mut Value, tokens: &[String]) {
+fn remove_pointer(value: &mut Value, tokens: &[PointerToken]) {
     let Some((head, tail)) = tokens.split_first() else {
         return;
     };
@@ -195,19 +206,23 @@ fn remove_pointer(value: &mut Value, tokens: &[String]) {
     }
 }
 
-fn remove_object_pointer(object: &mut Map<String, Value>, head: &str, tail: &[String]) {
+fn remove_object_pointer(
+    object: &mut Map<String, Value>,
+    head: &PointerToken,
+    tail: &[PointerToken],
+) {
     if tail.is_empty() {
-        object.remove(head);
+        object.remove(head.as_str());
         return;
     }
 
-    if let Some(next) = object.get_mut(head) {
+    if let Some(next) = object.get_mut(head.as_str()) {
         remove_pointer(next, tail);
     }
 }
 
-fn remove_array_pointer(items: &mut Vec<Value>, head: &str, tail: &[String]) {
-    let Ok(index) = head.parse::<usize>() else {
+fn remove_array_pointer(items: &mut Vec<Value>, head: &PointerToken, tail: &[PointerToken]) {
+    let Ok(index) = head.as_str().parse::<usize>() else {
         return;
     };
 
