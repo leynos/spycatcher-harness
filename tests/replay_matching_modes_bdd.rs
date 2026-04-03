@@ -37,29 +37,31 @@ fn matching_world() -> MatchingWorld {
     MatchingWorld::default()
 }
 
-fn create_interaction(
-    method: &str,
-    path: &str,
+struct InteractionSpec<'a> {
+    method: &'a str,
+    path: &'a str,
     canonical: Value,
-    hash: &str,
-    response_id: &str,
-) -> Interaction {
+    hash: &'a str,
+    response_id: &'a str,
+}
+
+fn create_interaction(spec: InteractionSpec<'_>) -> Interaction {
     Interaction {
         request: RecordedRequest {
-            method: method.to_owned(),
-            path: path.to_owned(),
+            method: spec.method.to_owned(),
+            path: spec.path.to_owned(),
             query: String::new(),
             headers: Vec::new(),
             body: Vec::new(),
             parsed_json: Some(json!({})),
-            canonical_request: Some(canonical),
-            stable_hash: Some(hash.to_owned()),
+            canonical_request: Some(spec.canonical),
+            stable_hash: Some(spec.hash.to_owned()),
         },
         response: RecordedResponse::NonStream {
             status: 200,
             headers: Vec::new(),
             body: Vec::new(),
-            parsed_json: Some(json!({"id": response_id})),
+            parsed_json: Some(json!({"id": spec.response_id})),
         },
         metadata: InteractionMetadata {
             protocol_id: "test".to_owned(),
@@ -73,27 +75,27 @@ fn create_interaction(
 #[given("a cassette with three recorded interactions")]
 fn a_cassette_with_three_recorded_interactions(matching_world: &MatchingWorld) {
     let mut cassette = Cassette::new();
-    cassette.append(create_interaction(
-        "POST",
-        "/v1/chat",
-        json!({"method": "POST"}),
-        "hash_a",
-        "resp_a",
-    ));
-    cassette.append(create_interaction(
-        "POST",
-        "/v1/chat",
-        json!({"method": "POST", "messages": [1]}),
-        "hash_b",
-        "resp_b",
-    ));
-    cassette.append(create_interaction(
-        "GET",
-        "/v1/models",
-        json!({"method": "GET"}),
-        "hash_c",
-        "resp_c",
-    ));
+    cassette.append(create_interaction(InteractionSpec {
+        method: "POST",
+        path: "/v1/chat",
+        canonical: json!({"method": "POST"}),
+        hash: "hash_a",
+        response_id: "resp_a",
+    }));
+    cassette.append(create_interaction(InteractionSpec {
+        method: "POST",
+        path: "/v1/chat",
+        canonical: json!({"method": "POST", "messages": [1]}),
+        hash: "hash_b",
+        response_id: "resp_b",
+    }));
+    cassette.append(create_interaction(InteractionSpec {
+        method: "GET",
+        path: "/v1/models",
+        canonical: json!({"method": "GET"}),
+        hash: "hash_c",
+        response_id: "resp_c",
+    }));
     matching_world.cassette.set(cassette);
 }
 
@@ -108,33 +110,33 @@ fn a_cassette_with_three_recorded_interactions_with_distinct_hashes(
 #[given("a cassette with two interactions sharing the same hash")]
 fn a_cassette_with_two_interactions_sharing_the_same_hash(matching_world: &MatchingWorld) {
     let mut cassette = Cassette::new();
-    cassette.append(create_interaction(
-        "POST",
-        "/v1/chat",
-        json!({"method": "POST", "content": "first"}),
-        "shared_hash",
-        "first_response",
-    ));
-    cassette.append(create_interaction(
-        "POST",
-        "/v1/chat",
-        json!({"method": "POST", "content": "second"}),
-        "shared_hash",
-        "second_response",
-    ));
+    cassette.append(create_interaction(InteractionSpec {
+        method: "POST",
+        path: "/v1/chat",
+        canonical: json!({"method": "POST", "content": "first"}),
+        hash: "shared_hash",
+        response_id: "first_response",
+    }));
+    cassette.append(create_interaction(InteractionSpec {
+        method: "POST",
+        path: "/v1/chat",
+        canonical: json!({"method": "POST", "content": "second"}),
+        hash: "shared_hash",
+        response_id: "second_response",
+    }));
     matching_world.cassette.set(cassette);
 }
 
 #[given("a cassette with one recorded interaction")]
 fn a_cassette_with_one_recorded_interaction(matching_world: &MatchingWorld) {
     let mut cassette = Cassette::new();
-    cassette.append(create_interaction(
-        "POST",
-        "/v1/chat",
-        json!({"method": "POST"}),
-        "hash_single",
-        "resp_single",
-    ));
+    cassette.append(create_interaction(InteractionSpec {
+        method: "POST",
+        path: "/v1/chat",
+        canonical: json!({"method": "POST"}),
+        hash: "hash_single",
+        response_id: "resp_single",
+    }));
     matching_world.cassette.set(cassette);
 }
 
@@ -287,14 +289,13 @@ fn two_requests_arrive_with_the_shared_hash(matching_world: &MatchingWorld) {
         &json!({"method": "POST", "content": "first"}),
         &cassette,
     );
-    if let MatchOutcome::Matched(interaction) = outcome_1 {
-        if let RecordedResponse::NonStream { parsed_json, .. } = &interaction.response {
-            if let Some(id) = parsed_json.as_ref().and_then(|v| v.get("id")) {
-                matching_world
-                    .first_response_id
-                    .set(id.as_str().unwrap_or("").to_owned());
-            }
-        }
+    if let MatchOutcome::Matched(interaction) = outcome_1
+        && let RecordedResponse::NonStream { parsed_json, .. } = &interaction.response
+        && let Some(id) = parsed_json.as_ref().and_then(|v| v.get("id"))
+    {
+        matching_world
+            .first_response_id
+            .set(id.as_str().unwrap_or("").to_owned());
     }
 
     let outcome_2 = engine.next_match(
@@ -302,14 +303,13 @@ fn two_requests_arrive_with_the_shared_hash(matching_world: &MatchingWorld) {
         &json!({"method": "POST", "content": "second"}),
         &cassette,
     );
-    if let MatchOutcome::Matched(interaction) = outcome_2 {
-        if let RecordedResponse::NonStream { parsed_json, .. } = &interaction.response {
-            if let Some(id) = parsed_json.as_ref().and_then(|v| v.get("id")) {
-                matching_world
-                    .second_response_id
-                    .set(id.as_str().unwrap_or("").to_owned());
-            }
-        }
+    if let MatchOutcome::Matched(interaction) = outcome_2
+        && let RecordedResponse::NonStream { parsed_json, .. } = &interaction.response
+        && let Some(id) = parsed_json.as_ref().and_then(|v| v.get("id"))
+    {
+        matching_world
+            .second_response_id
+            .set(id.as_str().unwrap_or("").to_owned());
     }
 
     matching_world.cassette.set(cassette);

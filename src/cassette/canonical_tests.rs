@@ -171,7 +171,13 @@ fn canonicalize_removes_array_entries_without_index_shift(
 
     let canonical = canonicalize(&request, &IgnorePathConfig { ignored_body_paths })?;
 
-    assert_eq!(canonical.canonical_body, Some(expected_body));
+    if canonical.canonical_body != Some(expected_body.clone()) {
+        return Err(CanonicalError::InvalidPointerPath(format!(
+            "Expected body {:?} but got {:?}",
+            Some(expected_body),
+            canonical.canonical_body
+        )));
+    }
 
     Ok(())
 }

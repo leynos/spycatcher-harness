@@ -23,7 +23,6 @@ use crate::{HarnessError, HarnessResult};
 pub use canonical::{
     CanonicalError, CanonicalRequest, IgnorePathConfig, canonicalize, stable_hash,
 };
-#[allow(unused_imports)] // Used by matching engine in next stage.
 pub(crate) use diff::canonical_diff_summary;
 pub use matching::{MatchOutcome, MismatchDiagnostic, ReplayMatchEngine};
 

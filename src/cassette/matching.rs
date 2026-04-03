@@ -145,20 +145,27 @@ impl ReplayMatchEngine {
         observed_canonical: &Value,
         cassette: &'a Cassette,
     ) -> MatchOutcome<'a> {
-        if self.sequential_cursor >= self.interactions.len() {
+        let Some(expected_data) = self.interactions.get(self.sequential_cursor) else {
             return MatchOutcome::Mismatch(MismatchDiagnostic {
                 interaction_id: self.sequential_cursor,
                 expected_hash: String::new(),
                 observed_hash: observed_hash.to_owned(),
                 diff_summary: "cassette exhausted: no more interactions available".to_owned(),
             });
-        }
+        };
 
-        let expected_data = &self.interactions[self.sequential_cursor];
         let expected_hash = &expected_data.stable_hash;
 
         if observed_hash == expected_hash {
-            let interaction = &cassette.interactions[self.sequential_cursor];
+            let Some(interaction) = cassette.interactions.get(self.sequential_cursor) else {
+                // This should never happen since self.interactions mirrors cassette.interactions
+                return MatchOutcome::Mismatch(MismatchDiagnostic {
+                    interaction_id: self.sequential_cursor,
+                    expected_hash: expected_hash.clone(),
+                    observed_hash: observed_hash.to_owned(),
+                    diff_summary: "internal error: cassette interaction missing".to_owned(),
+                });
+            };
             self.sequential_cursor += 1;
             MatchOutcome::Matched(interaction)
         } else {
@@ -184,18 +191,27 @@ impl ReplayMatchEngine {
                 interaction_id: self.interactions.len(),
                 expected_hash: String::new(),
                 observed_hash: observed_hash.to_owned(),
-                diff_summary: format!(
-                    "no interaction with hash {} found in cassette",
-                    observed_hash
-                ),
+                diff_summary: format!("no interaction with hash {observed_hash} found in cassette"),
             });
         };
 
         // Find the first unconsumed interaction with this hash.
         for &idx in indices {
-            if !self.consumed[idx] {
-                self.consumed[idx] = true;
-                return MatchOutcome::Matched(&cassette.interactions[idx]);
+            let Some(&is_consumed) = self.consumed.get(idx) else {
+                continue;
+            };
+            if is_consumed {
+                continue;
+            }
+
+            // Mark as consumed
+            if let Some(consumed_slot) = self.consumed.get_mut(idx) {
+                *consumed_slot = true;
+            }
+
+            // Return the matched interaction
+            if let Some(interaction) = cassette.interactions.get(idx) {
+                return MatchOutcome::Matched(interaction);
             }
         }
 
@@ -205,11 +221,8 @@ impl ReplayMatchEngine {
             expected_hash: String::new(),
             observed_hash: observed_hash.to_owned(),
             diff_summary: format!(
-                concat!(
-                    "all interactions with hash {} have already been consumed; ",
-                    "cassette contains {} interaction(s) with this hash"
-                ),
-                observed_hash,
+                "all interactions with hash {observed_hash} have already been consumed; \
+                 cassette contains {} interaction(s) with this hash",
                 indices.len()
             ),
         })
