@@ -65,13 +65,13 @@ units with explicit dependencies and completion criteria.
   - Design references:
     [Canonicalization and hashing](spycatcher-harness-design.md#canonicalization-and-hashing).
 
-- [ ] 1.2.3. Deliver strict sequential and keyed replay matching modes.
+- [x] 1.2.3. Deliver strict sequential and keyed replay matching modes.
   - Depends on: 1.2.2.
   - Success criteria:
-    - [ ] Sequential strict mode fails mismatches with HTTP 409 and includes
+    - [x] Sequential strict mode fails mismatches with HTTP 409 and includes
           expected interaction ID, observed hash, and field-level diff summary.
-    - [ ] Keyed mode consumes the next unused interaction for a matching hash.
-    - [ ] Integration tests cover mismatch diagnostics and concurrent replay
+    - [x] Keyed mode consumes the next unused interaction for a matching hash.
+    - [x] Integration tests cover mismatch diagnostics and concurrent replay
           order handling.
   - Design references:
     [Matching modes](spycatcher-harness-design.md#matching-modes).
