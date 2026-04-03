@@ -8,7 +8,9 @@
 //! See `docs/spycatcher-harness-design.md`, section "Cassette definition".
 
 mod canonical;
+mod diff;
 pub(crate) mod filesystem;
+pub(crate) mod matching;
 
 use std::io::{Read, Write};
 use std::num::ParseIntError;
@@ -21,6 +23,9 @@ use crate::{HarnessError, HarnessResult};
 pub use canonical::{
     CanonicalError, CanonicalRequest, IgnorePathConfig, canonicalize, stable_hash,
 };
+#[allow(unused_imports)] // Used by matching engine in next stage.
+pub(crate) use diff::canonical_diff_summary;
+pub use matching::{MatchOutcome, MismatchDiagnostic, ReplayMatchEngine};
 
 /// Schema version used to encode and validate cassette documents.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -290,5 +295,9 @@ pub struct InteractionMetadata {
 
 #[cfg(test)]
 mod canonical_tests;
+#[cfg(test)]
+mod diff_tests;
+#[cfg(test)]
+mod matching_tests;
 #[cfg(test)]
 mod tests;
