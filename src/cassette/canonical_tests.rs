@@ -174,7 +174,13 @@ fn canonicalize_removes_array_entries_without_index_shift(
         Err(error) => panic!("array entry removal should use valid ignored body paths: {error}"),
     };
 
-    assert_eq!(canonical.canonical_body, Some(expected_body));
+    if canonical.canonical_body != Some(expected_body.clone()) {
+        return Err(CanonicalError::InvalidPointerPath(format!(
+            "Expected body {:?} but got {:?}",
+            Some(expected_body),
+            canonical.canonical_body
+        )));
+    }
 }
 
 #[rstest]

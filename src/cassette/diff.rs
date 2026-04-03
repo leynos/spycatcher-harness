@@ -5,8 +5,6 @@
 //! differences. It is designed specifically for generating mismatch diagnostics
 //! in replay mode, not as a general-purpose JSON diff engine.
 
-#![allow(dead_code)] // Used by matching engine in next stage.
-
 use serde_json::Value;
 
 /// Produces a human-readable field-level diff summary comparing two canonical
@@ -36,73 +34,104 @@ use serde_json::Value;
 /// ```
 pub(crate) fn canonical_diff_summary(expected: &Value, observed: &Value) -> String {
     let mut changes = Vec::new();
-    diff_recursive(expected, observed, String::new(), &mut changes);
+    diff_recursive(expected, observed, "", &mut changes);
     changes.join("\n")
 }
 
-fn diff_recursive(expected: &Value, observed: &Value, path: String, changes: &mut Vec<String>) {
+fn diff_recursive(expected: &Value, observed: &Value, path: &str, changes: &mut Vec<String>) {
     match (expected, observed) {
         (Value::Object(exp_map), Value::Object(obs_map)) => {
-            // Find keys in both, only in expected, and only in observed.
-            let exp_keys: std::collections::HashSet<_> = exp_map.keys().collect();
-            let obs_keys: std::collections::HashSet<_> = obs_map.keys().collect();
-
-            // Keys removed (in expected but not observed).
-            for key in exp_keys.difference(&obs_keys) {
-                let field_path = format_path(&path, key);
-                changes.push(format!("removed: {field_path}"));
-            }
-
-            // Keys added (in observed but not expected).
-            for key in obs_keys.difference(&exp_keys) {
-                let field_path = format_path(&path, key);
-                let value_str = compact_value_string(&obs_map[*key]);
-                changes.push(format!("added: {field_path}: {value_str}"));
-            }
-
-            // Keys present in both — recurse if values differ.
-            for key in exp_keys.intersection(&obs_keys) {
-                let field_path = format_path(&path, key);
-                let exp_val = &exp_map[*key];
-                let obs_val = &obs_map[*key];
-                if exp_val != obs_val {
-                    diff_recursive(exp_val, obs_val, field_path, changes);
-                }
-            }
+            diff_objects(exp_map, obs_map, path, changes);
         }
         (Value::Array(exp_arr), Value::Array(obs_arr)) => {
-            let max_len = exp_arr.len().max(obs_arr.len());
-            for i in 0..max_len {
-                let elem_path = format_path(&path, &format!("[{i}]"));
-                match (exp_arr.get(i), obs_arr.get(i)) {
-                    (Some(exp_elem), Some(obs_elem)) => {
-                        if exp_elem != obs_elem {
-                            diff_recursive(exp_elem, obs_elem, elem_path, changes);
-                        }
-                    }
-                    (Some(_), None) => {
-                        changes.push(format!("removed: {elem_path}"));
-                    }
-                    (None, Some(obs_elem)) => {
-                        let value_str = compact_value_string(obs_elem);
-                        changes.push(format!("added: {elem_path}: {value_str}"));
-                    }
-                    (None, None) => unreachable!(),
-                }
-            }
+            diff_arrays(exp_arr, obs_arr, path, changes);
         }
         _ => {
-            // Scalar or type mismatch.
-            let exp_str = compact_value_string(expected);
-            let obs_str = compact_value_string(observed);
-            let display_path = if path.is_empty() {
-                "(root)".to_owned()
-            } else {
-                path
-            };
-            changes.push(format!("changed: {display_path}: {exp_str} -> {obs_str}"));
+            diff_scalar_or_type_mismatch(expected, observed, path, changes);
         }
     }
+}
+
+fn diff_objects(
+    exp_map: &serde_json::Map<String, Value>,
+    obs_map: &serde_json::Map<String, Value>,
+    path: &str,
+    changes: &mut Vec<String>,
+) {
+    let exp_keys: std::collections::HashSet<_> = exp_map.keys().collect();
+    let obs_keys: std::collections::HashSet<_> = obs_map.keys().collect();
+
+    // Keys removed (in expected but not observed).
+    for key in exp_keys.difference(&obs_keys) {
+        let field_path = format_path(path, key);
+        changes.push(format!("removed: {field_path}"));
+    }
+
+    // Keys added (in observed but not expected).
+    for key in obs_keys.difference(&exp_keys) {
+        let field_path = format_path(path, key);
+        if let Some(value) = obs_map.get(*key) {
+            let value_str = compact_value_string(value);
+            changes.push(format!("added: {field_path}: {value_str}"));
+        }
+    }
+
+    // Keys present in both — recurse if values differ.
+    for key in exp_keys.intersection(&obs_keys) {
+        if let (Some(exp_val), Some(obs_val)) = (exp_map.get(*key), obs_map.get(*key))
+            && exp_val != obs_val
+        {
+            let field_path = format_path(path, key);
+            diff_recursive(exp_val, obs_val, &field_path, changes);
+        }
+    }
+}
+
+fn diff_arrays(exp_arr: &[Value], obs_arr: &[Value], path: &str, changes: &mut Vec<String>) {
+    let max_len = exp_arr.len().max(obs_arr.len());
+    for i in 0..max_len {
+        let elem_path = format_path(path, &format!("[{i}]"));
+        diff_array_element(exp_arr.get(i), obs_arr.get(i), &elem_path, changes);
+    }
+}
+
+fn diff_array_element(
+    exp_elem: Option<&Value>,
+    obs_elem: Option<&Value>,
+    elem_path: &str,
+    changes: &mut Vec<String>,
+) {
+    match (exp_elem, obs_elem) {
+        (Some(exp), Some(obs)) if exp != obs => {
+            diff_recursive(exp, obs, elem_path, changes);
+        }
+        (Some(_), None) => {
+            changes.push(format!("removed: {elem_path}"));
+        }
+        (None, Some(obs)) => {
+            let value_str = compact_value_string(obs);
+            changes.push(format!("added: {elem_path}: {value_str}"));
+        }
+        (Some(_), Some(_)) | (None, None) => {
+            // Either equal or both None; both cases are no-ops
+        }
+    }
+}
+
+fn diff_scalar_or_type_mismatch(
+    expected: &Value,
+    observed: &Value,
+    path: &str,
+    changes: &mut Vec<String>,
+) {
+    let exp_str = compact_value_string(expected);
+    let obs_str = compact_value_string(observed);
+    let display_path = if path.is_empty() {
+        "(root)".to_owned()
+    } else {
+        path.to_owned()
+    };
+    changes.push(format!("changed: {display_path}: {exp_str} -> {obs_str}"));
 }
 
 fn format_path(prefix: &str, segment: &str) -> String {

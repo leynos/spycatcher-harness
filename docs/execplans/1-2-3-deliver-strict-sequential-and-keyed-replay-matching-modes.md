@@ -134,9 +134,9 @@ Observable success after delivery:
 ## Surprises & discoveries
 
 - The BDD test framework (`rstest-bdd`) required storing owned cassettes and
-  engines in the world state rather than using borrowed references with lifetime
-  transmutation. This led to a cleaner design where the cassette is moved in and
-  out of slots during test execution.
+  engines in the world state rather than using borrowed references with
+  lifetime transmutation. This led to a cleaner design where the cassette is
+  moved in and out of slots during test execution.
 - The diff utility benefited from recursive tree walking rather than iterative
   approaches, though this resulted in higher cyclomatic complexity that would
   need refactoring to meet strict lint standards.
