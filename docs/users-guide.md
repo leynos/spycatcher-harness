@@ -70,6 +70,53 @@ Replay startup expectations:
   implicit `.json` suffix.
 - The stored cassette must use the currently supported `format_version`.
 
+### Replay matching modes
+
+The harness supports two matching modes for replay:
+
+- **Sequential strict mode (default)**: requests must arrive in the exact
+  recorded order. Each incoming request is expected to match the next
+  interaction in the cassette. Mismatches fail fast with an HTTP 409 response
+  containing:
+  - The expected interaction ID (zero-based index).
+  - The expected and observed request hashes.
+  - A field-level diff summary comparing the canonical request JSON values.
+
+  This mode maximizes repeatability and debugging speed for deterministic,
+  single-threaded agent loops.
+
+- **Keyed mode**: requests are matched by their canonical request hash. The
+  engine consumes the next unused interaction with the matching hash, allowing
+  requests to arrive out of order. When multiple interactions share the same
+  hash, they are consumed in recorded order.
+
+  This mode supports limited reordering and concurrent requests, at the cost of
+  less precise failure locations.
+
+Configure the matching mode using the `match_mode` field:
+
+```rust
+use spycatcher_harness::HarnessConfig;
+use spycatcher_harness::config::MatchMode;
+
+let cfg = HarnessConfig {
+    match_mode: MatchMode::Keyed,
+    ..HarnessConfig::default()
+};
+```
+
+When a mismatch occurs in sequential strict mode, the diagnostic response
+includes a field-level diff showing the differences between the expected and
+observed canonical requests. The diff format uses:
+
+- `added: <path>: <value>` — field present in observed but not expected.
+- `removed: <path>` — field present in expected but not observed.
+- `changed: <path>: <expected_value> -> <observed_value>` — differing values.
+
+Paths use dotted notation for nested objects (e.g.,
+`canonical_body.metadata.run_id`) and bracket notation for array elements
+(e.g., `messages[0].role`).
+
 ### Canonical request hashing
 
 The cassette module exposes deterministic canonicalization helpers for replay

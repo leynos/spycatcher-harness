@@ -41,10 +41,18 @@ pub enum HarnessError {
     },
 
     /// A replayed request did not match the expected interaction.
-    #[error("request mismatch at interaction {interaction_id}")]
+    #[error(
+        "request mismatch at interaction {interaction_id}: expected {expected_hash}, observed {observed_hash}"
+    )]
     RequestMismatch {
-        /// Zero-based index of the mismatched interaction.
+        /// Zero-based index of the expected interaction.
         interaction_id: usize,
+        /// Stable hash of the expected canonical request.
+        expected_hash: String,
+        /// Stable hash of the observed incoming request.
+        observed_hash: String,
+        /// Field-level diff summary of expected vs observed canonical JSON.
+        diff_summary: String,
     },
 
     /// The cassette could not be parsed or was missing required fields.
@@ -94,8 +102,13 @@ mod tests {
         "cassette not found: smoke_001",
     )]
     #[case::request_mismatch(
-        HarnessError::RequestMismatch { interaction_id: 42 },
-        "request mismatch at interaction 42",
+        HarnessError::RequestMismatch {
+            interaction_id: 42,
+            expected_hash: "abc123".to_owned(),
+            observed_hash: "def456".to_owned(),
+            diff_summary: "changed: method".to_owned(),
+        },
+        "request mismatch at interaction 42: expected abc123, observed def456",
     )]
     #[case::invalid_cassette(
         HarnessError::InvalidCassette { message: "missing format_version".to_owned() },
