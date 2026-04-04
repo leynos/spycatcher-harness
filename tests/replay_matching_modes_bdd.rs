@@ -45,6 +45,20 @@ struct InteractionSpec<'a> {
     response_id: &'a str,
 }
 
+/// Extracts response ID from a match outcome if it's a `NonStream` response.
+fn extract_response_id(outcome: &MatchOutcome<'_>) -> Option<String> {
+    if let MatchOutcome::Matched(interaction) = outcome
+        && let RecordedResponse::NonStream { parsed_json, .. } = &interaction.response
+    {
+        return parsed_json
+            .as_ref()
+            .and_then(|v| v.get("id"))
+            .and_then(|v| v.as_str())
+            .map(String::from);
+    }
+    None
+}
+
 fn create_interaction(spec: InteractionSpec<'_>) -> Interaction {
     Interaction {
         request: RecordedRequest {
@@ -289,13 +303,8 @@ fn two_requests_arrive_with_the_shared_hash(matching_world: &MatchingWorld) {
         &json!({"method": "POST", "content": "first"}),
         &cassette,
     );
-    if let MatchOutcome::Matched(interaction) = outcome_1
-        && let RecordedResponse::NonStream { parsed_json, .. } = &interaction.response
-        && let Some(id) = parsed_json.as_ref().and_then(|v| v.get("id"))
-    {
-        matching_world
-            .first_response_id
-            .set(id.as_str().unwrap_or("").to_owned());
+    if let Some(id) = extract_response_id(&outcome_1) {
+        matching_world.first_response_id.set(id);
     }
 
     let outcome_2 = engine.next_match(
@@ -303,13 +312,8 @@ fn two_requests_arrive_with_the_shared_hash(matching_world: &MatchingWorld) {
         &json!({"method": "POST", "content": "second"}),
         &cassette,
     );
-    if let MatchOutcome::Matched(interaction) = outcome_2
-        && let RecordedResponse::NonStream { parsed_json, .. } = &interaction.response
-        && let Some(id) = parsed_json.as_ref().and_then(|v| v.get("id"))
-    {
-        matching_world
-            .second_response_id
-            .set(id.as_str().unwrap_or("").to_owned());
+    if let Some(id) = extract_response_id(&outcome_2) {
+        matching_world.second_response_id.set(id);
     }
 
     matching_world.cassette.set(cassette);
