@@ -113,6 +113,42 @@ fn a_cassette_with_three_recorded_interactions(matching_world: &MatchingWorld) {
     matching_world.cassette.set(cassette);
 }
 
+fn initialise_engine(matching_world: &MatchingWorld, mode: MatchMode) {
+    matching_world.mode.set(mode);
+    let cassette = matching_world
+        .cassette
+        .take()
+        .expect("cassette must be set before creating engine");
+    let engine = ReplayMatchEngine::new(&cassette, mode);
+    matching_world.cassette.set(cassette);
+    matching_world.engine.set(engine);
+}
+
+fn run_requests(matching_world: &MatchingWorld, requests: &[(&str, Value)]) {
+    let cassette = matching_world
+        .cassette
+        .take()
+        .expect("cassette must be set");
+    let mut engine = matching_world
+        .engine
+        .take()
+        .expect("engine must be set before matching");
+
+    let matched_count = requests
+        .iter()
+        .filter(|(hash, canonical)| {
+            matches!(
+                engine.next_match(hash, canonical, &cassette),
+                MatchOutcome::Matched(_)
+            )
+        })
+        .count();
+
+    matching_world.matched_count.set(matched_count);
+    matching_world.cassette.set(cassette);
+    matching_world.engine.set(engine);
+}
+
 #[given("a cassette with three recorded interactions with distinct hashes")]
 fn a_cassette_with_three_recorded_interactions_with_distinct_hashes(
     matching_world: &MatchingWorld,
@@ -156,100 +192,36 @@ fn a_cassette_with_one_recorded_interaction(matching_world: &MatchingWorld) {
 
 #[given("the replay engine is in sequential strict mode")]
 fn the_replay_engine_is_in_sequential_strict_mode(matching_world: &MatchingWorld) {
-    matching_world.mode.set(MatchMode::SequentialStrict);
-    let cassette = matching_world
-        .cassette
-        .take()
-        .expect("cassette must be set before creating engine");
-    let engine = ReplayMatchEngine::new(&cassette, MatchMode::SequentialStrict);
-    matching_world.cassette.set(cassette);
-    matching_world.engine.set(engine);
+    initialise_engine(matching_world, MatchMode::SequentialStrict);
 }
 
 #[given("the replay engine is in keyed mode")]
 fn the_replay_engine_is_in_keyed_mode(matching_world: &MatchingWorld) {
-    matching_world.mode.set(MatchMode::Keyed);
-    let cassette = matching_world
-        .cassette
-        .take()
-        .expect("cassette must be set before creating engine");
-    let engine = ReplayMatchEngine::new(&cassette, MatchMode::Keyed);
-    matching_world.cassette.set(cassette);
-    matching_world.engine.set(engine);
+    initialise_engine(matching_world, MatchMode::Keyed);
 }
 
 #[when("three requests arrive with matching hashes in recorded order")]
 fn three_requests_arrive_with_matching_hashes_in_recorded_order(matching_world: &MatchingWorld) {
-    let cassette = matching_world
-        .cassette
-        .take()
-        .expect("cassette must be set");
-    let mut engine = matching_world
-        .engine
-        .take()
-        .expect("engine must be set before matching");
-
-    let mut matched_count = 0;
-
-    let outcome_a = engine.next_match("hash_a", &json!({"method": "POST"}), &cassette);
-    if matches!(outcome_a, MatchOutcome::Matched(_)) {
-        matched_count += 1;
-    }
-
-    let outcome_b = engine.next_match(
-        "hash_b",
-        &json!({"method": "POST", "messages": [1]}),
-        &cassette,
+    run_requests(
+        matching_world,
+        &[
+            ("hash_a", json!({"method": "POST"})),
+            ("hash_b", json!({"method": "POST", "messages": [1]})),
+            ("hash_c", json!({"method": "GET"})),
+        ],
     );
-    if matches!(outcome_b, MatchOutcome::Matched(_)) {
-        matched_count += 1;
-    }
-
-    let outcome_c = engine.next_match("hash_c", &json!({"method": "GET"}), &cassette);
-    if matches!(outcome_c, MatchOutcome::Matched(_)) {
-        matched_count += 1;
-    }
-
-    matching_world.matched_count.set(matched_count);
-    matching_world.cassette.set(cassette);
-    matching_world.engine.set(engine);
 }
 
 #[when("three requests arrive with matching hashes in reversed order")]
 fn three_requests_arrive_with_matching_hashes_in_reversed_order(matching_world: &MatchingWorld) {
-    let cassette = matching_world
-        .cassette
-        .take()
-        .expect("cassette must be set");
-    let mut engine = matching_world
-        .engine
-        .take()
-        .expect("engine must be set before matching");
-
-    let mut matched_count = 0;
-
-    let outcome_c = engine.next_match("hash_c", &json!({"method": "GET"}), &cassette);
-    if matches!(outcome_c, MatchOutcome::Matched(_)) {
-        matched_count += 1;
-    }
-
-    let outcome_b = engine.next_match(
-        "hash_b",
-        &json!({"method": "POST", "messages": [1]}),
-        &cassette,
+    run_requests(
+        matching_world,
+        &[
+            ("hash_c", json!({"method": "GET"})),
+            ("hash_b", json!({"method": "POST", "messages": [1]})),
+            ("hash_a", json!({"method": "POST"})),
+        ],
     );
-    if matches!(outcome_b, MatchOutcome::Matched(_)) {
-        matched_count += 1;
-    }
-
-    let outcome_a = engine.next_match("hash_a", &json!({"method": "POST"}), &cassette);
-    if matches!(outcome_a, MatchOutcome::Matched(_)) {
-        matched_count += 1;
-    }
-
-    matching_world.matched_count.set(matched_count);
-    matching_world.cassette.set(cassette);
-    matching_world.engine.set(engine);
 }
 
 #[when("a request arrives with a hash that does not match the next interaction")]
