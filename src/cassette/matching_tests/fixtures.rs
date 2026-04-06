@@ -205,8 +205,10 @@ pub(super) fn extract_response_id(interaction: &Interaction) -> String {
             .as_ref()
             .and_then(|v| v.get("id"))
             .and_then(|v| v.as_str())
-            .unwrap_or_else(|| panic!("response has no string \"id\" field"))
-            .to_owned(),
+            .map_or_else(
+                || panic!("response has no string \"id\" field"),
+                std::borrow::ToOwned::to_owned,
+            ),
         RecordedResponse::Stream { .. } => panic!("expected NonStream response"),
     }
 }
