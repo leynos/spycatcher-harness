@@ -26,6 +26,7 @@ fn ok_response(parsed_json: Option<serde_json::Value>) -> RecordedResponse {
     }
 }
 
+#[expect(clippy::too_many_arguments, reason = "test fixture factory")]
 fn make_interaction(
     method: &str,
     path: &str,
