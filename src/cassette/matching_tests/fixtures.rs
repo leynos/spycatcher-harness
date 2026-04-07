@@ -26,127 +26,105 @@ fn ok_response(parsed_json: Option<serde_json::Value>) -> RecordedResponse {
     }
 }
 
-fn sample_interaction_hash_a() -> Interaction {
+fn make_interaction(
+    method: &str,
+    path: &str,
+    parsed_json: Option<serde_json::Value>,
+    canonical_request: Option<serde_json::Value>,
+    stable_hash: &str,
+    response_json: Option<serde_json::Value>,
+    recorded_at: &str,
+    relative_offset_ms: u64,
+) -> Interaction {
     Interaction {
         request: RecordedRequest {
-            method: "POST".to_owned(),
-            path: "/v1/chat/completions".to_owned(),
+            method: method.to_owned(),
+            path: path.to_owned(),
             query: String::new(),
             headers: Vec::new(),
             body: Vec::new(),
-            parsed_json: Some(json!({"model": "gpt-4", "messages": []})),
-            canonical_request: Some(json!({"method": "POST", "path": "/v1/chat/completions"})),
-            stable_hash: Some("hash_a".to_owned()),
+            parsed_json,
+            canonical_request,
+            stable_hash: Some(stable_hash.to_owned()),
         },
-        response: ok_response(Some(json!({"id": "resp_a"}))),
-        metadata: openai_metadata("2025-01-01T00:00:00Z", 0),
-    }
-}
-
-fn sample_interaction_hash_b() -> Interaction {
-    Interaction {
-        request: RecordedRequest {
-            method: "POST".to_owned(),
-            path: "/v1/chat/completions".to_owned(),
-            query: String::new(),
-            headers: Vec::new(),
-            body: Vec::new(),
-            parsed_json: Some(json!({"model": "gpt-4", "messages": [{"role": "user"}]})),
-            canonical_request: Some(json!({
-                "method": "POST",
-                "path": "/v1/chat/completions",
-                "body": {"messages": [{"role": "user"}]}
-            })),
-            stable_hash: Some("hash_b".to_owned()),
-        },
-        response: ok_response(Some(json!({"id": "resp_b"}))),
-        metadata: openai_metadata("2025-01-01T00:01:00Z", 60_000),
-    }
-}
-
-fn sample_interaction_hash_c() -> Interaction {
-    Interaction {
-        request: RecordedRequest {
-            method: "GET".to_owned(),
-            path: "/v1/models".to_owned(),
-            query: String::new(),
-            headers: Vec::new(),
-            body: Vec::new(),
-            parsed_json: None,
-            canonical_request: Some(json!({"method": "GET", "path": "/v1/models"})),
-            stable_hash: Some("hash_c".to_owned()),
-        },
-        response: ok_response(Some(json!({"data": []}))),
-        metadata: openai_metadata("2025-01-01T00:02:00Z", 120_000),
-    }
-}
-
-fn dup_interaction_hash_a_first() -> Interaction {
-    Interaction {
-        request: RecordedRequest {
-            method: "POST".to_owned(),
-            path: "/v1/chat/completions".to_owned(),
-            query: String::new(),
-            headers: Vec::new(),
-            body: Vec::new(),
-            parsed_json: Some(json!({"model": "gpt-4", "messages": [{"content": "first"}]})),
-            canonical_request: Some(json!({"method": "POST", "messages": [{"content": "first"}]})),
-            stable_hash: Some("hash_a".to_owned()),
-        },
-        response: ok_response(Some(json!({"id": "first_response"}))),
-        metadata: openai_metadata("2025-01-01T00:00:00Z", 0),
-    }
-}
-
-fn dup_interaction_hash_a_second() -> Interaction {
-    Interaction {
-        request: RecordedRequest {
-            method: "POST".to_owned(),
-            path: "/v1/chat/completions".to_owned(),
-            query: String::new(),
-            headers: Vec::new(),
-            body: Vec::new(),
-            parsed_json: Some(json!({"model": "gpt-4", "messages": [{"content": "second"}]})),
-            canonical_request: Some(json!({"method": "POST", "messages": [{"content": "second"}]})),
-            stable_hash: Some("hash_a".to_owned()),
-        },
-        response: ok_response(Some(json!({"id": "second_response"}))),
-        metadata: openai_metadata("2025-01-01T00:01:00Z", 60_000),
-    }
-}
-
-fn dup_interaction_hash_b() -> Interaction {
-    Interaction {
-        request: RecordedRequest {
-            method: "GET".to_owned(),
-            path: "/v1/models".to_owned(),
-            query: String::new(),
-            headers: Vec::new(),
-            body: Vec::new(),
-            parsed_json: None,
-            canonical_request: Some(json!({"method": "GET"})),
-            stable_hash: Some("hash_b".to_owned()),
-        },
-        response: ok_response(Some(json!({"data": []}))),
-        metadata: openai_metadata("2025-01-01T00:02:00Z", 120_000),
+        response: ok_response(response_json),
+        metadata: openai_metadata(recorded_at, relative_offset_ms),
     }
 }
 
 #[fixture]
 pub(super) fn sample_cassette() -> Cassette {
     let mut cassette = Cassette::new();
-    cassette.append(sample_interaction_hash_a());
-    cassette.append(sample_interaction_hash_b());
-    cassette.append(sample_interaction_hash_c());
+    cassette.append(make_interaction(
+        "POST",
+        "/v1/chat/completions",
+        Some(json!({"model": "gpt-4", "messages": []})),
+        Some(json!({"method": "POST", "path": "/v1/chat/completions"})),
+        "hash_a",
+        Some(json!({"id": "resp_a"})),
+        "2025-01-01T00:00:00Z",
+        0,
+    ));
+    cassette.append(make_interaction(
+        "POST",
+        "/v1/chat/completions",
+        Some(json!({"model": "gpt-4", "messages": [{"role": "user"}]})),
+        Some(json!({
+            "method": "POST",
+            "path": "/v1/chat/completions",
+            "body": {"messages": [{"role": "user"}]}
+        })),
+        "hash_b",
+        Some(json!({"id": "resp_b"})),
+        "2025-01-01T00:01:00Z",
+        60_000,
+    ));
+    cassette.append(make_interaction(
+        "GET",
+        "/v1/models",
+        None,
+        Some(json!({"method": "GET", "path": "/v1/models"})),
+        "hash_c",
+        Some(json!({"data": []})),
+        "2025-01-01T00:02:00Z",
+        120_000,
+    ));
     cassette
 }
 
 #[fixture]
 pub(super) fn duplicate_hash_cassette() -> Cassette {
     let mut cassette = Cassette::new();
-    cassette.append(dup_interaction_hash_a_first());
-    cassette.append(dup_interaction_hash_a_second());
-    cassette.append(dup_interaction_hash_b());
+    cassette.append(make_interaction(
+        "POST",
+        "/v1/chat/completions",
+        Some(json!({"model": "gpt-4", "messages": [{"content": "first"}]})),
+        Some(json!({"method": "POST", "messages": [{"content": "first"}]})),
+        "hash_a",
+        Some(json!({"id": "first_response"})),
+        "2025-01-01T00:00:00Z",
+        0,
+    ));
+    cassette.append(make_interaction(
+        "POST",
+        "/v1/chat/completions",
+        Some(json!({"model": "gpt-4", "messages": [{"content": "second"}]})),
+        Some(json!({"method": "POST", "messages": [{"content": "second"}]})),
+        "hash_a",
+        Some(json!({"id": "second_response"})),
+        "2025-01-01T00:01:00Z",
+        60_000,
+    ));
+    cassette.append(make_interaction(
+        "GET",
+        "/v1/models",
+        None,
+        Some(json!({"method": "GET"})),
+        "hash_b",
+        Some(json!({"data": []})),
+        "2025-01-01T00:02:00Z",
+        120_000,
+    ));
     cassette
 }
 
