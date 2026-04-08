@@ -26,107 +26,116 @@ fn ok_response(parsed_json: Option<serde_json::Value>) -> RecordedResponse {
     }
 }
 
-#[expect(clippy::too_many_arguments, reason = "test fixture factory")]
-fn make_interaction(
-    method: &str,
-    path: &str,
+struct InteractionSpec<'a> {
+    method: &'a str,
+    path: &'a str,
     parsed_json: Option<serde_json::Value>,
     canonical_request: Option<serde_json::Value>,
-    stable_hash: &str,
+    stable_hash: &'a str,
     response_json: Option<serde_json::Value>,
-    recorded_at: &str,
+    recorded_at: &'a str,
     relative_offset_ms: u64,
-) -> Interaction {
+}
+
+fn make_interaction(spec: InteractionSpec<'_>) -> Interaction {
     Interaction {
         request: RecordedRequest {
-            method: method.to_owned(),
-            path: path.to_owned(),
+            method: spec.method.to_owned(),
+            path: spec.path.to_owned(),
             query: String::new(),
             headers: Vec::new(),
             body: Vec::new(),
-            parsed_json,
-            canonical_request,
-            stable_hash: Some(stable_hash.to_owned()),
+            parsed_json: spec.parsed_json,
+            canonical_request: spec.canonical_request,
+            stable_hash: Some(spec.stable_hash.to_owned()),
         },
-        response: ok_response(response_json),
-        metadata: openai_metadata(recorded_at, relative_offset_ms),
+        response: ok_response(spec.response_json),
+        metadata: openai_metadata(spec.recorded_at, spec.relative_offset_ms),
     }
+}
+
+fn cassette_from_interactions(interactions: impl IntoIterator<Item = Interaction>) -> Cassette {
+    let mut cassette = Cassette::new();
+    for interaction in interactions {
+        cassette.append(interaction);
+    }
+    cassette
 }
 
 #[fixture]
 pub(super) fn sample_cassette() -> Cassette {
-    let mut cassette = Cassette::new();
-    cassette.append(make_interaction(
-        "POST",
-        "/v1/chat/completions",
-        Some(json!({"model": "gpt-4", "messages": []})),
-        Some(json!({"method": "POST", "path": "/v1/chat/completions"})),
-        "hash_a",
-        Some(json!({"id": "resp_a"})),
-        "2025-01-01T00:00:00Z",
-        0,
-    ));
-    cassette.append(make_interaction(
-        "POST",
-        "/v1/chat/completions",
-        Some(json!({"model": "gpt-4", "messages": [{"role": "user"}]})),
-        Some(json!({
-            "method": "POST",
-            "path": "/v1/chat/completions",
-            "body": {"messages": [{"role": "user"}]}
-        })),
-        "hash_b",
-        Some(json!({"id": "resp_b"})),
-        "2025-01-01T00:01:00Z",
-        60_000,
-    ));
-    cassette.append(make_interaction(
-        "GET",
-        "/v1/models",
-        None,
-        Some(json!({"method": "GET", "path": "/v1/models"})),
-        "hash_c",
-        Some(json!({"data": []})),
-        "2025-01-01T00:02:00Z",
-        120_000,
-    ));
-    cassette
+    cassette_from_interactions([
+        make_interaction(InteractionSpec {
+            method: "POST",
+            path: "/v1/chat/completions",
+            parsed_json: Some(json!({"model": "gpt-4", "messages": []})),
+            canonical_request: Some(json!({"method": "POST", "path": "/v1/chat/completions"})),
+            stable_hash: "hash_a",
+            response_json: Some(json!({"id": "resp_a"})),
+            recorded_at: "2025-01-01T00:00:00Z",
+            relative_offset_ms: 0,
+        }),
+        make_interaction(InteractionSpec {
+            method: "POST",
+            path: "/v1/chat/completions",
+            parsed_json: Some(json!({"model": "gpt-4", "messages": [{"role": "user"}]})),
+            canonical_request: Some(json!({
+                "method": "POST",
+                "path": "/v1/chat/completions",
+                "body": {"messages": [{"role": "user"}]}
+            })),
+            stable_hash: "hash_b",
+            response_json: Some(json!({"id": "resp_b"})),
+            recorded_at: "2025-01-01T00:01:00Z",
+            relative_offset_ms: 60_000,
+        }),
+        make_interaction(InteractionSpec {
+            method: "GET",
+            path: "/v1/models",
+            parsed_json: None,
+            canonical_request: Some(json!({"method": "GET", "path": "/v1/models"})),
+            stable_hash: "hash_c",
+            response_json: Some(json!({"data": []})),
+            recorded_at: "2025-01-01T00:02:00Z",
+            relative_offset_ms: 120_000,
+        }),
+    ])
 }
 
 #[fixture]
 pub(super) fn duplicate_hash_cassette() -> Cassette {
-    let mut cassette = Cassette::new();
-    cassette.append(make_interaction(
-        "POST",
-        "/v1/chat/completions",
-        Some(json!({"model": "gpt-4", "messages": [{"content": "first"}]})),
-        Some(json!({"method": "POST", "messages": [{"content": "first"}]})),
-        "hash_a",
-        Some(json!({"id": "first_response"})),
-        "2025-01-01T00:00:00Z",
-        0,
-    ));
-    cassette.append(make_interaction(
-        "POST",
-        "/v1/chat/completions",
-        Some(json!({"model": "gpt-4", "messages": [{"content": "second"}]})),
-        Some(json!({"method": "POST", "messages": [{"content": "second"}]})),
-        "hash_a",
-        Some(json!({"id": "second_response"})),
-        "2025-01-01T00:01:00Z",
-        60_000,
-    ));
-    cassette.append(make_interaction(
-        "GET",
-        "/v1/models",
-        None,
-        Some(json!({"method": "GET"})),
-        "hash_b",
-        Some(json!({"data": []})),
-        "2025-01-01T00:02:00Z",
-        120_000,
-    ));
-    cassette
+    cassette_from_interactions([
+        make_interaction(InteractionSpec {
+            method: "POST",
+            path: "/v1/chat/completions",
+            parsed_json: Some(json!({"model": "gpt-4", "messages": [{"content": "first"}]})),
+            canonical_request: Some(json!({"method": "POST", "messages": [{"content": "first"}]})),
+            stable_hash: "hash_a",
+            response_json: Some(json!({"id": "first_response"})),
+            recorded_at: "2025-01-01T00:00:00Z",
+            relative_offset_ms: 0,
+        }),
+        make_interaction(InteractionSpec {
+            method: "POST",
+            path: "/v1/chat/completions",
+            parsed_json: Some(json!({"model": "gpt-4", "messages": [{"content": "second"}]})),
+            canonical_request: Some(json!({"method": "POST", "messages": [{"content": "second"}]})),
+            stable_hash: "hash_a",
+            response_json: Some(json!({"id": "second_response"})),
+            recorded_at: "2025-01-01T00:01:00Z",
+            relative_offset_ms: 60_000,
+        }),
+        make_interaction(InteractionSpec {
+            method: "GET",
+            path: "/v1/models",
+            parsed_json: None,
+            canonical_request: Some(json!({"method": "GET"})),
+            stable_hash: "hash_b",
+            response_json: Some(json!({"data": []})),
+            recorded_at: "2025-01-01T00:02:00Z",
+            relative_offset_ms: 120_000,
+        }),
+    ])
 }
 
 // ── test helpers ─────────────────────────────────────────────────────────────
