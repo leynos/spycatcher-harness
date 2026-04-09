@@ -20,7 +20,7 @@ eyre = "0.6.12"
 ortho_config = "0.8.0"
 serde = { version = "1.0.219", features = ["derive"] }
 serde_json = "1.0.143"
-sha2 = "0.10.9"
+sha2 = "0.11.0"
 thiserror = "2.0.18"
 tokio = { version = "1.50.0", features = ["rt", "macros", "net"] }
 
