@@ -58,27 +58,34 @@ fn diff_objects(
     path: &str,
     changes: &mut Vec<String>,
 ) {
-    let exp_keys: std::collections::HashSet<_> = exp_map.keys().collect();
-    let obs_keys: std::collections::HashSet<_> = obs_map.keys().collect();
+    // Collect and sort keys for deterministic iteration order
+    let mut exp_keys: Vec<_> = exp_map.keys().cloned().collect();
+    let mut obs_keys: Vec<_> = obs_map.keys().cloned().collect();
+    exp_keys.sort();
+    obs_keys.sort();
 
     // Keys removed (in expected but not observed).
-    for key in exp_keys.difference(&obs_keys) {
-        let field_path = format_path(path, key);
-        changes.push(format!("removed: {field_path}"));
+    for key in &exp_keys {
+        if !obs_map.contains_key(key) {
+            let field_path = format_path(path, key);
+            changes.push(format!("removed: {field_path}"));
+        }
     }
 
     // Keys added (in observed but not expected).
-    for key in obs_keys.difference(&exp_keys) {
-        let field_path = format_path(path, key);
-        if let Some(value) = obs_map.get(*key) {
-            let value_str = compact_value_string(value);
-            changes.push(format!("added: {field_path}: {value_str}"));
+    for key in &obs_keys {
+        if !exp_map.contains_key(key) {
+            let field_path = format_path(path, key);
+            if let Some(value) = obs_map.get(key) {
+                let value_str = compact_value_string(value);
+                changes.push(format!("added: {field_path}: {value_str}"));
+            }
         }
     }
 
     // Keys present in both — recurse if values differ.
-    for key in exp_keys.intersection(&obs_keys) {
-        if let (Some(exp_val), Some(obs_val)) = (exp_map.get(*key), obs_map.get(*key))
+    for key in &exp_keys {
+        if let (Some(exp_val), Some(obs_val)) = (exp_map.get(key), obs_map.get(key))
             && exp_val != obs_val
         {
             let field_path = format_path(path, key);
@@ -148,7 +155,10 @@ fn format_path(prefix: &str, segment: &str) -> String {
 
 fn compact_value_string(value: &Value) -> String {
     match value {
-        Value::String(s) => format!("\"{s}\""),
+        Value::String(s) => {
+            // Use serde_json to properly escape the string
+            serde_json::to_string(s).unwrap_or_else(|_| format!("\"{s}\""))
+        }
         Value::Number(n) => n.to_string(),
         Value::Bool(b) => b.to_string(),
         Value::Null => "null".to_owned(),

@@ -177,7 +177,7 @@ fn canonicalize_removes_array_entries_without_index_shift(
     assert_eq!(
         canonical.canonical_body,
         Some(expected_body),
-        "Expected body mismatch"
+        "Array entry removal should preserve remaining elements without shifting indices"
     );
 }
 
