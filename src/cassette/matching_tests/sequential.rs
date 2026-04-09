@@ -73,6 +73,28 @@ fn sequential_strict_second_request_wrong_hash_returns_mismatch(sample_cassette:
 }
 
 #[rstest]
+fn sequential_strict_mismatch_does_not_advance_cursor(sample_cassette: Cassette) {
+    let mut engine = ReplayMatchEngine::new(&sample_cassette, MatchMode::SequentialStrict);
+
+    // First request has wrong hash (causes mismatch).
+    let canonical_wrong = json!({"method": "GET", "path": "/wrong"});
+    let outcome_mismatch = engine.next_match("wrong_hash", &canonical_wrong, &sample_cassette);
+    assert_mismatch_diagnostic(outcome_mismatch, 0, "hash_a", "wrong_hash");
+
+    // Second request with correct hash should still match interaction 0.
+    let canonical_a = json!({"method": "POST", "path": "/v1/chat/completions"});
+    let outcome_match = engine.next_match("hash_a", &canonical_a, &sample_cassette);
+    assert_matched_response_eq(
+        outcome_match,
+        &sample_cassette
+            .interactions
+            .first()
+            .expect("Interaction 0 should exist")
+            .response,
+    );
+}
+
+#[rstest]
 fn sequential_strict_cassette_exhausted_returns_mismatch(sample_cassette: Cassette) {
     let mut engine = ReplayMatchEngine::new(&sample_cassette, MatchMode::SequentialStrict);
 

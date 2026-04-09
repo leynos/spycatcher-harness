@@ -65,6 +65,12 @@ struct InteractionData {
 impl ReplayMatchEngine {
     /// Creates a new engine from a loaded cassette and match mode.
     ///
+    /// # Panics
+    ///
+    /// Panics if any interaction in the cassette has a missing `stable_hash`.
+    /// All interactions must have their stable hash populated before replay
+    /// matching can begin.
+    ///
     /// # Examples
     ///
     /// ```rust,ignore
@@ -79,13 +85,24 @@ impl ReplayMatchEngine {
         let interactions: Vec<InteractionData> = cassette
             .interactions
             .iter()
-            .map(|interaction| InteractionData {
-                stable_hash: interaction.request.stable_hash.clone().unwrap_or_default(),
-                canonical_request: interaction
-                    .request
-                    .canonical_request
-                    .clone()
-                    .unwrap_or(Value::Null),
+            .map(|interaction| {
+                let stable_hash = interaction.request.stable_hash.as_ref().map_or_else(
+                    || {
+                        panic!(
+                            "stable_hash must be populated for replay matching; \
+                             interaction at index has missing stable_hash"
+                        )
+                    },
+                    std::clone::Clone::clone,
+                );
+                InteractionData {
+                    stable_hash,
+                    canonical_request: interaction
+                        .request
+                        .canonical_request
+                        .clone()
+                        .unwrap_or(Value::Null),
+                }
             })
             .collect();
 

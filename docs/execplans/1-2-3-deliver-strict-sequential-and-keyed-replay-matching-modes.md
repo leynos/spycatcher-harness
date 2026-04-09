@@ -36,9 +36,9 @@ Observable success after delivery:
   diagnostic content, keyed happy path, keyed with duplicate hashes consuming
   in order, keyed miss (no matching hash), exhausted cassette, and concurrent
   replay order handling.
-- Behavioural tests (`rstest-bdd`) cover: sequential mismatch diagnostics
-  scenario, keyed out-of-order consumption scenario, and exhausted-cassette
-  failure.
+- Behaviour-driven development (BDD) tests (`rstest-bdd`) cover: sequential
+  mismatch diagnostics scenario, keyed out-of-order consumption scenario, and
+  exhausted-cassette failure.
 - `docs/spycatcher-harness-design.md` records any implementation decisions.
 - `docs/users-guide.md` documents the matching modes and the diagnostic shape.
 - `docs/roadmap.md` marks task `1.2.3` as done only after all gates pass.
@@ -738,8 +738,9 @@ avoiding cross-run interference.
 ```plaintext
 interaction_id: usize    — zero-based index of the expected interaction
                            (sequential) or total interaction count (keyed miss)
-expected_hash:  String   — SHA-256 hex hash of the expected canonical request
-                           (sequential) or empty string (keyed miss)
+expected_hash:  String   — SHA-256 (Secure Hash Algorithm 256-bit) hex hash of
+                           the expected canonical request (sequential) or empty
+                           string (keyed miss)
 observed_hash:  String   — SHA-256 hex hash of the observed incoming request
 diff_summary:   String   — newline-separated field-level diff, for example:
                            "changed: method: \"POST\" -> \"GET\"\n

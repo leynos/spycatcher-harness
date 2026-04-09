@@ -84,6 +84,25 @@ fn keyed_mode_duplicate_hashes_consumed_in_order(duplicate_hash_cassette: Casset
 }
 
 #[rstest]
+fn keyed_mode_matches_on_hash_regardless_of_canonical_json(sample_cassette: Cassette) {
+    let mut engine = ReplayMatchEngine::new(&sample_cassette, MatchMode::Keyed);
+
+    // Request with hash_a but completely different canonical JSON should still match.
+    let canonical_different = json!({"totally": "different", "structure": 123});
+    let outcome = engine.next_match("hash_a", &canonical_different, &sample_cassette);
+
+    // Should match interaction 0 because hash matches, even though canonical JSON differs.
+    assert_matched_response_eq(
+        outcome,
+        &sample_cassette
+            .interactions
+            .first()
+            .expect("Interaction 0 should exist")
+            .response,
+    );
+}
+
+#[rstest]
 fn keyed_mode_request_with_unknown_hash_returns_mismatch(sample_cassette: Cassette) {
     let mut engine = ReplayMatchEngine::new(&sample_cassette, MatchMode::Keyed);
 

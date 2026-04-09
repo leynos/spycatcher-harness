@@ -73,6 +73,16 @@ fn type_mismatch_is_reported() {
 }
 
 #[rstest]
+fn root_level_scalar_mismatch_reports_root_path() {
+    let expected = json!(42);
+    let observed = json!(99);
+    let diff = canonical_diff_summary(&expected, &observed);
+    assert!(diff.contains("changed: (root)"), "diff: {diff}");
+    assert!(diff.contains("42"), "diff: {diff}");
+    assert!(diff.contains("99"), "diff: {diff}");
+}
+
+#[rstest]
 fn array_element_added_is_reported() {
     let expected = json!({"items": [1, 2]});
     let observed = json!({"items": [1, 2, 3]});
