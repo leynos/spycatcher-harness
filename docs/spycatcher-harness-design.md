@@ -691,8 +691,15 @@ pub enum HarnessError {
     InvalidConfig { message: String },
     #[error("cassette not found: {cassette_name}")]
     CassetteNotFound { cassette_name: String },
-    #[error("request mismatch at interaction {interaction_id}")]
-    RequestMismatch { interaction_id: usize },
+    #[error(
+        "request mismatch at interaction {interaction_id}: expected {expected_hash}, observed {observed_hash}"
+    )]
+    RequestMismatch {
+        interaction_id: usize,
+        expected_hash: String,
+        observed_hash: String,
+        diff_summary: String,
+    },
     #[error("invalid cassette: {message}")]
     InvalidCassette { message: String },
     #[error("unsupported cassette format version {found}; supported version is {supported}")]
@@ -700,7 +707,11 @@ pub enum HarnessError {
     #[error("upstream request failed")]
     UpstreamRequestFailed,
     #[error("io failure")]
-    Io,
+    Io {
+        #[from]
+        #[source]
+        source: std::io::Error,
+    },
 }
 
 pub struct RunningHarness {
