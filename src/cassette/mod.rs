@@ -23,8 +23,10 @@ use crate::{HarnessError, HarnessResult};
 pub use canonical::{
     CanonicalError, CanonicalRequest, IgnorePathConfig, canonicalize, stable_hash,
 };
-pub(crate) use diff::canonical_diff_summary;
-pub use matching::{MatchOutcome, MismatchDiagnostic, ReplayMatchEngine};
+pub use matching::{
+    DIAGNOSTIC_CONSUMED, DIAGNOSTIC_EXHAUSTED, DIAGNOSTIC_NO_MATCH, MatchOutcome,
+    MismatchDiagnostic, ReplayMatchEngine,
+};
 
 /// Schema version used to encode and validate cassette documents.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

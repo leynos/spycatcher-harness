@@ -8,8 +8,18 @@ use std::collections::HashMap;
 
 use serde_json::Value;
 
-use crate::cassette::{Cassette, Interaction, canonical_diff_summary};
+use crate::cassette::diff::canonical_diff_summary;
+use crate::cassette::{Cassette, Interaction};
 use crate::config::MatchMode;
+
+/// Diagnostic prefix for cassette exhaustion (no more interactions available).
+pub const DIAGNOSTIC_EXHAUSTED: &str = "cassette-exhausted";
+
+/// Diagnostic prefix for no matching interaction found in keyed mode.
+pub const DIAGNOSTIC_NO_MATCH: &str = "no-matching-interaction";
+
+/// Diagnostic prefix for interaction already consumed in keyed mode.
+pub const DIAGNOSTIC_CONSUMED: &str = "interaction-already-consumed";
 
 /// Structured diagnostic for a replay mismatch.
 ///
@@ -41,7 +51,9 @@ pub enum MatchOutcome<'a> {
 /// Replay matching engine that consumes cassette interactions according to
 /// the configured match mode.
 pub struct ReplayMatchEngine {
-    /// Reference to the cassette's interactions.
+    /// The cassette being replayed.
+    cassette: Cassette,
+    /// Extracted interaction data for matching.
     interactions: Vec<InteractionData>,
     /// Current matching mode.
     mode: MatchMode,
@@ -81,7 +93,7 @@ impl ReplayMatchEngine {
     /// let engine = ReplayMatchEngine::new(&cassette, MatchMode::SequentialStrict);
     /// ```
     #[must_use]
-    pub fn new(cassette: &Cassette, mode: MatchMode) -> Self {
+    pub fn new(cassette: Cassette, mode: MatchMode) -> Self {
         let interactions: Vec<InteractionData> = cassette
             .interactions
             .iter()
@@ -119,6 +131,7 @@ impl ReplayMatchEngine {
         let consumed = vec![false; interactions.len()];
 
         Self {
+            cassette,
             interactions,
             mode,
             sequential_cursor: 0,
@@ -136,45 +149,41 @@ impl ReplayMatchEngine {
     /// # Examples
     ///
     /// ```rust,ignore
-    /// let outcome = engine.next_match("abc123", &canonical_request, &cassette);
+    /// let outcome = engine.next_match("abc123", &canonical_request);
     /// match outcome {
     ///     MatchOutcome::Matched(interaction) => { /* use interaction */ }
     ///     MatchOutcome::Mismatch(diagnostic) => { /* handle mismatch */ }
     /// }
     /// ```
     pub fn next_match<'a>(
-        &mut self,
+        &'a mut self,
         observed_hash: &str,
         observed_canonical: &Value,
-        cassette: &'a Cassette,
     ) -> MatchOutcome<'a> {
         match self.mode {
-            MatchMode::SequentialStrict => {
-                self.sequential_match(observed_hash, observed_canonical, cassette)
-            }
-            MatchMode::Keyed => self.keyed_match(observed_hash, observed_canonical, cassette),
+            MatchMode::SequentialStrict => self.sequential_match(observed_hash, observed_canonical),
+            MatchMode::Keyed => self.keyed_match(observed_hash, observed_canonical),
         }
     }
 
     fn sequential_match<'a>(
-        &mut self,
+        &'a mut self,
         observed_hash: &str,
         observed_canonical: &Value,
-        cassette: &'a Cassette,
     ) -> MatchOutcome<'a> {
         let Some(expected_data) = self.interactions.get(self.sequential_cursor) else {
             return MatchOutcome::Mismatch(MismatchDiagnostic {
                 interaction_id: self.sequential_cursor,
                 expected_hash: String::new(),
                 observed_hash: observed_hash.to_owned(),
-                diff_summary: "cassette exhausted: no more interactions available".to_owned(),
+                diff_summary: format!("{DIAGNOSTIC_EXHAUSTED}: no more interactions available"),
             });
         };
 
         let expected_hash = &expected_data.stable_hash;
 
         if observed_hash == expected_hash {
-            let Some(interaction) = cassette.interactions.get(self.sequential_cursor) else {
+            let Some(interaction) = self.cassette.interactions.get(self.sequential_cursor) else {
                 // This should never happen since self.interactions mirrors cassette.interactions
                 return MatchOutcome::Mismatch(MismatchDiagnostic {
                     interaction_id: self.sequential_cursor,
@@ -198,17 +207,18 @@ impl ReplayMatchEngine {
     }
 
     fn keyed_match<'a>(
-        &mut self,
+        &'a mut self,
         observed_hash: &str,
         _observed_canonical: &Value,
-        cassette: &'a Cassette,
     ) -> MatchOutcome<'a> {
         let Some(indices) = self.hash_to_indices.get(observed_hash) else {
             return MatchOutcome::Mismatch(MismatchDiagnostic {
                 interaction_id: self.interactions.len(),
                 expected_hash: String::new(),
                 observed_hash: observed_hash.to_owned(),
-                diff_summary: format!("no interaction with hash {observed_hash} found in cassette"),
+                diff_summary: format!(
+                    "{DIAGNOSTIC_NO_MATCH}: no interaction with hash {observed_hash} found in cassette"
+                ),
             });
         };
 
@@ -227,7 +237,7 @@ impl ReplayMatchEngine {
             }
 
             // Return the matched interaction
-            if let Some(interaction) = cassette.interactions.get(idx) {
+            if let Some(interaction) = self.cassette.interactions.get(idx) {
                 return MatchOutcome::Matched(interaction);
             }
         }
@@ -238,7 +248,7 @@ impl ReplayMatchEngine {
             expected_hash: String::new(),
             observed_hash: observed_hash.to_owned(),
             diff_summary: format!(
-                "all interactions with hash {observed_hash} have already been consumed; \
+                "{DIAGNOSTIC_CONSUMED}: all interactions with hash {observed_hash} have already been consumed; \
                  cassette contains {} interaction(s) with this hash",
                 indices.len()
             ),

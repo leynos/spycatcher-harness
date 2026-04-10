@@ -12,13 +12,15 @@ use rstest_bdd::Slot;
 use rstest_bdd_macros::{ScenarioState, given, scenario, then, when};
 use serde_json::{Value, json};
 use spycatcher_harness::cassette::{
-    Cassette, Interaction, InteractionMetadata, MatchOutcome, RecordedRequest, RecordedResponse,
-    ReplayMatchEngine,
+    Cassette, DIAGNOSTIC_EXHAUSTED, Interaction, InteractionMetadata, MatchOutcome,
+    RecordedRequest, RecordedResponse, ReplayMatchEngine,
 };
 use spycatcher_harness::config::MatchMode;
 
 #[derive(Default, ScenarioState)]
 struct MatchingWorld {
+    /// Temporary storage for cassette before engine is created.
+    /// Once engine is created, the cassette is owned by the engine.
     cassette: Slot<Cassette>,
     engine: Slot<ReplayMatchEngine>,
     mode: Slot<MatchMode>,
@@ -119,16 +121,11 @@ fn initialise_engine(matching_world: &MatchingWorld, mode: MatchMode) {
         .cassette
         .take()
         .expect("cassette must be set before creating engine");
-    let engine = ReplayMatchEngine::new(&cassette, mode);
-    matching_world.cassette.set(cassette);
+    let engine = ReplayMatchEngine::new(cassette, mode);
     matching_world.engine.set(engine);
 }
 
 fn run_requests(matching_world: &MatchingWorld, requests: &[(&str, Value)]) {
-    let cassette = matching_world
-        .cassette
-        .take()
-        .expect("cassette must be set");
     let mut engine = matching_world
         .engine
         .take()
@@ -137,15 +134,11 @@ fn run_requests(matching_world: &MatchingWorld, requests: &[(&str, Value)]) {
     let matched_count = requests
         .iter()
         .filter(|(hash, canonical)| {
-            matches!(
-                engine.next_match(hash, canonical, &cassette),
-                MatchOutcome::Matched(_)
-            )
+            matches!(engine.next_match(hash, canonical), MatchOutcome::Matched(_))
         })
         .count();
 
     matching_world.matched_count.set(matched_count);
-    matching_world.cassette.set(cassette);
     matching_world.engine.set(engine);
 }
 
@@ -228,16 +221,12 @@ fn three_requests_arrive_with_matching_hashes_in_reversed_order(matching_world: 
 fn a_request_arrives_with_a_hash_that_does_not_match_the_next_interaction(
     matching_world: &MatchingWorld,
 ) {
-    let cassette = matching_world
-        .cassette
-        .take()
-        .expect("cassette must be set");
     let mut engine = matching_world
         .engine
         .take()
         .expect("engine must be set before matching");
 
-    let outcome = engine.next_match("wrong_hash", &json!({"method": "DELETE"}), &cassette);
+    let outcome = engine.next_match("wrong_hash", &json!({"method": "DELETE"}));
 
     if let MatchOutcome::Mismatch(diagnostic) = outcome {
         matching_world
@@ -255,16 +244,11 @@ fn a_request_arrives_with_a_hash_that_does_not_match_the_next_interaction(
         matching_world.mismatch_count.set(1);
     }
 
-    matching_world.cassette.set(cassette);
     matching_world.engine.set(engine);
 }
 
 #[when("two requests arrive with the shared hash")]
 fn two_requests_arrive_with_the_shared_hash(matching_world: &MatchingWorld) {
-    let cassette = matching_world
-        .cassette
-        .take()
-        .expect("cassette must be set");
     let mut engine = matching_world
         .engine
         .take()
@@ -273,7 +257,6 @@ fn two_requests_arrive_with_the_shared_hash(matching_world: &MatchingWorld) {
     let outcome_1 = engine.next_match(
         "shared_hash",
         &json!({"method": "POST", "content": "first"}),
-        &cassette,
     );
     if let Some(id) = extract_response_id(&outcome_1) {
         matching_world.first_response_id.set(id);
@@ -282,49 +265,38 @@ fn two_requests_arrive_with_the_shared_hash(matching_world: &MatchingWorld) {
     let outcome_2 = engine.next_match(
         "shared_hash",
         &json!({"method": "POST", "content": "second"}),
-        &cassette,
     );
     if let Some(id) = extract_response_id(&outcome_2) {
         matching_world.second_response_id.set(id);
     }
 
-    matching_world.cassette.set(cassette);
     matching_world.engine.set(engine);
 }
 
 #[when("the first request matches and consumes the interaction")]
 fn the_first_request_matches_and_consumes_the_interaction(matching_world: &MatchingWorld) {
-    let cassette = matching_world
-        .cassette
-        .take()
-        .expect("cassette must be set");
     let mut engine = matching_world
         .engine
         .take()
         .expect("engine must be set before matching");
 
-    let outcome = engine.next_match("hash_single", &json!({"method": "POST"}), &cassette);
+    let outcome = engine.next_match("hash_single", &json!({"method": "POST"}));
 
     if matches!(outcome, MatchOutcome::Matched(_)) {
         matching_world.matched_count.set(1);
     }
 
-    matching_world.cassette.set(cassette);
     matching_world.engine.set(engine);
 }
 
 #[when("a second request arrives")]
 fn a_second_request_arrives(matching_world: &MatchingWorld) {
-    let cassette = matching_world
-        .cassette
-        .take()
-        .expect("cassette must be set");
     let mut engine = matching_world
         .engine
         .take()
         .expect("engine must be set before matching");
 
-    let outcome = engine.next_match("hash_extra", &json!({"method": "GET"}), &cassette);
+    let outcome = engine.next_match("hash_extra", &json!({"method": "GET"}));
 
     if let MatchOutcome::Mismatch(diagnostic) = outcome {
         matching_world
@@ -333,7 +305,6 @@ fn a_second_request_arrives(matching_world: &MatchingWorld) {
         matching_world.mismatch_count.set(1);
     }
 
-    matching_world.cassette.set(cassette);
     matching_world.engine.set(engine);
 }
 
@@ -428,8 +399,8 @@ fn the_engine_returns_a_mismatch_diagnostic_indicating_exhaustion(matching_world
         .with_ref(String::clone)
         .expect("diff_summary must be set");
     assert!(
-        diff_summary.contains("exhausted"),
-        "expected exhaustion message in diff summary"
+        diff_summary.starts_with(DIAGNOSTIC_EXHAUSTED),
+        "expected exhaustion diagnostic prefix, got: {diff_summary}"
     );
 }
 
