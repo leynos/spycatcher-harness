@@ -14,7 +14,8 @@ use crate::config::MatchMode;
 
 #[rstest]
 fn keyed_mode_three_correct_requests_in_order_match(sample_cassette: Cassette) {
-    let mut engine = ReplayMatchEngine::new(sample_cassette, MatchMode::Keyed);
+    let mut engine = ReplayMatchEngine::new(sample_cassette, MatchMode::Keyed)
+        .expect("fixture cassette should have valid stable hashes");
 
     let canonical_a = json!({"method": "POST", "path": "/v1/chat/completions"});
     let outcome_a = engine.next_match("hash_a", &canonical_a);
@@ -50,7 +51,8 @@ fn keyed_mode_three_correct_requests_in_reverse_order_match(sample_cassette: Cas
         .response
         .clone();
 
-    let mut engine = ReplayMatchEngine::new(sample_cassette, MatchMode::Keyed);
+    let mut engine = ReplayMatchEngine::new(sample_cassette, MatchMode::Keyed)
+        .expect("fixture cassette should have valid stable hashes");
 
     // Request in reverse order: hash_c, hash_b, hash_a.
     let canonical_c = json!({"method": "GET", "path": "/v1/models"});
@@ -68,7 +70,8 @@ fn keyed_mode_three_correct_requests_in_reverse_order_match(sample_cassette: Cas
 
 #[rstest]
 fn keyed_mode_duplicate_hashes_consumed_in_order(duplicate_hash_cassette: Cassette) {
-    let mut engine = ReplayMatchEngine::new(duplicate_hash_cassette, MatchMode::Keyed);
+    let mut engine = ReplayMatchEngine::new(duplicate_hash_cassette, MatchMode::Keyed)
+        .expect("fixture cassette should have valid stable hashes");
 
     // First request with hash_a should match the first interaction.
     let canonical_a = json!({"method": "POST", "messages": [{"content": "first"}]});
@@ -92,7 +95,8 @@ fn keyed_mode_matches_on_hash_regardless_of_canonical_json(sample_cassette: Cass
         .response
         .clone();
 
-    let mut engine = ReplayMatchEngine::new(sample_cassette, MatchMode::Keyed);
+    let mut engine = ReplayMatchEngine::new(sample_cassette, MatchMode::Keyed)
+        .expect("fixture cassette should have valid stable hashes");
 
     // Request with hash_a but completely different canonical JSON should still match.
     let canonical_different = json!({"totally": "different", "structure": 123});
@@ -104,7 +108,8 @@ fn keyed_mode_matches_on_hash_regardless_of_canonical_json(sample_cassette: Cass
 
 #[rstest]
 fn keyed_mode_request_with_unknown_hash_returns_mismatch(sample_cassette: Cassette) {
-    let mut engine = ReplayMatchEngine::new(sample_cassette, MatchMode::Keyed);
+    let mut engine = ReplayMatchEngine::new(sample_cassette, MatchMode::Keyed)
+        .expect("fixture cassette should have valid stable hashes");
 
     let canonical_unknown = json!({"method": "DELETE", "path": "/unknown"});
     let outcome = engine.next_match("unknown_hash", &canonical_unknown);
@@ -119,7 +124,8 @@ fn keyed_mode_request_with_unknown_hash_returns_mismatch(sample_cassette: Casset
 
 #[rstest]
 fn keyed_mode_all_consumed_then_request_returns_mismatch(sample_cassette: Cassette) {
-    let mut engine = ReplayMatchEngine::new(sample_cassette, MatchMode::Keyed);
+    let mut engine = ReplayMatchEngine::new(sample_cassette, MatchMode::Keyed)
+        .expect("fixture cassette should have valid stable hashes");
 
     // Consume all three interactions.
     let canonical_a = json!({"method": "POST", "path": "/v1/chat/completions"});

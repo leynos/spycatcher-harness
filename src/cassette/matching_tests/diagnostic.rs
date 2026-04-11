@@ -9,7 +9,8 @@ use crate::config::MatchMode;
 
 #[rstest]
 fn sequential_mismatch_diagnostic_contains_interaction_id(sample_cassette: Cassette) {
-    let mut engine = ReplayMatchEngine::new(sample_cassette, MatchMode::SequentialStrict);
+    let mut engine = ReplayMatchEngine::new(sample_cassette, MatchMode::SequentialStrict)
+        .expect("fixture cassette should have valid stable hashes");
 
     let canonical_wrong = json!({"method": "GET"});
     let outcome = engine.next_match("wrong", &canonical_wrong);
@@ -23,7 +24,8 @@ fn sequential_mismatch_diagnostic_contains_interaction_id(sample_cassette: Casse
 
 #[rstest]
 fn sequential_mismatch_diagnostic_contains_both_hashes(sample_cassette: Cassette) {
-    let mut engine = ReplayMatchEngine::new(sample_cassette, MatchMode::SequentialStrict);
+    let mut engine = ReplayMatchEngine::new(sample_cassette, MatchMode::SequentialStrict)
+        .expect("fixture cassette should have valid stable hashes");
 
     let canonical_wrong = json!({"method": "GET"});
     let outcome = engine.next_match("observed_hash_123", &canonical_wrong);
@@ -38,7 +40,8 @@ fn sequential_mismatch_diagnostic_contains_both_hashes(sample_cassette: Cassette
 
 #[rstest]
 fn sequential_mismatch_diagnostic_diff_mentions_changed_field(sample_cassette: Cassette) {
-    let mut engine = ReplayMatchEngine::new(sample_cassette, MatchMode::SequentialStrict);
+    let mut engine = ReplayMatchEngine::new(sample_cassette, MatchMode::SequentialStrict)
+        .expect("fixture cassette should have valid stable hashes");
 
     // Expected: {"method": "POST", "path": "/v1/chat/completions"}
     // Observed: {"method": "GET", "path": "/v1/chat/completions"}

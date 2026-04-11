@@ -11,6 +11,7 @@ use serde_json::Value;
 use crate::cassette::diff::canonical_diff_summary;
 use crate::cassette::{Cassette, Interaction};
 use crate::config::MatchMode;
+use crate::{HarnessError, HarnessResult};
 
 /// Diagnostic prefix for cassette exhaustion (no more interactions available).
 pub const DIAGNOSTIC_EXHAUSTED: &str = "cassette-exhausted";
@@ -50,6 +51,7 @@ pub enum MatchOutcome<'a> {
 
 /// Replay matching engine that consumes cassette interactions according to
 /// the configured match mode.
+#[derive(Debug)]
 pub struct ReplayMatchEngine {
     /// The cassette being replayed.
     cassette: Cassette,
@@ -77,11 +79,11 @@ struct InteractionData {
 impl ReplayMatchEngine {
     /// Creates a new engine from a loaded cassette and match mode.
     ///
-    /// # Panics
+    /// # Errors
     ///
-    /// Panics if any interaction in the cassette has a missing `stable_hash`.
-    /// All interactions must have their stable hash populated before replay
-    /// matching can begin.
+    /// Returns [`HarnessError::InvalidCassette`] if any interaction in the
+    /// cassette has a missing `stable_hash`. All interactions must have their
+    /// stable hash populated before replay matching can begin.
     ///
     /// # Examples
     ///
@@ -90,33 +92,28 @@ impl ReplayMatchEngine {
     /// use spycatcher_harness::config::MatchMode;
     ///
     /// let cassette = Cassette::new();
-    /// let engine = ReplayMatchEngine::new(&cassette, MatchMode::SequentialStrict);
+    /// let engine = ReplayMatchEngine::new(cassette, MatchMode::SequentialStrict)?;
     /// ```
-    #[must_use]
-    pub fn new(cassette: Cassette, mode: MatchMode) -> Self {
-        let interactions: Vec<InteractionData> = cassette
-            .interactions
-            .iter()
-            .map(|interaction| {
-                let stable_hash = interaction.request.stable_hash.as_ref().map_or_else(
-                    || {
-                        panic!(
-                            "stable_hash must be populated for replay matching; \
-                             interaction at index has missing stable_hash"
-                        )
-                    },
-                    std::clone::Clone::clone,
-                );
-                InteractionData {
-                    stable_hash,
-                    canonical_request: interaction
-                        .request
-                        .canonical_request
-                        .clone()
-                        .unwrap_or(Value::Null),
+    pub fn new(cassette: Cassette, mode: MatchMode) -> HarnessResult<Self> {
+        let mut interactions = Vec::with_capacity(cassette.interactions.len());
+        for (idx, interaction) in cassette.interactions.iter().enumerate() {
+            let stable_hash = interaction.request.stable_hash.clone().ok_or_else(|| {
+                HarnessError::InvalidCassette {
+                    message: format!(
+                        "interaction at index {idx} has no stable_hash; \
+                             all interactions must be hashed before replay"
+                    ),
                 }
-            })
-            .collect();
+            })?;
+            interactions.push(InteractionData {
+                stable_hash,
+                canonical_request: interaction
+                    .request
+                    .canonical_request
+                    .clone()
+                    .unwrap_or(Value::Null),
+            });
+        }
 
         let mut hash_to_indices = HashMap::new();
         if matches!(mode, MatchMode::Keyed) {
@@ -130,14 +127,14 @@ impl ReplayMatchEngine {
 
         let consumed = vec![false; interactions.len()];
 
-        Self {
+        Ok(Self {
             cassette,
             interactions,
             mode,
             sequential_cursor: 0,
             hash_to_indices,
             consumed,
-        }
+        })
     }
 
     /// Attempts to match an incoming request against the cassette.

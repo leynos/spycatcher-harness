@@ -121,7 +121,8 @@ fn initialise_engine(matching_world: &MatchingWorld, mode: MatchMode) {
         .cassette
         .take()
         .expect("cassette must be set before creating engine");
-    let engine = ReplayMatchEngine::new(cassette, mode);
+    let engine = ReplayMatchEngine::new(cassette, mode)
+        .expect("cassette must have valid stable hashes for engine creation");
     matching_world.engine.set(engine);
 }
 
