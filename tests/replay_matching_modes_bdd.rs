@@ -2,41 +2,18 @@
 //!
 //! Step definitions and scenario bindings for the feature file at
 //! `tests/features/replay_matching_modes.feature`.
-#![expect(
-    clippy::expect_used,
-    reason = "BDD step functions use expect for step precondition enforcement"
-)]
 
-use rstest::fixture;
-use rstest_bdd::Slot;
-use rstest_bdd_macros::{ScenarioState, scenario};
-use spycatcher_harness::cassette::{Cassette, ReplayMatchEngine};
-use spycatcher_harness::config::MatchMode;
+mod replay_matching_modes {
+    //! Internal modules for BDD test implementation.
 
-mod helpers;
-mod steps;
-
-#[derive(Default, ScenarioState)]
-struct MatchingWorld {
-    /// Temporary storage for cassette before engine is created.
-    /// Once engine is created, the cassette is owned by the engine.
-    cassette: Slot<Cassette>,
-    engine: Slot<ReplayMatchEngine>,
-    mode: Slot<MatchMode>,
-    matched_count: Slot<usize>,
-    mismatch_count: Slot<usize>,
-    mismatch_interaction_id: Slot<usize>,
-    mismatch_expected_hash: Slot<String>,
-    mismatch_observed_hash: Slot<String>,
-    mismatch_diff_summary: Slot<String>,
-    first_response_id: Slot<String>,
-    second_response_id: Slot<String>,
+    pub(super) mod fixtures;
+    pub(super) mod helpers;
+    pub(super) mod steps;
+    pub(super) mod world;
 }
 
-#[fixture]
-fn matching_world() -> MatchingWorld {
-    MatchingWorld::default()
-}
+use replay_matching_modes::world::{MatchingWorld, matching_world};
+use rstest_bdd_macros::scenario;
 
 #[scenario(
     path = "tests/features/replay_matching_modes.feature",

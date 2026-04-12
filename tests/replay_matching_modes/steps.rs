@@ -1,14 +1,13 @@
 //! Step definitions for BDD test scenarios.
 
 use rstest_bdd_macros::{given, then, when};
-use serde_json::{Value, json};
-use spycatcher_harness::cassette::{
-    Cassette, DIAGNOSTIC_EXHAUSTED, MatchOutcome, ReplayMatchEngine,
-};
+use serde_json::json;
+use spycatcher_harness::cassette::{Cassette, DIAGNOSTIC_EXHAUSTED, MatchOutcome};
 use spycatcher_harness::config::MatchMode;
 
-use super::MatchingWorld;
-use super::helpers::{InteractionSpec, create_interaction, extract_response_id};
+use super::fixtures::{InteractionSpec, create_interaction};
+use super::helpers::{extract_response_id, initialise_engine, run_requests};
+use super::world::MatchingWorld;
 
 #[given("a cassette with three recorded interactions")]
 fn a_cassette_with_three_recorded_interactions(matching_world: &MatchingWorld) {
@@ -35,34 +34,6 @@ fn a_cassette_with_three_recorded_interactions(matching_world: &MatchingWorld) {
         response_id: "resp_c",
     }));
     matching_world.cassette.set(cassette);
-}
-
-fn initialise_engine(matching_world: &MatchingWorld, mode: MatchMode) {
-    matching_world.mode.set(mode);
-    let cassette = matching_world
-        .cassette
-        .take()
-        .expect("cassette must be set before creating engine");
-    let engine = ReplayMatchEngine::new(cassette, mode)
-        .expect("cassette must have valid stable hashes for engine creation");
-    matching_world.engine.set(engine);
-}
-
-fn run_requests(matching_world: &MatchingWorld, requests: &[(&str, Value)]) {
-    let mut engine = matching_world
-        .engine
-        .take()
-        .expect("engine must be set before matching");
-
-    let matched_count = requests
-        .iter()
-        .filter(|(hash, canonical)| {
-            matches!(engine.next_match(hash, canonical), MatchOutcome::Matched(_))
-        })
-        .count();
-
-    matching_world.matched_count.set(matched_count);
-    matching_world.engine.set(engine);
 }
 
 #[given("a cassette with three recorded interactions with distinct hashes")]
@@ -107,17 +78,23 @@ fn a_cassette_with_one_recorded_interaction(matching_world: &MatchingWorld) {
 }
 
 #[given("the replay engine is in sequential strict mode")]
-fn the_replay_engine_is_in_sequential_strict_mode(matching_world: &MatchingWorld) {
-    initialise_engine(matching_world, MatchMode::SequentialStrict);
+fn the_replay_engine_is_in_sequential_strict_mode(
+    matching_world: &MatchingWorld,
+) -> Result<(), Box<dyn std::error::Error>> {
+    initialise_engine(matching_world, MatchMode::SequentialStrict)
 }
 
 #[given("the replay engine is in keyed mode")]
-fn the_replay_engine_is_in_keyed_mode(matching_world: &MatchingWorld) {
-    initialise_engine(matching_world, MatchMode::Keyed);
+fn the_replay_engine_is_in_keyed_mode(
+    matching_world: &MatchingWorld,
+) -> Result<(), Box<dyn std::error::Error>> {
+    initialise_engine(matching_world, MatchMode::Keyed)
 }
 
 #[when("three requests arrive with matching hashes in recorded order")]
-fn three_requests_arrive_with_matching_hashes_in_recorded_order(matching_world: &MatchingWorld) {
+fn three_requests_arrive_with_matching_hashes_in_recorded_order(
+    matching_world: &MatchingWorld,
+) -> Result<(), Box<dyn std::error::Error>> {
     run_requests(
         matching_world,
         &[
@@ -125,11 +102,13 @@ fn three_requests_arrive_with_matching_hashes_in_recorded_order(matching_world: 
             ("hash_b", json!({"method": "POST", "messages": [1]})),
             ("hash_c", json!({"method": "GET"})),
         ],
-    );
+    )
 }
 
 #[when("three requests arrive with matching hashes in reversed order")]
-fn three_requests_arrive_with_matching_hashes_in_reversed_order(matching_world: &MatchingWorld) {
+fn three_requests_arrive_with_matching_hashes_in_reversed_order(
+    matching_world: &MatchingWorld,
+) -> Result<(), Box<dyn std::error::Error>> {
     run_requests(
         matching_world,
         &[
@@ -137,17 +116,17 @@ fn three_requests_arrive_with_matching_hashes_in_reversed_order(matching_world: 
             ("hash_b", json!({"method": "POST", "messages": [1]})),
             ("hash_a", json!({"method": "POST"})),
         ],
-    );
+    )
 }
 
 #[when("a request arrives with a hash that does not match the next interaction")]
 fn a_request_arrives_with_a_hash_that_does_not_match_the_next_interaction(
     matching_world: &MatchingWorld,
-) {
+) -> Result<(), Box<dyn std::error::Error>> {
     let mut engine = matching_world
         .engine
         .take()
-        .expect("engine must be set before matching");
+        .ok_or("engine must be set before matching")?;
 
     let outcome = engine.next_match("wrong_hash", &json!({"method": "DELETE"}));
 
@@ -168,14 +147,17 @@ fn a_request_arrives_with_a_hash_that_does_not_match_the_next_interaction(
     }
 
     matching_world.engine.set(engine);
+    Ok(())
 }
 
 #[when("two requests arrive with the shared hash")]
-fn two_requests_arrive_with_the_shared_hash(matching_world: &MatchingWorld) {
+fn two_requests_arrive_with_the_shared_hash(
+    matching_world: &MatchingWorld,
+) -> Result<(), Box<dyn std::error::Error>> {
     let mut engine = matching_world
         .engine
         .take()
-        .expect("engine must be set before matching");
+        .ok_or("engine must be set before matching")?;
 
     let outcome_1 = engine.next_match(
         "shared_hash",
@@ -194,14 +176,17 @@ fn two_requests_arrive_with_the_shared_hash(matching_world: &MatchingWorld) {
     }
 
     matching_world.engine.set(engine);
+    Ok(())
 }
 
 #[when("the first request matches and consumes the interaction")]
-fn the_first_request_matches_and_consumes_the_interaction(matching_world: &MatchingWorld) {
+fn the_first_request_matches_and_consumes_the_interaction(
+    matching_world: &MatchingWorld,
+) -> Result<(), Box<dyn std::error::Error>> {
     let mut engine = matching_world
         .engine
         .take()
-        .expect("engine must be set before matching");
+        .ok_or("engine must be set before matching")?;
 
     let outcome = engine.next_match("hash_single", &json!({"method": "POST"}));
 
@@ -210,14 +195,17 @@ fn the_first_request_matches_and_consumes_the_interaction(matching_world: &Match
     }
 
     matching_world.engine.set(engine);
+    Ok(())
 }
 
 #[when("a second request arrives")]
-fn a_second_request_arrives(matching_world: &MatchingWorld) {
+fn a_second_request_arrives(
+    matching_world: &MatchingWorld,
+) -> Result<(), Box<dyn std::error::Error>> {
     let mut engine = matching_world
         .engine
         .take()
-        .expect("engine must be set before matching");
+        .ok_or("engine must be set before matching")?;
 
     let outcome = engine.next_match("hash_extra", &json!({"method": "GET"}));
 
@@ -229,9 +217,14 @@ fn a_second_request_arrives(matching_world: &MatchingWorld) {
     }
 
     matching_world.engine.set(engine);
+    Ok(())
 }
 
 #[then("all three requests receive the corresponding recorded interaction")]
+#[expect(
+    clippy::expect_used,
+    reason = "then step uses expect for post-condition assertion"
+)]
 fn all_three_requests_receive_the_corresponding_recorded_interaction(
     matching_world: &MatchingWorld,
 ) {
@@ -243,9 +236,52 @@ fn all_three_requests_receive_the_corresponding_recorded_interaction(
         matched_count, 3,
         "expected all three requests to match interactions"
     );
+
+    // Check that response IDs match expectations based on request order.
+    let response_ids = matching_world
+        .matched_response_ids
+        .with_ref(Vec::clone)
+        .expect("matched_response_ids must be set");
+
+    // For sequential mode (in-order): ["resp_a", "resp_b", "resp_c"]
+    // For keyed mode (reversed): ["resp_c", "resp_b", "resp_a"]
+    // We check that all IDs are from the expected set and count is correct.
+    assert_eq!(response_ids.len(), 3);
+    for id in &response_ids {
+        assert!(
+            id == "resp_a" || id == "resp_b" || id == "resp_c",
+            "unexpected response ID: {id}"
+        );
+    }
+
+    // Additional check: verify the mode-specific order.
+    let mode = matching_world
+        .mode
+        .with_ref(|m| *m)
+        .expect("mode must be set");
+    match mode {
+        MatchMode::SequentialStrict => {
+            assert_eq!(
+                response_ids,
+                vec!["resp_a", "resp_b", "resp_c"],
+                "sequential mode should return IDs in recorded order"
+            );
+        }
+        MatchMode::Keyed => {
+            assert_eq!(
+                response_ids,
+                vec!["resp_c", "resp_b", "resp_a"],
+                "keyed mode should return IDs matching request order"
+            );
+        }
+    }
 }
 
 #[then("the engine returns a mismatch diagnostic")]
+#[expect(
+    clippy::expect_used,
+    reason = "then step uses expect for post-condition assertion"
+)]
 fn the_engine_returns_a_mismatch_diagnostic(matching_world: &MatchingWorld) {
     let mismatch_count = matching_world
         .mismatch_count
@@ -255,6 +291,10 @@ fn the_engine_returns_a_mismatch_diagnostic(matching_world: &MatchingWorld) {
 }
 
 #[then("the diagnostic contains the expected interaction ID")]
+#[expect(
+    clippy::expect_used,
+    reason = "then step uses expect for post-condition assertion"
+)]
 fn the_diagnostic_contains_the_expected_interaction_id(matching_world: &MatchingWorld) {
     let interaction_id = matching_world
         .mismatch_interaction_id
@@ -267,6 +307,10 @@ fn the_diagnostic_contains_the_expected_interaction_id(matching_world: &Matching
 }
 
 #[then("the diagnostic contains the expected and observed hashes")]
+#[expect(
+    clippy::expect_used,
+    reason = "then step uses expect for post-condition assertion"
+)]
 fn the_diagnostic_contains_the_expected_and_observed_hashes(matching_world: &MatchingWorld) {
     let expected_hash = matching_world
         .mismatch_expected_hash
@@ -282,6 +326,10 @@ fn the_diagnostic_contains_the_expected_and_observed_hashes(matching_world: &Mat
 }
 
 #[then("the diagnostic contains a field-level diff summary")]
+#[expect(
+    clippy::expect_used,
+    reason = "then step uses expect for post-condition assertion"
+)]
 fn the_diagnostic_contains_a_field_level_diff_summary(matching_world: &MatchingWorld) {
     let diff_summary = matching_world
         .mismatch_diff_summary
@@ -292,6 +340,10 @@ fn the_diagnostic_contains_a_field_level_diff_summary(matching_world: &MatchingW
 }
 
 #[then("the first request receives the first recorded interaction")]
+#[expect(
+    clippy::expect_used,
+    reason = "then step uses expect for post-condition assertion"
+)]
 fn the_first_request_receives_the_first_recorded_interaction(matching_world: &MatchingWorld) {
     let first_id = matching_world
         .first_response_id
@@ -301,6 +353,10 @@ fn the_first_request_receives_the_first_recorded_interaction(matching_world: &Ma
 }
 
 #[then("the second request receives the second recorded interaction")]
+#[expect(
+    clippy::expect_used,
+    reason = "then step uses expect for post-condition assertion"
+)]
 fn the_second_request_receives_the_second_recorded_interaction(matching_world: &MatchingWorld) {
     let second_id = matching_world
         .second_response_id
@@ -310,6 +366,10 @@ fn the_second_request_receives_the_second_recorded_interaction(matching_world: &
 }
 
 #[then("the engine returns a mismatch diagnostic indicating exhaustion")]
+#[expect(
+    clippy::expect_used,
+    reason = "then step uses expect for post-condition assertion"
+)]
 fn the_engine_returns_a_mismatch_diagnostic_indicating_exhaustion(matching_world: &MatchingWorld) {
     let mismatch_count = matching_world
         .mismatch_count
