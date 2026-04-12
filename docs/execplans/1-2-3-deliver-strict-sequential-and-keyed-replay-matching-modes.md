@@ -397,9 +397,12 @@ pub struct ReplayMatchEngine {
 
 impl ReplayMatchEngine {
     /// Creates a new engine from a loaded cassette and match mode.
-    pub fn new(cassette: &Cassette, match_mode: MatchMode) -> Self;
+    ///
+    /// Takes ownership of the cassette. Returns an error if any interaction
+    /// lacks a stable_hash.
+    pub fn new(cassette: Cassette, match_mode: MatchMode) -> HarnessResult<Self>;
 
-    /// Attempts to match an incoming request against the cassette.
+    /// Attempts to match an incoming request against the engine's owned cassette.
     ///
     /// In sequential strict mode, the request must match the next
     /// recorded interaction in order. In keyed mode, the request
@@ -412,9 +415,8 @@ impl ReplayMatchEngine {
 }
 ```
 
-The engine stores a reference to the cassette's interactions (or an owned copy
-of the data it needs — stable hashes and canonical request values — to avoid
-lifetime entanglement). Internal state:
+The engine owns the cassette and stores extracted interaction data (stable
+hashes and canonical request values). Internal state:
 
 - **Sequential strict**: a `cursor: usize` tracking the next expected
   interaction index.
@@ -837,7 +839,7 @@ pub enum MatchOutcome<'a> {
 pub struct ReplayMatchEngine { /* ... */ }
 
 impl ReplayMatchEngine {
-    pub fn new(cassette: &Cassette, match_mode: MatchMode) -> Self;
+    pub fn new(cassette: Cassette, match_mode: MatchMode) -> HarnessResult<Self>;
     pub fn next_match(
         &mut self,
         observed_hash: &str,
