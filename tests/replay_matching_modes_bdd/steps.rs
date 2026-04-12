@@ -1,92 +1,14 @@
-//! BDD scenarios for replay matching modes.
-//!
-//! Step definitions and scenario bindings for the feature file at
-//! `tests/features/replay_matching_modes.feature`.
-#![expect(
-    clippy::expect_used,
-    reason = "BDD step functions use expect for step precondition enforcement"
-)]
+//! Step definitions for BDD test scenarios.
 
-use rstest::fixture;
-use rstest_bdd::Slot;
-use rstest_bdd_macros::{ScenarioState, given, scenario, then, when};
+use rstest_bdd_macros::{given, then, when};
 use serde_json::{Value, json};
 use spycatcher_harness::cassette::{
-    Cassette, DIAGNOSTIC_EXHAUSTED, Interaction, InteractionMetadata, MatchOutcome,
-    RecordedRequest, RecordedResponse, ReplayMatchEngine,
+    Cassette, DIAGNOSTIC_EXHAUSTED, MatchOutcome, ReplayMatchEngine,
 };
 use spycatcher_harness::config::MatchMode;
 
-#[derive(Default, ScenarioState)]
-struct MatchingWorld {
-    /// Temporary storage for cassette before engine is created.
-    /// Once engine is created, the cassette is owned by the engine.
-    cassette: Slot<Cassette>,
-    engine: Slot<ReplayMatchEngine>,
-    mode: Slot<MatchMode>,
-    matched_count: Slot<usize>,
-    mismatch_count: Slot<usize>,
-    mismatch_interaction_id: Slot<usize>,
-    mismatch_expected_hash: Slot<String>,
-    mismatch_observed_hash: Slot<String>,
-    mismatch_diff_summary: Slot<String>,
-    first_response_id: Slot<String>,
-    second_response_id: Slot<String>,
-}
-
-#[fixture]
-fn matching_world() -> MatchingWorld {
-    MatchingWorld::default()
-}
-
-struct InteractionSpec<'a> {
-    method: &'a str,
-    path: &'a str,
-    canonical: Value,
-    hash: &'a str,
-    response_id: &'a str,
-}
-
-/// Extracts response ID from a match outcome if it's a `NonStream` response.
-fn extract_response_id(outcome: &MatchOutcome<'_>) -> Option<String> {
-    if let MatchOutcome::Matched(interaction) = outcome
-        && let RecordedResponse::NonStream { parsed_json, .. } = &interaction.response
-    {
-        return parsed_json
-            .as_ref()
-            .and_then(|v| v.get("id"))
-            .and_then(|v| v.as_str())
-            .map(String::from);
-    }
-    None
-}
-
-fn create_interaction(spec: InteractionSpec<'_>) -> Interaction {
-    Interaction {
-        request: RecordedRequest {
-            method: spec.method.to_owned(),
-            path: spec.path.to_owned(),
-            query: String::new(),
-            headers: Vec::new(),
-            body: Vec::new(),
-            parsed_json: Some(json!({})),
-            canonical_request: Some(spec.canonical),
-            stable_hash: Some(spec.hash.to_owned()),
-        },
-        response: RecordedResponse::NonStream {
-            status: 200,
-            headers: Vec::new(),
-            body: Vec::new(),
-            parsed_json: Some(json!({"id": spec.response_id})),
-        },
-        metadata: InteractionMetadata {
-            protocol_id: "test".to_owned(),
-            upstream_id: "test".to_owned(),
-            recorded_at: "2025-01-01T00:00:00Z".to_owned(),
-            relative_offset_ms: 0,
-        },
-    }
-}
+use super::MatchingWorld;
+use super::helpers::{InteractionSpec, create_interaction, extract_response_id};
 
 #[given("a cassette with three recorded interactions")]
 fn a_cassette_with_three_recorded_interactions(matching_world: &MatchingWorld) {
@@ -403,44 +325,4 @@ fn the_engine_returns_a_mismatch_diagnostic_indicating_exhaustion(matching_world
         diff_summary.starts_with(DIAGNOSTIC_EXHAUSTED),
         "expected exhaustion diagnostic prefix, got: {diff_summary}"
     );
-}
-
-#[scenario(
-    path = "tests/features/replay_matching_modes.feature",
-    name = "Sequential strict mode serves interactions in order"
-)]
-fn sequential_strict_mode_serves_interactions_in_order(matching_world: MatchingWorld) {
-    let _ = matching_world;
-}
-
-#[scenario(
-    path = "tests/features/replay_matching_modes.feature",
-    name = "Sequential strict mode rejects a mismatched request"
-)]
-fn sequential_strict_mode_rejects_a_mismatched_request(matching_world: MatchingWorld) {
-    let _ = matching_world;
-}
-
-#[scenario(
-    path = "tests/features/replay_matching_modes.feature",
-    name = "Keyed mode permits out-of-order requests"
-)]
-fn keyed_mode_permits_out_of_order_requests(matching_world: MatchingWorld) {
-    let _ = matching_world;
-}
-
-#[scenario(
-    path = "tests/features/replay_matching_modes.feature",
-    name = "Keyed mode consumes duplicate hashes in recorded order"
-)]
-fn keyed_mode_consumes_duplicate_hashes_in_recorded_order(matching_world: MatchingWorld) {
-    let _ = matching_world;
-}
-
-#[scenario(
-    path = "tests/features/replay_matching_modes.feature",
-    name = "Replay engine rejects requests after cassette exhaustion"
-)]
-fn replay_engine_rejects_requests_after_cassette_exhaustion(matching_world: MatchingWorld) {
-    let _ = matching_world;
 }
