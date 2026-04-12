@@ -58,10 +58,10 @@ Observable success after delivery:
 - Preserve the existing public API surface:
   - `start_harness`, `RunningHarness::shutdown`, `HarnessConfig`, and all
     existing `HarnessError` variants must remain source-compatible.
-  - The existing `HarnessError::RequestMismatch` variant has only
-    `interaction_id: usize`. This task enriches the variant to also carry
+  - The `HarnessError::RequestMismatch` variant previously had only
+    `interaction_id: usize`. This task enriched the variant to also carry
     `expected_hash`, `observed_hash`, and `diff_summary` fields so the adapter
-    layer has all the data it needs to build a 409 response body. This is an
+    layer has all the data it needs to build a 409 response body. This was an
     additive change to the variant's fields; existing `matches!()` patterns on
     `HarnessError::RequestMismatch { .. }` remain compatible.
 - The `MatchMode` enum (`SequentialStrict`, `Keyed`) already exists in
@@ -138,7 +138,7 @@ Observable success after delivery:
   moved in and out of slots during test execution.
 - The diff utility benefited from recursive tree walking rather than iterative
   approaches, though this resulted in higher cyclomatic complexity that would
-  need refactoring to meet strict lint standards.
+  need to be refactored to meet strict lint standards.
 - Test fixtures using predetermined hashes (`hash_a`, `hash_b`, etc.) worked
   well and avoided the complexity of reverse-engineering inputs that produce
   specific SHA-256 hashes.

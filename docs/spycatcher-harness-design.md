@@ -228,7 +228,7 @@ needs:
   - Supports limited reordering and concurrent requests, at the cost of less
     precise failure locations.
 
-#### Implementation details (task 1.2.3)
+#### Implementation details (task 1.1.1)
 
 The matching engine is implemented as a domain type `ReplayMatchEngine` in
 `src/cassette/matching.rs`. The engine takes ownership of a loaded `Cassette`
@@ -238,7 +238,7 @@ matching.
 **Construction.** `ReplayMatchEngine::new(cassette, mode)` returns
 `HarnessResult<Self>`. It validates that every interaction in the cassette has
 a populated `stable_hash` and returns `HarnessError::InvalidCassette` if any
-interaction lacks one, identifying the offending interaction by zero-based
+interaction lacks one, identifying the offending interaction by its zero-based
 index.
 
 **Matching.** The `next_match` method accepts:
@@ -276,7 +276,7 @@ class without string-matching free-form text:
 - `DIAGNOSTIC_NO_MATCH` (`"no-matching-interaction"`) — keyed mode found
   no interaction with the observed hash.
 - `DIAGNOSTIC_CONSUMED` (`"interaction-already-consumed"`) — keyed mode
-  found the hash but all matching interactions have already been served.
+  found the hash, but all matching interactions have already been served.
 
 All three constants are re-exported from `spycatcher_harness::cassette`.
 

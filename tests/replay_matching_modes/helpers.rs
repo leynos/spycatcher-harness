@@ -10,12 +10,12 @@ pub(super) fn initialise_engine(
     matching_world: &MatchingWorld,
     mode: MatchMode,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    matching_world.mode.set(mode);
     let cassette = matching_world
         .cassette
         .take()
         .ok_or("cassette must be set before creating engine")?;
     let engine = ReplayMatchEngine::new(cassette, mode)?;
+    matching_world.mode.set(mode);
     matching_world.engine.set(engine);
     Ok(())
 }
