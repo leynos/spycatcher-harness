@@ -30,14 +30,18 @@ pub(super) fn run_requests(
         .ok_or("engine must be set before matching")?;
 
     let mut response_ids = Vec::new();
+    let mut matched_count = 0;
     for (hash, canonical) in requests {
         let outcome = engine.next_match(hash, canonical);
+        if matches!(outcome, MatchOutcome::Matched(_)) {
+            matched_count += 1;
+        }
         if let Some(id) = extract_response_id(&outcome) {
             response_ids.push(id);
         }
     }
 
-    matching_world.matched_count.set(response_ids.len());
+    matching_world.matched_count.set(matched_count);
     matching_world.matched_response_ids.set(response_ids);
     matching_world.engine.set(engine);
     Ok(())

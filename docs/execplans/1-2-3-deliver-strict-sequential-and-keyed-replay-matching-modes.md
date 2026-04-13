@@ -9,7 +9,7 @@ Status: DRAFT
 
 ## Purpose / big picture
 
-Task `1.2.3` delivers the two replay matching modes described in the design
+Task `1.1.1` delivers the two replay matching modes described in the design
 document: **sequential strict** (the default) and **keyed**. After this change,
 the replay engine can accept an incoming canonicalized request and decide which
 recorded interaction to serve, or reject the request with structured
@@ -91,12 +91,13 @@ Observable success after delivery:
 
 ## Risks
 
-- Risk: the `HarnessError::RequestMismatch` variant currently has a single
-  `interaction_id: usize` field. Adding new fields is a backwards-compatible
-  change for pattern matches using `{ .. }`, but any test or code matching the
-  variant with all fields named will need updating. Severity: low. Likelihood:
-  medium. Mitigation: search for all existing uses of `RequestMismatch` and
-  update them when the variant is enriched.
+- Risk: the `HarnessError::RequestMismatch` variant has been enriched with
+  fields `interaction_id`, `expected_hash`, `observed_hash`, and `diff_summary`.
+  Adding these fields was backwards-compatible for pattern matches using
+  `{ .. }`, but any test or code matching the variant with all fields named by
+  exact name required updating. Severity: low. Outcome: completed. Action item:
+  search for remaining pattern-matches that destructure `RequestMismatch` by
+  exact field names and verify they reference the current field set.
 
 - Risk: generating a useful "field-level diff summary" of two
   `serde_json::Value` canonical requests without pulling in a heavy diff
