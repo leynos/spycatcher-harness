@@ -22,15 +22,26 @@ pub const DIAGNOSTIC_NO_MATCH: &str = "no-matching-interaction";
 /// Diagnostic prefix for interaction already consumed in keyed mode.
 pub const DIAGNOSTIC_CONSUMED: &str = "interaction-already-consumed";
 
+/// Disambiguates the position information carried in a [`MismatchDiagnostic`].
+#[derive(Debug, Clone, PartialEq)]
+pub enum InteractionPosition {
+    /// The zero-based index of the next expected interaction (sequential mode).
+    Expected(usize),
+    /// The cassette is exhausted; value is the total number of interactions.
+    Exhausted(usize),
+    /// Keyed mode: no interaction (or no unconsumed interaction) matched the
+    /// observed hash; value is the total number of interactions.
+    KeyedMiss(usize),
+}
+
 /// Structured diagnostic for a replay mismatch.
 ///
 /// Carries all information needed by the adapter layer to build an HTTP 409
 /// response body without coupling the domain to HTTP types.
 #[derive(Debug, Clone, PartialEq)]
 pub struct MismatchDiagnostic {
-    /// Zero-based index of the expected interaction (sequential mode) or
-    /// total interaction count (keyed mode miss).
-    pub interaction_id: usize,
+    /// Identifies which interaction (or bound) the mismatch relates to.
+    pub position: InteractionPosition,
     /// Stable hash of the expected canonical request (sequential mode) or
     /// empty string (keyed mode miss).
     pub expected_hash: String,
@@ -87,12 +98,15 @@ impl ReplayMatchEngine {
     ///
     /// # Examples
     ///
-    /// ```rust,ignore
+    /// ```rust
     /// use spycatcher_harness::cassette::{Cassette, ReplayMatchEngine};
     /// use spycatcher_harness::config::MatchMode;
     ///
-    /// let cassette = Cassette::new();
-    /// let engine = ReplayMatchEngine::new(cassette, MatchMode::SequentialStrict)?;
+    /// fn main() -> Result<(), Box<dyn std::error::Error>> {
+    ///     let cassette = Cassette::new();
+    ///     let _engine = ReplayMatchEngine::new(cassette, MatchMode::SequentialStrict)?;
+    ///     Ok(())
+    /// }
     /// ```
     pub fn new(cassette: Cassette, mode: MatchMode) -> HarnessResult<Self> {
         let mut interactions = Vec::with_capacity(cassette.interactions.len());
@@ -145,11 +159,18 @@ impl ReplayMatchEngine {
     ///
     /// # Examples
     ///
-    /// ```rust,ignore
-    /// let outcome = engine.next_match("abc123", &canonical_request);
-    /// match outcome {
-    ///     MatchOutcome::Matched(interaction) => { /* use interaction */ }
-    ///     MatchOutcome::Mismatch(diagnostic) => { /* handle mismatch */ }
+    /// ```rust
+    /// use spycatcher_harness::cassette::{Cassette, MatchOutcome, ReplayMatchEngine};
+    /// use spycatcher_harness::config::MatchMode;
+    ///
+    /// fn main() -> Result<(), Box<dyn std::error::Error>> {
+    ///     let mut engine = ReplayMatchEngine::new(Cassette::new(), MatchMode::SequentialStrict)?;
+    ///     let canonical_request = serde_json::json!({});
+    ///     match engine.next_match("abc123", &canonical_request) {
+    ///         MatchOutcome::Matched(_interaction) => { /* use interaction */ }
+    ///         MatchOutcome::Mismatch(_diagnostic) => { /* handle mismatch */ }
+    ///     }
+    ///     Ok(())
     /// }
     /// ```
     pub fn next_match<'a>(
@@ -170,7 +191,7 @@ impl ReplayMatchEngine {
     ) -> MatchOutcome<'a> {
         let Some(expected_data) = self.interactions.get(self.sequential_cursor) else {
             return MatchOutcome::Mismatch(MismatchDiagnostic {
-                interaction_id: self.sequential_cursor,
+                position: InteractionPosition::Exhausted(self.sequential_cursor),
                 expected_hash: String::new(),
                 observed_hash: observed_hash.to_owned(),
                 diff_summary: format!("{DIAGNOSTIC_EXHAUSTED}: no more interactions available"),
@@ -183,7 +204,7 @@ impl ReplayMatchEngine {
             let Some(interaction) = self.cassette.interactions.get(self.sequential_cursor) else {
                 // This should never happen since self.interactions mirrors cassette.interactions
                 return MatchOutcome::Mismatch(MismatchDiagnostic {
-                    interaction_id: self.sequential_cursor,
+                    position: InteractionPosition::Expected(self.sequential_cursor),
                     expected_hash: expected_hash.clone(),
                     observed_hash: observed_hash.to_owned(),
                     diff_summary: "internal error: cassette interaction missing".to_owned(),
@@ -195,7 +216,7 @@ impl ReplayMatchEngine {
             let diff_summary =
                 canonical_diff_summary(&expected_data.canonical_request, observed_canonical);
             MatchOutcome::Mismatch(MismatchDiagnostic {
-                interaction_id: self.sequential_cursor,
+                position: InteractionPosition::Expected(self.sequential_cursor),
                 expected_hash: expected_hash.clone(),
                 observed_hash: observed_hash.to_owned(),
                 diff_summary,
@@ -210,7 +231,7 @@ impl ReplayMatchEngine {
     ) -> MatchOutcome<'a> {
         let Some(indices) = self.hash_to_indices.get(observed_hash) else {
             return MatchOutcome::Mismatch(MismatchDiagnostic {
-                interaction_id: self.interactions.len(),
+                position: InteractionPosition::KeyedMiss(self.interactions.len()),
                 expected_hash: String::new(),
                 observed_hash: observed_hash.to_owned(),
                 diff_summary: format!(
@@ -241,7 +262,7 @@ impl ReplayMatchEngine {
 
         // All interactions with this hash have been consumed.
         MatchOutcome::Mismatch(MismatchDiagnostic {
-            interaction_id: self.interactions.len(),
+            position: InteractionPosition::KeyedMiss(self.interactions.len()),
             expected_hash: String::new(),
             observed_hash: observed_hash.to_owned(),
             diff_summary: format!(

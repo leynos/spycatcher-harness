@@ -9,7 +9,7 @@ Status: DRAFT
 
 ## Purpose / big picture
 
-Task `1.1.1` delivers the two replay matching modes described in the design
+Task `1.2.3` delivers the two replay matching modes described in the design
 document: **sequential strict** (the default) and **keyed**. After this change,
 the replay engine can accept an incoming canonicalized request and decide which
 recorded interaction to serve, or reject the request with structured
@@ -219,9 +219,10 @@ Key files and their roles:
 - `src/config.rs` (272 lines) — `HarnessConfig` and constituent types
   including `MatchMode` (enum with `SequentialStrict` and `Keyed` variants).
 
-- `src/error.rs` (108 lines) — `HarnessError` enum with the existing
-  `RequestMismatch { interaction_id: usize }` variant and `HarnessResult<T>`
-  alias.
+- `src/error.rs` (108 lines) — `HarnessError` enum with the enriched
+  `RequestMismatch` variant (carrying `interaction_id: usize`,
+  `expected_hash: String`, `observed_hash: String`, and
+  `diff_summary: String`) and `HarnessResult<T>` alias.
 
 - `src/replay.rs` (6 lines) — placeholder module-level doc comment only. No
   implementation yet.

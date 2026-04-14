@@ -1,5 +1,6 @@
 //! Constructor validation tests for `ReplayMatchEngine`.
 
+use rstest::rstest;
 use serde_json::json;
 
 use crate::HarnessError;
@@ -50,43 +51,30 @@ fn assert_invalid_cassette_error(result: Result<ReplayMatchEngine, HarnessError>
     err.to_string()
 }
 
-#[test]
-fn new_returns_error_when_first_interaction_has_no_stable_hash() {
+#[rstest]
+#[case(0, MatchMode::SequentialStrict)]
+#[case(1, MatchMode::SequentialStrict)]
+#[case(0, MatchMode::Keyed)]
+fn new_returns_error_when_interaction_has_no_stable_hash(
+    #[case] missing_index: usize,
+    #[case] mode: MatchMode,
+) {
     let mut cassette = Cassette::new();
-    cassette.append(interaction_with_hash(None));
+    for i in 0..=missing_index {
+        cassette.append(interaction_with_hash(if i == missing_index {
+            None
+        } else {
+            Some("hash_ok")
+        }));
+    }
 
-    let result = ReplayMatchEngine::new(cassette, MatchMode::SequentialStrict);
+    let result = ReplayMatchEngine::new(cassette, mode);
 
     let msg = assert_invalid_cassette_error(result);
     assert!(
-        msg.contains("index 0"),
-        "error message should mention the interaction index, got: {msg}"
+        msg.contains(&format!("index {missing_index}")),
+        "error message should mention index {missing_index}, got: {msg}"
     );
-}
-
-#[test]
-fn new_returns_error_when_later_interaction_has_no_stable_hash() {
-    let mut cassette = Cassette::new();
-    cassette.append(interaction_with_hash(Some("hash_ok")));
-    cassette.append(interaction_with_hash(None));
-
-    let result = ReplayMatchEngine::new(cassette, MatchMode::SequentialStrict);
-
-    let msg = assert_invalid_cassette_error(result);
-    assert!(
-        msg.contains("index 1"),
-        "error message should mention interaction index 1, got: {msg}"
-    );
-}
-
-#[test]
-fn new_returns_error_for_missing_hash_in_keyed_mode() {
-    let mut cassette = Cassette::new();
-    cassette.append(interaction_with_hash(None));
-
-    let result = ReplayMatchEngine::new(cassette, MatchMode::Keyed);
-
-    assert_invalid_cassette_error(result);
 }
 
 #[test]

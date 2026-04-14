@@ -2,7 +2,9 @@
 
 use rstest_bdd_macros::{given, then, when};
 use serde_json::json;
-use spycatcher_harness::cassette::{Cassette, DIAGNOSTIC_EXHAUSTED, MatchOutcome};
+use spycatcher_harness::cassette::{
+    Cassette, DIAGNOSTIC_EXHAUSTED, InteractionPosition, MatchOutcome,
+};
 use spycatcher_harness::config::MatchMode;
 
 use super::fixtures::{InteractionSpec, create_interaction};
@@ -10,7 +12,9 @@ use super::helpers::{extract_response_id, initialise_engine, run_requests};
 use super::world::MatchingWorld;
 
 #[given("a cassette with three recorded interactions")]
-fn a_cassette_with_three_recorded_interactions(matching_world: &MatchingWorld) -> Result<(), Box<dyn std::error::Error>> {
+fn a_cassette_with_three_recorded_interactions(
+    matching_world: &MatchingWorld,
+) -> Result<(), Box<dyn std::error::Error>> {
     let mut cassette = Cassette::new();
     cassette.append(create_interaction(InteractionSpec {
         method: "POST",
@@ -46,7 +50,9 @@ fn a_cassette_with_three_recorded_interactions_with_distinct_hashes(
 }
 
 #[given("a cassette with two interactions sharing the same hash")]
-fn a_cassette_with_two_interactions_sharing_the_same_hash(matching_world: &MatchingWorld) -> Result<(), Box<dyn std::error::Error>> {
+fn a_cassette_with_two_interactions_sharing_the_same_hash(
+    matching_world: &MatchingWorld,
+) -> Result<(), Box<dyn std::error::Error>> {
     let mut cassette = Cassette::new();
     cassette.append(create_interaction(InteractionSpec {
         method: "POST",
@@ -67,7 +73,9 @@ fn a_cassette_with_two_interactions_sharing_the_same_hash(matching_world: &Match
 }
 
 #[given("a cassette with one recorded interaction")]
-fn a_cassette_with_one_recorded_interaction(matching_world: &MatchingWorld) -> Result<(), Box<dyn std::error::Error>> {
+fn a_cassette_with_one_recorded_interaction(
+    matching_world: &MatchingWorld,
+) -> Result<(), Box<dyn std::error::Error>> {
     let mut cassette = Cassette::new();
     cassette.append(create_interaction(InteractionSpec {
         method: "POST",
@@ -133,20 +141,28 @@ fn a_request_arrives_with_a_hash_that_does_not_match_the_next_interaction(
 
     let outcome = engine.next_match("wrong_hash", &json!({"method": "DELETE"}));
 
-    if let MatchOutcome::Mismatch(diagnostic) = outcome {
-        matching_world
-            .mismatch_interaction_id
-            .set(diagnostic.interaction_id);
-        matching_world
-            .mismatch_expected_hash
-            .set(diagnostic.expected_hash.clone());
-        matching_world
-            .mismatch_observed_hash
-            .set(diagnostic.observed_hash.clone());
-        matching_world
-            .mismatch_diff_summary
-            .set(diagnostic.diff_summary.clone());
-        matching_world.mismatch_count.set(1);
+    match outcome {
+        MatchOutcome::Mismatch(diagnostic) => {
+            matching_world
+                .mismatch_position
+                .set(diagnostic.position.clone());
+            matching_world
+                .mismatch_expected_hash
+                .set(diagnostic.expected_hash.clone());
+            matching_world
+                .mismatch_observed_hash
+                .set(diagnostic.observed_hash.clone());
+            matching_world
+                .mismatch_diff_summary
+                .set(diagnostic.diff_summary.clone());
+            matching_world.mismatch_count.set(1);
+        }
+        other => {
+            return Err(format!(
+                "expected MatchOutcome::Mismatch for wrong hash, got: {other:?}"
+            )
+            .into());
+        }
     }
 
     matching_world.engine.set(engine);
@@ -212,21 +228,26 @@ fn a_second_request_arrives(
 
     let outcome = engine.next_match("hash_extra", &json!({"method": "GET"}));
 
-    if let MatchOutcome::Mismatch(diagnostic) = outcome {
-        matching_world
-            .mismatch_diff_summary
-            .set(diagnostic.diff_summary.clone());
-        matching_world.mismatch_count.set(1);
+    match outcome {
+        MatchOutcome::Mismatch(diagnostic) => {
+            matching_world
+                .mismatch_diff_summary
+                .set(diagnostic.diff_summary.clone());
+            matching_world.mismatch_count.set(1);
+        }
+        other => {
+            return Err(format!(
+                "expected MatchOutcome::Mismatch for exhausted cassette, got: {other:?}"
+            )
+            .into());
+        }
     }
 
     matching_world.engine.set(engine);
     Ok(())
 }
 
-#[then("all three requests receive the corresponding recorded interaction")]
-fn all_three_requests_receive_the_corresponding_recorded_interaction(
-    matching_world: &MatchingWorld,
-) -> Result<(), Box<dyn std::error::Error>> {
+fn check_matched_count(matching_world: &MatchingWorld) -> Result<(), Box<dyn std::error::Error>> {
     let matched_count = matching_world
         .matched_count
         .with_ref(|c| *c)
@@ -235,16 +256,17 @@ fn all_three_requests_receive_the_corresponding_recorded_interaction(
         matched_count, 3,
         "expected all three requests to match interactions"
     );
+    Ok(())
+}
 
-    // Check that response IDs match expectations based on request order.
+fn check_response_set(
+    matching_world: &MatchingWorld,
+) -> Result<Vec<String>, Box<dyn std::error::Error>> {
     let response_ids = matching_world
         .matched_response_ids
         .with_ref(Vec::clone)
         .ok_or("matched_response_ids must be set")?;
 
-    // For sequential mode (in-order): ["resp_a", "resp_b", "resp_c"]
-    // For keyed mode (reversed): ["resp_c", "resp_b", "resp_a"]
-    // We check that all IDs are from the expected set and count is correct.
     assert_eq!(response_ids.len(), 3);
     for id in &response_ids {
         assert!(
@@ -252,8 +274,13 @@ fn all_three_requests_receive_the_corresponding_recorded_interaction(
             "unexpected response ID: {id}"
         );
     }
+    Ok(response_ids)
+}
 
-    // Additional check: verify the mode-specific order.
+fn check_mode_order(
+    response_ids: Vec<String>,
+    matching_world: &MatchingWorld,
+) -> Result<(), Box<dyn std::error::Error>> {
     let mode = matching_world
         .mode
         .with_ref(|m| *m)
@@ -277,8 +304,20 @@ fn all_three_requests_receive_the_corresponding_recorded_interaction(
     Ok(())
 }
 
+#[then("all three requests receive the corresponding recorded interaction")]
+fn all_three_requests_receive_the_corresponding_recorded_interaction(
+    matching_world: &MatchingWorld,
+) -> Result<(), Box<dyn std::error::Error>> {
+    check_matched_count(matching_world)?;
+    let response_ids = check_response_set(matching_world)?;
+    check_mode_order(response_ids, matching_world)?;
+    Ok(())
+}
+
 #[then("the engine returns a mismatch diagnostic")]
-fn the_engine_returns_a_mismatch_diagnostic(matching_world: &MatchingWorld) -> Result<(), Box<dyn std::error::Error>> {
+fn the_engine_returns_a_mismatch_diagnostic(
+    matching_world: &MatchingWorld,
+) -> Result<(), Box<dyn std::error::Error>> {
     let mismatch_count = matching_world
         .mismatch_count
         .with_ref(|c| *c)
@@ -288,20 +327,25 @@ fn the_engine_returns_a_mismatch_diagnostic(matching_world: &MatchingWorld) -> R
 }
 
 #[then("the diagnostic contains the expected interaction ID")]
-fn the_diagnostic_contains_the_expected_interaction_id(matching_world: &MatchingWorld) -> Result<(), Box<dyn std::error::Error>> {
-    let interaction_id = matching_world
-        .mismatch_interaction_id
-        .with_ref(|id| *id)
-        .ok_or("mismatch interaction_id must be set")?;
+fn the_diagnostic_contains_the_expected_interaction_id(
+    matching_world: &MatchingWorld,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let position = matching_world
+        .mismatch_position
+        .with_ref(|p| p.clone())
+        .ok_or("mismatch position must be set")?;
     assert_eq!(
-        interaction_id, 0,
-        "expected interaction_id to be 0 for the first interaction"
+        position,
+        InteractionPosition::Expected(0),
+        "expected position to be Expected(0) for the first interaction"
     );
     Ok(())
 }
 
 #[then("the diagnostic contains the expected and observed hashes")]
-fn the_diagnostic_contains_the_expected_and_observed_hashes(matching_world: &MatchingWorld) -> Result<(), Box<dyn std::error::Error>> {
+fn the_diagnostic_contains_the_expected_and_observed_hashes(
+    matching_world: &MatchingWorld,
+) -> Result<(), Box<dyn std::error::Error>> {
     let expected_hash = matching_world
         .mismatch_expected_hash
         .with_ref(String::clone)
@@ -317,7 +361,9 @@ fn the_diagnostic_contains_the_expected_and_observed_hashes(matching_world: &Mat
 }
 
 #[then("the diagnostic contains a field-level diff summary")]
-fn the_diagnostic_contains_a_field_level_diff_summary(matching_world: &MatchingWorld) -> Result<(), Box<dyn std::error::Error>> {
+fn the_diagnostic_contains_a_field_level_diff_summary(
+    matching_world: &MatchingWorld,
+) -> Result<(), Box<dyn std::error::Error>> {
     let diff_summary = matching_world
         .mismatch_diff_summary
         .with_ref(String::clone)
@@ -328,7 +374,9 @@ fn the_diagnostic_contains_a_field_level_diff_summary(matching_world: &MatchingW
 }
 
 #[then("the first request receives the first recorded interaction")]
-fn the_first_request_receives_the_first_recorded_interaction(matching_world: &MatchingWorld) -> Result<(), Box<dyn std::error::Error>> {
+fn the_first_request_receives_the_first_recorded_interaction(
+    matching_world: &MatchingWorld,
+) -> Result<(), Box<dyn std::error::Error>> {
     let first_id = matching_world
         .first_response_id
         .with_ref(String::clone)
@@ -338,7 +386,9 @@ fn the_first_request_receives_the_first_recorded_interaction(matching_world: &Ma
 }
 
 #[then("the second request receives the second recorded interaction")]
-fn the_second_request_receives_the_second_recorded_interaction(matching_world: &MatchingWorld) -> Result<(), Box<dyn std::error::Error>> {
+fn the_second_request_receives_the_second_recorded_interaction(
+    matching_world: &MatchingWorld,
+) -> Result<(), Box<dyn std::error::Error>> {
     let second_id = matching_world
         .second_response_id
         .with_ref(String::clone)
@@ -348,7 +398,9 @@ fn the_second_request_receives_the_second_recorded_interaction(matching_world: &
 }
 
 #[then("the engine returns a mismatch diagnostic indicating exhaustion")]
-fn the_engine_returns_a_mismatch_diagnostic_indicating_exhaustion(matching_world: &MatchingWorld) -> Result<(), Box<dyn std::error::Error>> {
+fn the_engine_returns_a_mismatch_diagnostic_indicating_exhaustion(
+    matching_world: &MatchingWorld,
+) -> Result<(), Box<dyn std::error::Error>> {
     let mismatch_count = matching_world
         .mismatch_count
         .with_ref(|c| *c)

@@ -4,8 +4,8 @@ use rstest::fixture;
 use serde_json::json;
 
 use crate::cassette::{
-    Cassette, Interaction, InteractionMetadata, MatchOutcome, MismatchDiagnostic, RecordedRequest,
-    RecordedResponse,
+    Cassette, Interaction, InteractionMetadata, InteractionPosition, MatchOutcome,
+    MismatchDiagnostic, RecordedRequest, RecordedResponse, ReplayMatchEngine,
 };
 
 fn openai_metadata(recorded_at: &str, relative_offset_ms: u64) -> InteractionMetadata {
@@ -140,6 +140,29 @@ pub(super) fn duplicate_hash_cassette() -> Cassette {
 
 // ── test helpers ─────────────────────────────────────────────────────────────
 
+/// Consumes all three interactions from the sample cassette in order.
+pub(super) fn consume_all(engine: &mut ReplayMatchEngine) {
+    let canonical_a = json!({"method": "POST", "path": "/v1/chat/completions"});
+    let _ = engine.next_match("hash_a", &canonical_a);
+
+    let canonical_b = json!({"method": "POST", "path": "/v1/chat/completions", "body": {"messages": [{"role": "user"}]}});
+    let _ = engine.next_match("hash_b", &canonical_b);
+
+    let canonical_c = json!({"method": "GET", "path": "/v1/models"});
+    let _ = engine.next_match("hash_c", &canonical_c);
+}
+
+/// Retrieves the nth response from the cassette.
+#[track_caller]
+pub(super) fn nth_response(cassette: &Cassette, n: usize) -> RecordedResponse {
+    cassette
+        .interactions
+        .get(n)
+        .unwrap_or_else(|| panic!("interaction {n} does not exist in cassette"))
+        .response
+        .clone()
+}
+
 #[track_caller]
 pub(super) fn assert_matched(outcome: MatchOutcome<'_>) -> Interaction {
     match outcome {
@@ -163,12 +186,12 @@ pub(super) fn assert_mismatch(outcome: MatchOutcome<'_>) -> MismatchDiagnostic {
 #[track_caller]
 pub(super) fn assert_mismatch_diagnostic(
     outcome: MatchOutcome<'_>,
-    expected_interaction_id: usize,
+    expected_position: InteractionPosition,
     expected_hash: &str,
     observed_hash: &str,
 ) -> MismatchDiagnostic {
     let d = assert_mismatch(outcome);
-    assert_eq!(d.interaction_id, expected_interaction_id);
+    assert_eq!(d.position, expected_position);
     assert_eq!(d.expected_hash, expected_hash);
     assert_eq!(d.observed_hash, observed_hash);
     d

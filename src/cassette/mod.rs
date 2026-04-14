@@ -24,8 +24,8 @@ pub use canonical::{
     CanonicalError, CanonicalRequest, IgnorePathConfig, canonicalize, stable_hash,
 };
 pub use matching::{
-    DIAGNOSTIC_CONSUMED, DIAGNOSTIC_EXHAUSTED, DIAGNOSTIC_NO_MATCH, MatchOutcome,
-    MismatchDiagnostic, ReplayMatchEngine,
+    DIAGNOSTIC_CONSUMED, DIAGNOSTIC_EXHAUSTED, DIAGNOSTIC_NO_MATCH, InteractionPosition,
+    MatchOutcome, MismatchDiagnostic, ReplayMatchEngine,
 };
 
 /// Schema version used to encode and validate cassette documents.

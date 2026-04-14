@@ -4,11 +4,12 @@ use rstest::rstest;
 use serde_json::json;
 
 use super::fixtures::{
-    assert_matched, assert_matched_response_eq, assert_mismatch_diagnostic,
+    assert_matched, assert_matched_response_eq, assert_mismatch_diagnostic, consume_all,
     duplicate_hash_cassette, extract_response_id, sample_cassette,
 };
 use crate::cassette::{
-    Cassette, DIAGNOSTIC_CONSUMED, DIAGNOSTIC_NO_MATCH, MatchOutcome, ReplayMatchEngine,
+    Cassette, DIAGNOSTIC_CONSUMED, DIAGNOSTIC_NO_MATCH, InteractionPosition, MatchOutcome,
+    ReplayMatchEngine,
 };
 use crate::config::MatchMode;
 
@@ -114,7 +115,12 @@ fn keyed_mode_request_with_unknown_hash_returns_mismatch(sample_cassette: Casset
     let canonical_unknown = json!({"method": "DELETE", "path": "/unknown"});
     let outcome = engine.next_match("unknown_hash", &canonical_unknown);
 
-    let d = assert_mismatch_diagnostic(outcome, 3, "", "unknown_hash");
+    let d = assert_mismatch_diagnostic(
+        outcome,
+        InteractionPosition::KeyedMiss(3),
+        "",
+        "unknown_hash",
+    );
     assert!(
         d.diff_summary.starts_with(DIAGNOSTIC_NO_MATCH),
         "expected no-match diagnostic, got: {}",
@@ -128,19 +134,13 @@ fn keyed_mode_all_consumed_then_request_returns_mismatch(sample_cassette: Casset
         .expect("fixture cassette should have valid stable hashes");
 
     // Consume all three interactions.
-    let canonical_a = json!({"method": "POST", "path": "/v1/chat/completions"});
-    let _ = engine.next_match("hash_a", &canonical_a);
-
-    let canonical_b = json!({"method": "POST", "path": "/v1/chat/completions", "body": {"messages": [{"role": "user"}]}});
-    let _ = engine.next_match("hash_b", &canonical_b);
-
-    let canonical_c = json!({"method": "GET", "path": "/v1/models"});
-    let _ = engine.next_match("hash_c", &canonical_c);
+    consume_all(&mut engine);
 
     // Try to request hash_a again (already consumed).
+    let canonical_a = json!({"method": "POST", "path": "/v1/chat/completions"});
     let outcome = engine.next_match("hash_a", &canonical_a);
 
-    let d = assert_mismatch_diagnostic(outcome, 3, "", "hash_a");
+    let d = assert_mismatch_diagnostic(outcome, InteractionPosition::KeyedMiss(3), "", "hash_a");
     assert!(
         d.diff_summary.starts_with(DIAGNOSTIC_CONSUMED),
         "expected consumed diagnostic, got: {}",

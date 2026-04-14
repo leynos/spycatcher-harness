@@ -4,7 +4,7 @@ use rstest::rstest;
 use serde_json::json;
 
 use super::fixtures::{assert_mismatch_diagnostic, sample_cassette};
-use crate::cassette::{Cassette, ReplayMatchEngine};
+use crate::cassette::{Cassette, InteractionPosition, ReplayMatchEngine};
 use crate::config::MatchMode;
 
 #[rstest]
@@ -21,11 +21,19 @@ fn sequential_mismatch_diagnostic_structure(
         .expect("fixture cassette should have valid stable hashes");
 
     let outcome = engine.next_match(observed_hash, &canonical_wrong);
-    let diagnostic = assert_mismatch_diagnostic(outcome, 0, "hash_a", observed_hash);
+    let diagnostic = assert_mismatch_diagnostic(
+        outcome,
+        InteractionPosition::Expected(0),
+        "hash_a",
+        observed_hash,
+    );
     assert!(!diagnostic.diff_summary.is_empty());
 
     for token in expected_tokens {
-        assert!(diagnostic.diff_summary.contains(token),
-            "diff summary should contain '{token}', got: {}", diagnostic.diff_summary);
+        assert!(
+            diagnostic.diff_summary.contains(token),
+            "diff summary should contain '{token}', got: {}",
+            diagnostic.diff_summary
+        );
     }
 }

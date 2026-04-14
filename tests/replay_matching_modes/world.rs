@@ -3,7 +3,7 @@
 use rstest::fixture;
 use rstest_bdd::Slot;
 use rstest_bdd_macros::ScenarioState;
-use spycatcher_harness::cassette::{Cassette, ReplayMatchEngine};
+use spycatcher_harness::cassette::{Cassette, InteractionPosition, ReplayMatchEngine};
 use spycatcher_harness::config::MatchMode;
 
 #[derive(Default, ScenarioState)]
@@ -16,7 +16,7 @@ pub struct MatchingWorld {
     pub(super) matched_count: Slot<usize>,
     pub(super) matched_response_ids: Slot<Vec<String>>,
     pub(super) mismatch_count: Slot<usize>,
-    pub(super) mismatch_interaction_id: Slot<usize>,
+    pub(super) mismatch_position: Slot<InteractionPosition>,
     pub(super) mismatch_expected_hash: Slot<String>,
     pub(super) mismatch_observed_hash: Slot<String>,
     pub(super) mismatch_diff_summary: Slot<String>,
