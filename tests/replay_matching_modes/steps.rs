@@ -273,6 +273,8 @@ fn check_matched_count(matching_world: &MatchingWorld) -> Result<(), Box<dyn std
 fn check_response_set(
     matching_world: &MatchingWorld,
 ) -> Result<Vec<String>, Box<dyn std::error::Error>> {
+    const VALID_IDS: &[&str] = &["resp_a", "resp_b", "resp_c"];
+
     let response_ids = matching_world
         .matched_response_ids
         .with_ref(Vec::clone)
@@ -282,7 +284,7 @@ fn check_response_set(
         return Err(format!("expected 3 response IDs, got {}", response_ids.len()).into());
     }
     for id in &response_ids {
-        if id != "resp_a" && id != "resp_b" && id != "resp_c" {
+        if !VALID_IDS.contains(&id.as_str()) {
             return Err(format!("unexpected response ID: {id}").into());
         }
     }
@@ -316,6 +318,23 @@ fn check_mode_order(
                 .into());
             }
         }
+    }
+    Ok(())
+}
+
+fn assert_slot_string_eq(
+    slot: &rstest_bdd::Slot<String>,
+    slot_name: &str,
+    expected: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let value = slot
+        .with_ref(String::clone)
+        .ok_or_else(|| format!("{slot_name} must be set"))?;
+    if value != expected {
+        return Err(format!(
+            "{slot_name} should equal {expected:?}, got {value:?}"
+        )
+        .into());
     }
     Ok(())
 }
@@ -393,24 +412,22 @@ fn the_diagnostic_contains_a_field_level_diff_summary(
 fn the_first_request_receives_the_first_recorded_interaction(
     matching_world: &MatchingWorld,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let first_id = matching_world
-        .first_response_id
-        .with_ref(String::clone)
-        .ok_or("first_response_id must be set")?;
-    assert_eq!(first_id, "first_response");
-    Ok(())
+    assert_slot_string_eq(
+        &matching_world.first_response_id,
+        "first_response_id",
+        "first_response",
+    )
 }
 
 #[then("the second request receives the second recorded interaction")]
 fn the_second_request_receives_the_second_recorded_interaction(
     matching_world: &MatchingWorld,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let second_id = matching_world
-        .second_response_id
-        .with_ref(String::clone)
-        .ok_or("second_response_id must be set")?;
-    assert_eq!(second_id, "second_response");
-    Ok(())
+    assert_slot_string_eq(
+        &matching_world.second_response_id,
+        "second_response_id",
+        "second_response",
+    )
 }
 
 #[then("the engine returns a mismatch diagnostic indicating exhaustion")]
