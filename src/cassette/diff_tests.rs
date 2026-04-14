@@ -8,8 +8,8 @@ use serde_json::{Value, json};
 
 use super::diff::canonical_diff_summary;
 
-fn assert_diff_contains(expected: Value, observed: Value, needles: &[&str]) {
-    let diff = canonical_diff_summary(&expected, &observed);
+fn assert_diff_contains(expected: &Value, observed: &Value, needles: &[&str]) {
+    let diff = canonical_diff_summary(expected, observed);
     for needle in needles {
         assert!(diff.contains(needle), "missing `{needle}` in diff: {diff}");
     }
@@ -132,7 +132,7 @@ fn identical_values_produce_empty_summary() {
     &["changed: method", "changed: canonical_query", "changed: canonical_body.messages[0].role", "added: canonical_body.extra_field"]
 )]
 fn diff_cases(#[case] expected: Value, #[case] observed: Value, #[case] needles: &[&str]) {
-    assert_diff_contains(expected, observed, needles);
+    assert_diff_contains(&expected, &observed, needles);
 }
 
 // ── snapshot tests ──────────────────────────────────────────────────────────

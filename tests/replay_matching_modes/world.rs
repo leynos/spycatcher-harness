@@ -6,6 +6,10 @@ use rstest_bdd_macros::ScenarioState;
 use spycatcher_harness::cassette::{Cassette, InteractionPosition, ReplayMatchEngine};
 use spycatcher_harness::config::MatchMode;
 
+/// Test world state for replay matching mode BDD scenarios.
+///
+/// Holds cassettes, engines, match outcomes, and diagnostic data shared
+/// across Given/When/Then steps in the BDD test suite.
 #[derive(Default, ScenarioState)]
 pub struct MatchingWorld {
     /// Temporary storage for cassette before engine is created.
@@ -24,6 +28,10 @@ pub struct MatchingWorld {
     pub(super) second_response_id: Slot<String>,
 }
 
+/// Constructs a fresh `MatchingWorld` for a BDD scenario.
+///
+/// This fixture is injected by `rstest` into each test scenario to provide
+/// isolated state for Given/When/Then steps.
 #[fixture]
 pub fn matching_world() -> MatchingWorld {
     MatchingWorld::default()

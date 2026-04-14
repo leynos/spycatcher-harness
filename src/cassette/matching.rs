@@ -23,7 +23,7 @@ pub const DIAGNOSTIC_NO_MATCH: &str = "no-matching-interaction";
 pub const DIAGNOSTIC_CONSUMED: &str = "interaction-already-consumed";
 
 /// Disambiguates the position information carried in a [`MismatchDiagnostic`].
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum InteractionPosition {
     /// The zero-based index of the next expected interaction (sequential mode).
     Expected(usize),
@@ -84,7 +84,8 @@ struct InteractionData {
     /// Stable hash of the canonical request for this interaction.
     stable_hash: String,
     /// Canonical request JSON value for diff generation.
-    canonical_request: Value,
+    /// None indicates the interaction was recorded without canonical form.
+    canonical_request: Option<Value>,
 }
 
 impl ReplayMatchEngine {
@@ -121,11 +122,7 @@ impl ReplayMatchEngine {
             })?;
             interactions.push(InteractionData {
                 stable_hash,
-                canonical_request: interaction
-                    .request
-                    .canonical_request
-                    .clone()
-                    .unwrap_or(Value::Null),
+                canonical_request: interaction.request.canonical_request.clone(),
             });
         }
 
@@ -213,8 +210,10 @@ impl ReplayMatchEngine {
             self.sequential_cursor += 1;
             MatchOutcome::Matched(interaction)
         } else {
-            let diff_summary =
-                canonical_diff_summary(&expected_data.canonical_request, observed_canonical);
+            let diff_summary = expected_data.canonical_request.as_ref().map_or_else(
+                || "diff unavailable: expected interaction has no canonical_request".to_owned(),
+                |expected_canonical| canonical_diff_summary(expected_canonical, observed_canonical),
+            );
             MatchOutcome::Mismatch(MismatchDiagnostic {
                 position: InteractionPosition::Expected(self.sequential_cursor),
                 expected_hash: expected_hash.clone(),

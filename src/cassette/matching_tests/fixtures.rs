@@ -7,6 +7,7 @@ use crate::cassette::{
     Cassette, Interaction, InteractionMetadata, InteractionPosition, MatchOutcome,
     MismatchDiagnostic, RecordedRequest, RecordedResponse, ReplayMatchEngine,
 };
+use crate::config::MatchMode;
 
 fn openai_metadata(recorded_at: &str, relative_offset_ms: u64) -> InteractionMetadata {
     InteractionMetadata {
@@ -138,18 +139,25 @@ pub(super) fn duplicate_hash_cassette() -> Cassette {
     ])
 }
 
+/// Creates a `ReplayMatchEngine` in sequential strict mode from the sample cassette.
+#[fixture]
+pub(super) fn sequential_engine(sample_cassette: Cassette) -> ReplayMatchEngine {
+    ReplayMatchEngine::new(sample_cassette, MatchMode::SequentialStrict)
+        .expect("fixture cassette should have valid stable hashes")
+}
+
 // ── test helpers ─────────────────────────────────────────────────────────────
 
 /// Consumes all three interactions from the sample cassette in order.
 pub(super) fn consume_all(engine: &mut ReplayMatchEngine) {
     let canonical_a = json!({"method": "POST", "path": "/v1/chat/completions"});
-    let _ = engine.next_match("hash_a", &canonical_a);
+    assert_matched(engine.next_match("hash_a", &canonical_a));
 
     let canonical_b = json!({"method": "POST", "path": "/v1/chat/completions", "body": {"messages": [{"role": "user"}]}});
-    let _ = engine.next_match("hash_b", &canonical_b);
+    assert_matched(engine.next_match("hash_b", &canonical_b));
 
     let canonical_c = json!({"method": "GET", "path": "/v1/models"});
-    let _ = engine.next_match("hash_c", &canonical_c);
+    assert_matched(engine.next_match("hash_c", &canonical_c));
 }
 
 /// Retrieves the nth response from the cassette.

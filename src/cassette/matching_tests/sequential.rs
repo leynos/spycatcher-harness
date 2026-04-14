@@ -5,7 +5,7 @@ use serde_json::json;
 
 use super::fixtures::{
     assert_matched_response_eq, assert_mismatch_diagnostic, consume_all, nth_response,
-    sample_cassette,
+    sample_cassette, sequential_engine,
 };
 use crate::cassette::{
     Cassette, DIAGNOSTIC_EXHAUSTED, InteractionPosition, MatchOutcome, ReplayMatchEngine,
@@ -44,9 +44,10 @@ fn sequential_strict_three_correct_requests_match_in_order(sample_cassette: Cass
 }
 
 #[rstest]
-fn sequential_strict_first_request_wrong_hash_returns_mismatch(sample_cassette: Cassette) {
-    let mut engine = ReplayMatchEngine::new(sample_cassette, MatchMode::SequentialStrict)
-        .expect("fixture cassette should have valid stable hashes");
+fn sequential_strict_first_request_wrong_hash_returns_mismatch(
+    mut sequential_engine: ReplayMatchEngine,
+) {
+    let engine = &mut sequential_engine;
 
     let canonical_wrong = json!({"method": "GET", "path": "/wrong"});
     let outcome = engine.next_match("wrong_hash", &canonical_wrong);
@@ -61,9 +62,10 @@ fn sequential_strict_first_request_wrong_hash_returns_mismatch(sample_cassette: 
 }
 
 #[rstest]
-fn sequential_strict_second_request_wrong_hash_returns_mismatch(sample_cassette: Cassette) {
-    let mut engine = ReplayMatchEngine::new(sample_cassette, MatchMode::SequentialStrict)
-        .expect("fixture cassette should have valid stable hashes");
+fn sequential_strict_second_request_wrong_hash_returns_mismatch(
+    mut sequential_engine: ReplayMatchEngine,
+) {
+    let engine = &mut sequential_engine;
 
     // First request matches.
     let outcome_first = engine.next_match("hash_a", &canonical_a());
@@ -82,11 +84,12 @@ fn sequential_strict_second_request_wrong_hash_returns_mismatch(sample_cassette:
 }
 
 #[rstest]
-fn sequential_strict_mismatch_does_not_advance_cursor(sample_cassette: Cassette) {
+fn sequential_strict_mismatch_does_not_advance_cursor(
+    sample_cassette: Cassette,
+    mut sequential_engine: ReplayMatchEngine,
+) {
     let expected_response_0 = nth_response(&sample_cassette, 0);
-
-    let mut engine = ReplayMatchEngine::new(sample_cassette, MatchMode::SequentialStrict)
-        .expect("fixture cassette should have valid stable hashes");
+    let engine = &mut sequential_engine;
 
     // First request has wrong hash (causes mismatch).
     let canonical_wrong = json!({"method": "GET", "path": "/wrong"});
@@ -104,16 +107,13 @@ fn sequential_strict_mismatch_does_not_advance_cursor(sample_cassette: Cassette)
 }
 
 #[rstest]
-fn sequential_strict_cassette_exhausted_returns_mismatch(sample_cassette: Cassette) {
-    let mut engine = ReplayMatchEngine::new(sample_cassette, MatchMode::SequentialStrict)
-        .expect("fixture cassette should have valid stable hashes");
-
+fn sequential_strict_cassette_exhausted_returns_mismatch(mut sequential_engine: ReplayMatchEngine) {
     // Consume all three interactions.
-    consume_all(&mut engine);
+    consume_all(&mut sequential_engine);
 
     // Fourth request should fail with exhaustion diagnostic.
     let canonical_extra = json!({"method": "GET", "path": "/extra"});
-    let outcome = engine.next_match("hash_extra", &canonical_extra);
+    let outcome = sequential_engine.next_match("hash_extra", &canonical_extra);
 
     let d =
         assert_mismatch_diagnostic(outcome, InteractionPosition::Exhausted(3), "", "hash_extra");

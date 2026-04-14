@@ -254,10 +254,11 @@ Key files and their roles:
   interaction with that hash. On match, the interaction is marked consumed and
   returned. When no unconsumed interaction matches, a diagnostic is produced.
 
-- **`MismatchDiagnostic`**: a domain value type carrying the expected
-  interaction ID, expected hash, observed hash, and a field-level diff summary
-  comparing two canonical request JSON values. This is the structured
-  diagnostic that the adapter layer maps to HTTP 409.
+- **`MismatchDiagnostic`**: a domain value type carrying an
+  `InteractionPosition` (which encodes the expected interaction index,
+  exhaustion state, or keyed miss), expected hash, observed hash, and a
+  field-level diff summary comparing two canonical request JSON values. This is
+  the structured diagnostic that the adapter layer maps to HTTP 409.
 
 - **Field-level diff summary**: a concise representation of differences between
   two `serde_json::Value` canonical requests. Reports keys that were added,
@@ -453,10 +454,10 @@ Extend the `ReplayMatchEngine::next_match` implementation to handle
 2. Find the first unconsumed index in the list for that hash.
 3. On match: mark the index as consumed, return `Matched(&interaction)`.
 4. On miss (no unconsumed interaction with that hash): return a
-   `Mismatch` diagnostic. In keyed mode the "expected interaction ID" in the
-   diagnostic is set to the total number of interactions (indicating no
-   specific expected position), and the diff summary reports that no
-   interaction with the given hash was found.
+   `Mismatch` diagnostic. In keyed mode the `position` field in the
+   diagnostic is set to `InteractionPosition::KeyedMiss(total_count)`,
+   indicating no specific expected position, and the diff summary reports that
+   no interaction with the given hash was found.
 
 Go/no-go: `cargo check` passes. Proceed to tests.
 
@@ -731,15 +732,25 @@ avoiding cross-run interference.
 ### `MismatchDiagnostic` field specification
 
 ```plaintext
-interaction_id: usize    — zero-based index of the expected interaction
-                           (sequential) or total interaction count (keyed miss)
-expected_hash:  String   — SHA-256 (Secure Hash Algorithm 256-bit) hex hash of
-                           the expected canonical request (sequential) or empty
-                           string (keyed miss)
-observed_hash:  String   — SHA-256 hex hash of the observed incoming request
-diff_summary:   String   — newline-separated field-level diff, for example:
-                           "changed: method: \"POST\" -> \"GET\"\n
-                            removed: canonical_body.metadata.run_id"
+position:       InteractionPosition — encodes the semantic meaning of the
+                                      mismatch position:
+                                      - Expected(usize): the zero-based index
+                                        of the next expected interaction
+                                        (sequential mode)
+                                      - Exhausted(usize): cassette exhausted;
+                                        value is the total interaction count
+                                      - KeyedMiss(usize): keyed mode miss;
+                                        value is the total interaction count
+expected_hash:  String              — SHA-256 (Secure Hash Algorithm 256-bit)
+                                      hex hash of the expected canonical
+                                      request (sequential) or empty string
+                                      (keyed miss)
+observed_hash:  String              — SHA-256 hex hash of the observed incoming
+                                      request
+diff_summary:   String              — newline-separated field-level diff, for
+                                      example:
+                                      "changed: method: \"POST\" -> \"GET\"\n
+                                       removed: canonical_body.metadata.run_id"
 ```
 
 ### Diff summary format
@@ -824,7 +835,7 @@ use crate::config::MatchMode;
 /// Structured diagnostic for a replay mismatch.
 #[derive(Debug, Clone, PartialEq)]
 pub struct MismatchDiagnostic {
-    pub interaction_id: usize,
+    pub position: InteractionPosition,
     pub expected_hash: String,
     pub observed_hash: String,
     pub diff_summary: String,
