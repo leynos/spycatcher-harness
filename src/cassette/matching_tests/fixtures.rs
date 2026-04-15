@@ -140,6 +140,12 @@ pub(super) fn duplicate_hash_cassette() -> Cassette {
 }
 
 /// Creates a `ReplayMatchEngine` in sequential strict mode from the sample cassette.
+#[expect(unknown_lints, reason = "no_expect_outside_tests is a Dylint custom lint")]
+#[expect(
+    no_expect_outside_tests,
+    reason = "`#[fixture]` is a test-only context but is not recognised as such \
+              by the whitaker_suite linter"
+)]
 #[fixture]
 pub(super) fn sequential_engine(sample_cassette: Cassette) -> ReplayMatchEngine {
     ReplayMatchEngine::new(sample_cassette, MatchMode::SequentialStrict)
@@ -166,7 +172,7 @@ pub(super) fn nth_response(cassette: &Cassette, n: usize) -> RecordedResponse {
     cassette
         .interactions
         .get(n)
-        .unwrap_or_else(|| panic!("interaction {n} does not exist in cassette"))
+        .expect("interaction index within cassette bounds")
         .response
         .clone()
 }

@@ -60,3 +60,73 @@ pub(super) fn extract_response_id(outcome: &MatchOutcome<'_>) -> Option<String> 
     }
     None
 }
+
+pub(super) fn check_matched_count(
+    matching_world: &MatchingWorld,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let matched_count = matching_world
+        .matched_count
+        .with_ref(|c| *c)
+        .ok_or("matched_count must be set")?;
+    if matched_count != 3 {
+        return Err(format!(
+            "expected all three requests to match interactions, got {matched_count}"
+        )
+        .into());
+    }
+    Ok(())
+}
+
+fn assert_ids_order(
+    response_ids: &[String],
+    expected: &[&str],
+    mode_name: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    if response_ids != expected {
+        return Err(format!(
+            "{mode_name} mode should return IDs in recorded order, \
+             expected {expected:?}, got {response_ids:?}"
+        )
+        .into());
+    }
+    Ok(())
+}
+
+pub(super) fn check_response_set(
+    matching_world: &MatchingWorld,
+) -> Result<Vec<String>, Box<dyn std::error::Error>> {
+    const VALID_IDS: &[&str] = &["resp_a", "resp_b", "resp_c"];
+
+    let response_ids = matching_world
+        .matched_response_ids
+        .with_ref(Vec::clone)
+        .ok_or("matched_response_ids must be set")?;
+
+    if response_ids.len() != 3 {
+        return Err(format!("expected 3 response IDs, got {}", response_ids.len()).into());
+    }
+    for id in &response_ids {
+        if !VALID_IDS.contains(&id.as_str()) {
+            return Err(format!("unexpected response ID: {id}").into());
+        }
+    }
+    Ok(response_ids)
+}
+
+pub(super) fn check_mode_order(
+    response_ids: &[String],
+    matching_world: &MatchingWorld,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let mode = matching_world
+        .mode
+        .with_ref(|m| *m)
+        .ok_or("mode must be set")?;
+    match mode {
+        MatchMode::SequentialStrict => {
+            assert_ids_order(response_ids, &["resp_a", "resp_b", "resp_c"], "sequential")
+        }
+        MatchMode::Keyed => {
+            assert_ids_order(response_ids, &["resp_c", "resp_b", "resp_a"], "keyed")
+        }
+    }
+}
