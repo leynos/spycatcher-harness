@@ -92,12 +92,13 @@ Observable success after delivery:
 ## Risks
 
 - Risk: the `HarnessError::RequestMismatch` variant has been enriched with
-  fields `interaction_id`, `expected_hash`, `observed_hash`, and `diff_summary`.
-  Adding these fields was backwards-compatible for pattern matches using
-  `{ .. }`, but any test or code matching the variant with all fields named by
-  exact name required updating. Severity: low. Outcome: completed. Action item:
-  search for remaining pattern-matches that destructure `RequestMismatch` by
-  exact field names and verify they reference the current field set.
+  fields `interaction_id`, `expected_hash`, `observed_hash`, and
+  `diff_summary`. Adding these fields was backwards-compatible for pattern
+  matches using `{ .. }`, but any test or code matching the variant with all
+  fields named by exact name required updating. Severity: low. Outcome:
+  completed. Action item: search for remaining pattern-matches that destructure
+  `RequestMismatch` by exact field names and verify they reference the current
+  field set.
 
 - Risk: generating a useful "field-level diff summary" of two
   `serde_json::Value` canonical requests without pulling in a heavy diff
@@ -221,8 +222,8 @@ Key files and their roles:
 
 - `src/error.rs` (108 lines) — `HarnessError` enum with the enriched
   `RequestMismatch` variant (carrying `interaction_id: usize`,
-  `expected_hash: String`, `observed_hash: String`, and
-  `diff_summary: String`) and `HarnessResult<T>` alias.
+  `expected_hash: String`, `observed_hash: String`, and `diff_summary: String`)
+  and `HarnessResult<T>` alias.
 
 - `src/replay.rs` (6 lines) — placeholder module-level doc comment only. No
   implementation yet.
@@ -454,10 +455,10 @@ Extend the `ReplayMatchEngine::next_match` implementation to handle
 2. Find the first unconsumed index in the list for that hash.
 3. On match: mark the index as consumed, return `Matched(&interaction)`.
 4. On miss (no unconsumed interaction with that hash): return a
-   `Mismatch` diagnostic. In keyed mode the `position` field in the
-   diagnostic is set to `InteractionPosition::KeyedMiss(total_count)`,
-   indicating no specific expected position, and the diff summary reports that
-   no interaction with the given hash was found.
+   `Mismatch` diagnostic. In keyed mode the `position` field in the diagnostic
+   is set to `InteractionPosition::KeyedMiss(total_count)`, indicating no
+   specific expected position, and the diff summary reports that no interaction
+   with the given hash was found.
 
 Go/no-go: `cargo check` passes. Proceed to tests.
 

@@ -156,7 +156,7 @@ fn a_request_arrives_with_a_hash_that_does_not_match_the_next_interaction(
 
     let outcome = engine.next_match("wrong_hash", &json!({"method": "DELETE"}));
 
-    match outcome {
+    let result = match outcome {
         MatchOutcome::Mismatch(diagnostic) => {
             matching_world.mismatch_position.set(diagnostic.position);
             matching_world
@@ -169,16 +169,15 @@ fn a_request_arrives_with_a_hash_that_does_not_match_the_next_interaction(
                 .mismatch_diff_summary
                 .set(diagnostic.diff_summary.clone());
             matching_world.mismatch_count.set(1);
+            Ok(())
         }
         other @ MatchOutcome::Matched(_) => {
-            return Err(
-                format!("expected MatchOutcome::Mismatch for wrong hash, got: {other:?}").into(),
-            );
+            Err(format!("expected MatchOutcome::Mismatch for wrong hash, got: {other:?}").into())
         }
-    }
+    };
 
     matching_world.engine.set(engine);
-    Ok(())
+    result
 }
 
 #[when("two requests arrive with the shared hash")]
@@ -243,23 +242,22 @@ fn a_second_request_arrives(
 
     let outcome = engine.next_match("hash_extra", &json!({"method": "GET"}));
 
-    match outcome {
+    let result = match outcome {
         MatchOutcome::Mismatch(diagnostic) => {
             matching_world
                 .mismatch_diff_summary
                 .set(diagnostic.diff_summary.clone());
             matching_world.mismatch_count.set(1);
+            Ok(())
         }
-        other @ MatchOutcome::Matched(_) => {
-            return Err(format!(
-                "expected MatchOutcome::Mismatch for exhausted cassette, got: {other:?}"
-            )
-            .into());
-        }
-    }
+        other @ MatchOutcome::Matched(_) => Err(format!(
+            "expected MatchOutcome::Mismatch for exhausted cassette, got: {other:?}"
+        )
+        .into()),
+    };
 
     matching_world.engine.set(engine);
-    Ok(())
+    result
 }
 
 fn assert_slot_string_eq(
