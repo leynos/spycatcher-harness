@@ -4,8 +4,8 @@ use rstest::rstest;
 use serde_json::json;
 
 use super::fixtures::{
-    assert_matched, assert_matched_response_eq, assert_mismatch_diagnostic, consume_all,
-    duplicate_hash_cassette, extract_response_id, sample_cassette,
+    assert_matched_response_eq, consume_all, duplicate_hash_cassette, expect_matched,
+    expect_mismatch_diagnostic, extract_response_id, sample_cassette,
 };
 use crate::cassette::{
     Cassette, DIAGNOSTIC_CONSUMED, DIAGNOSTIC_NO_MATCH, InteractionPosition, MatchOutcome,
@@ -77,13 +77,13 @@ fn keyed_mode_duplicate_hashes_consumed_in_order(duplicate_hash_cassette: Casset
     // First request with hash_a should match the first interaction.
     let canonical_a = json!({"method": "POST", "messages": [{"content": "first"}]});
     let outcome = engine.next_match("hash_a", &canonical_a);
-    let interaction = assert_matched(outcome);
+    let interaction = expect_matched(outcome);
     assert_eq!(extract_response_id(&interaction), "first_response");
 
     // Second request with hash_a should match the second interaction.
     let canonical_a2 = json!({"method": "POST", "messages": [{"content": "second"}]});
     let outcome_2 = engine.next_match("hash_a", &canonical_a2);
-    let interaction_2 = assert_matched(outcome_2);
+    let interaction_2 = expect_matched(outcome_2);
     assert_eq!(extract_response_id(&interaction_2), "second_response");
 }
 
@@ -115,7 +115,7 @@ fn keyed_mode_request_with_unknown_hash_returns_mismatch(sample_cassette: Casset
     let canonical_unknown = json!({"method": "DELETE", "path": "/unknown"});
     let outcome = engine.next_match("unknown_hash", &canonical_unknown);
 
-    let d = assert_mismatch_diagnostic(
+    let d = expect_mismatch_diagnostic(
         outcome,
         InteractionPosition::KeyedMiss(3),
         "",
@@ -140,7 +140,7 @@ fn keyed_mode_all_consumed_then_request_returns_mismatch(sample_cassette: Casset
     let canonical_a = json!({"method": "POST", "path": "/v1/chat/completions"});
     let outcome = engine.next_match("hash_a", &canonical_a);
 
-    let d = assert_mismatch_diagnostic(outcome, InteractionPosition::KeyedMiss(3), "", "hash_a");
+    let d = expect_mismatch_diagnostic(outcome, InteractionPosition::KeyedMiss(3), "", "hash_a");
     assert!(
         d.diff_summary.starts_with(DIAGNOSTIC_CONSUMED),
         "expected consumed diagnostic, got: {}",

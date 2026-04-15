@@ -4,8 +4,8 @@ use rstest::rstest;
 use serde_json::json;
 
 use super::fixtures::{
-    assert_matched_response_eq, assert_mismatch_diagnostic, consume_all, nth_response,
-    sample_cassette, sequential_engine,
+    assert_matched_response_eq, assert_mismatch_diagnostic, consume_all,
+    expect_mismatch_diagnostic, nth_response, sample_cassette, sequential_engine,
 };
 use crate::cassette::{
     Cassette, DIAGNOSTIC_EXHAUSTED, InteractionPosition, MatchOutcome, ReplayMatchEngine,
@@ -52,7 +52,7 @@ fn sequential_strict_first_request_wrong_hash_returns_mismatch(
     let canonical_wrong = json!({"method": "GET", "path": "/wrong"});
     let outcome = engine.next_match("wrong_hash", &canonical_wrong);
 
-    let d = assert_mismatch_diagnostic(
+    let d = expect_mismatch_diagnostic(
         outcome,
         InteractionPosition::Expected(0),
         "hash_a",
@@ -116,7 +116,7 @@ fn sequential_strict_cassette_exhausted_returns_mismatch(mut sequential_engine: 
     let outcome = sequential_engine.next_match("hash_extra", &canonical_extra);
 
     let d =
-        assert_mismatch_diagnostic(outcome, InteractionPosition::Exhausted(3), "", "hash_extra");
+        expect_mismatch_diagnostic(outcome, InteractionPosition::Exhausted(3), "", "hash_extra");
     assert!(
         d.diff_summary.starts_with(DIAGNOSTIC_EXHAUSTED),
         "expected exhausted diagnostic, got: {}",

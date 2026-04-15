@@ -63,14 +63,15 @@ pub(super) fn extract_response_id(outcome: &MatchOutcome<'_>) -> Option<String> 
 
 pub(super) fn check_matched_count(
     matching_world: &MatchingWorld,
+    expected: usize,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let matched_count = matching_world
         .matched_count
         .with_ref(|c| *c)
         .ok_or("matched_count must be set")?;
-    if matched_count != 3 {
+    if matched_count != expected {
         return Err(format!(
-            "expected all three requests to match interactions, got {matched_count}"
+            "expected {expected} requests to match interactions, got {matched_count}"
         )
         .into());
     }
@@ -94,19 +95,23 @@ fn assert_ids_order(
 
 pub(super) fn check_response_set(
     matching_world: &MatchingWorld,
+    valid_ids: &[&str],
+    expected_count: usize,
 ) -> Result<Vec<String>, Box<dyn std::error::Error>> {
-    const VALID_IDS: &[&str] = &["resp_a", "resp_b", "resp_c"];
-
     let response_ids = matching_world
         .matched_response_ids
         .with_ref(Vec::clone)
         .ok_or("matched_response_ids must be set")?;
 
-    if response_ids.len() != 3 {
-        return Err(format!("expected 3 response IDs, got {}", response_ids.len()).into());
+    if response_ids.len() != expected_count {
+        return Err(format!(
+            "expected {expected_count} response IDs, got {}",
+            response_ids.len()
+        )
+        .into());
     }
     for id in &response_ids {
-        if !VALID_IDS.contains(&id.as_str()) {
+        if !valid_ids.contains(&id.as_str()) {
             return Err(format!("unexpected response ID: {id}").into());
         }
     }

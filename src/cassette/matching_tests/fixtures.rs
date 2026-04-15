@@ -140,19 +140,12 @@ pub(super) fn duplicate_hash_cassette() -> Cassette {
 }
 
 /// Creates a `ReplayMatchEngine` in sequential strict mode from the sample cassette.
-#[expect(
-    unknown_lints,
-    reason = "no_expect_outside_tests is a Dylint custom lint"
-)]
-#[expect(
-    no_expect_outside_tests,
-    reason = "`#[fixture]` is a test-only context but is not recognised as such \
-              by the whitaker_suite linter"
-)]
 #[fixture]
 pub(super) fn sequential_engine(sample_cassette: Cassette) -> ReplayMatchEngine {
-    ReplayMatchEngine::new(sample_cassette, MatchMode::SequentialStrict)
-        .expect("fixture cassette should have valid stable hashes")
+    match ReplayMatchEngine::new(sample_cassette, MatchMode::SequentialStrict) {
+        Ok(engine) => engine,
+        Err(e) => panic!("fixture cassette should have valid stable hashes: {e}"),
+    }
 }
 
 // ── test helpers ─────────────────────────────────────────────────────────────
@@ -172,16 +165,20 @@ pub(super) fn consume_all(engine: &mut ReplayMatchEngine) {
 /// Retrieves the nth response from the cassette.
 #[track_caller]
 pub(super) fn nth_response(cassette: &Cassette, n: usize) -> RecordedResponse {
-    cassette
-        .interactions
-        .get(n)
-        .expect("interaction index within cassette bounds")
-        .response
-        .clone()
+    cassette.interactions.get(n).map_or_else(
+        || {
+            panic!(
+                "interaction {n} does not exist in cassette (len = {})",
+                cassette.interactions.len()
+            )
+        },
+        |interaction| interaction.response.clone(),
+    )
 }
 
+/// Returns the matched interaction or panics if the outcome was a mismatch.
 #[track_caller]
-pub(super) fn assert_matched(outcome: MatchOutcome<'_>) -> Interaction {
+pub(super) fn expect_matched(outcome: MatchOutcome<'_>) -> Interaction {
     match outcome {
         MatchOutcome::Matched(i) => i.clone(),
         other @ MatchOutcome::Mismatch(_) => {
@@ -190,8 +187,15 @@ pub(super) fn assert_matched(outcome: MatchOutcome<'_>) -> Interaction {
     }
 }
 
+/// Asserts the outcome is Matched (discarding the interaction value).
 #[track_caller]
-pub(super) fn assert_mismatch(outcome: MatchOutcome<'_>) -> MismatchDiagnostic {
+pub(super) fn assert_matched(outcome: MatchOutcome<'_>) {
+    let _ = expect_matched(outcome);
+}
+
+/// Returns the mismatch diagnostic or panics if the outcome was matched.
+#[track_caller]
+pub(super) fn expect_mismatch(outcome: MatchOutcome<'_>) -> MismatchDiagnostic {
     match outcome {
         MatchOutcome::Mismatch(d) => d,
         other @ MatchOutcome::Matched(_) => {
@@ -200,30 +204,37 @@ pub(super) fn assert_mismatch(outcome: MatchOutcome<'_>) -> MismatchDiagnostic {
     }
 }
 
+/// Returns the mismatch diagnostic, verifying expected fields match.
 #[track_caller]
-pub(super) fn assert_mismatch_diagnostic(
+pub(super) fn expect_mismatch_diagnostic(
     outcome: MatchOutcome<'_>,
     expected_position: InteractionPosition,
     expected_hash: &str,
     observed_hash: &str,
 ) -> MismatchDiagnostic {
-    let d = assert_mismatch(outcome);
+    let d = expect_mismatch(outcome);
     assert_eq!(d.position, expected_position);
     assert_eq!(d.expected_hash, expected_hash);
     assert_eq!(d.observed_hash, observed_hash);
     d
 }
 
+/// Asserts the mismatch diagnostic fields match (discarding the diagnostic value).
+#[track_caller]
+pub(super) fn assert_mismatch_diagnostic(
+    outcome: MatchOutcome<'_>,
+    expected_position: InteractionPosition,
+    expected_hash: &str,
+    observed_hash: &str,
+) {
+    let _ = expect_mismatch_diagnostic(outcome, expected_position, expected_hash, observed_hash);
+}
+
+/// Asserts the outcome is Matched and the response equals expected.
 #[track_caller]
 pub(super) fn assert_matched_response_eq(outcome: MatchOutcome<'_>, expected: &RecordedResponse) {
-    match outcome {
-        MatchOutcome::Matched(interaction) => {
-            assert_eq!(&interaction.response, expected);
-        }
-        other @ MatchOutcome::Mismatch(_) => {
-            panic!("expected MatchOutcome::Matched, got {other:?}")
-        }
-    }
+    let interaction = expect_matched(outcome);
+    assert_eq!(&interaction.response, expected);
 }
 
 #[track_caller]

@@ -280,8 +280,9 @@ fn assert_slot_string_eq(
 fn all_three_requests_receive_the_corresponding_recorded_interaction(
     matching_world: &MatchingWorld,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    check_matched_count(matching_world)?;
-    let response_ids = check_response_set(matching_world)?;
+    const VALID_IDS: &[&str] = &["resp_a", "resp_b", "resp_c"];
+    check_matched_count(matching_world, 3)?;
+    let response_ids = check_response_set(matching_world, VALID_IDS, 3)?;
     check_mode_order(&response_ids, matching_world)?;
     Ok(())
 }
