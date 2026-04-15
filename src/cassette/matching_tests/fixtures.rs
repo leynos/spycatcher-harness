@@ -140,7 +140,10 @@ pub(super) fn duplicate_hash_cassette() -> Cassette {
 }
 
 /// Creates a `ReplayMatchEngine` in sequential strict mode from the sample cassette.
-#[expect(unknown_lints, reason = "no_expect_outside_tests is a Dylint custom lint")]
+#[expect(
+    unknown_lints,
+    reason = "no_expect_outside_tests is a Dylint custom lint"
+)]
 #[expect(
     no_expect_outside_tests,
     reason = "`#[fixture]` is a test-only context but is not recognised as such \
