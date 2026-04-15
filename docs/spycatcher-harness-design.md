@@ -908,59 +908,82 @@ The harness should provide, at minimum:
 The following tasks focus on early, deployable slices and measurable outcomes,
 avoiding time commitments.
 
-#### 1.1. OpenAI Chat Completions record and replay
+#### 1.1. Configuration and executable skeleton
 
-- [ ] 1.1.1. Implement HTTP server for `POST /v1/chat/completions` (non-stream).
-  - [ ] Return recorded JSON response bytes verbatim during replay.
-  - [ ] Store cassette at the configured `cassette_dir/cassette_name` path
+- [x] 1.1.1. Implement the library and binary crate skeleton for harness
+      startup.
+  - [x] `spycatcher_harness` exposes `start_harness(cfg)` and
+        `RunningHarness::shutdown()` as compile-checked public APIs.
+  - [x] Public library entry points return typed error enums and do not
+        export opaque error types.
+  - [x] `spycatcher-harness` CLI binary delegates all startup and shutdown
+        behaviour to library entry points.
+  - [x] `cargo test --workspace` passes with baseline smoke tests.
+- [x] 1.1.2. Integrate layered configuration loading for all subcommands.
+  - [x] Configuration precedence is proven by tests:
+        `CLI > env > config files > defaults`.
+  - [x] `record`, `replay`, and `verify` support `cmds.<subcommand>` merge
+        values with test coverage for overrides.
+  - [x] CLI help and docs describe the merged configuration shape.
+
+#### 1.2. Cassette model and matching engine
+
+- [x] 1.2.1. Implement cassette schema versioning and append-only persistence.
+  - [x] Store cassette at the configured `cassette_dir/cassette_name` path
         with `format_version` and ordered interactions.
-  - [ ] Add strict sequential matching with request hash and diff summary on
-        mismatch.
-- [ ] 1.1.2. Add streaming proxy/recorder for OpenAI-style SSE.
-  - [ ] Parse and record `data:` frames and preserve raw transcript.
-  - [ ] Replay recorded SSE frames deterministically.
-- [ ] 1.1.3. Add OpenRouter streaming comment handling.
-  - [ ] Ignore comment frames for canonical replay matching.
-  - [ ] Optionally emit recorded comment frames during replay to preserve
-        realism. [^2]
+  - [x] Replay mode opens cassettes read-only and rejects unsupported
+        `format_version` values with actionable errors.
+  - [x] Schema round-trip tests verify lossless serialization.
+- [x] 1.2.2. Implement canonical request generation and stable hashing.
+  - [x] Canonicalization includes query parameter normalization and request
+        body normalization.
+  - [x] Canonicalization normalizes JSON key ordering and insignificant
+        whitespace.
+  - [x] Ignore-path configuration supports metadata drift without affecting
+        hash stability.
+- [x] 1.2.3. Deliver strict sequential and keyed replay matching modes.
+  - [x] Sequential strict mode fails mismatches with HTTP 409 and includes
+        expected interaction ID, observed hash, and field-level diff summary.
+  - [x] Keyed mode consumes the next unused interaction for a matching hash.
+  - [x] Integration tests cover mismatch diagnostics and concurrent replay
+        order handling.
 
-#### 1.2. Configuration and ergonomics
+#### 1.3. OpenAI chat completions non-stream path
 
-- [ ] 1.2.1. Integrate OrthoConfig `load()` into both library and CLI with
-      documented precedence.
-  - [ ] CLI overrides env and config file values by construction.
-        [^8]
-- [ ] 1.2.2. Implement subcommand config merging (`cmds` namespace).
-  - [ ] `cmds.record.*` defaults merged beneath CLI flags for record mode.
-        [^9]
-- [ ] 1.2.3. Add `verify` subcommand.
-  - [ ] Validate cassette version, ordering, and that redaction rules removed
-        secrets.
+- [ ] 1.3.1. Implement `POST /v1/chat/completions` record mode proxying.
+  - [ ] Requests are proxied to configured upstream with selected headers and
+        body capture.
+  - [ ] Non-stream responses are stored as exact bytes plus parsed JSON when
+        valid.
+  - [ ] Redaction rules remove configured secret headers before persistence.
+- [ ] 1.3.2. Implement non-stream replay for `POST /v1/chat/completions`.
+  - [ ] Replay returns recorded status, headers, and body bytes verbatim for
+        non-stream interactions.
+  - [ ] Replay requires no outbound network access and fails fast if network
+        calls are attempted.
+  - [ ] End-to-end record to replay integration tests pass using a stub
+        upstream service.
 
-#### 1.3. VidaiMock integration for replay realism
+#### 1.4. Localization foundation
 
-- [ ] 1.3.1. Implement “native physics” replay controls (TTFT/TPS/jitter).
-  - [ ] Provide deterministic timing presets for CI and “realistic” presets for
-        resilience tests.
-- [ ] 1.3.2. Add optional VidaiMock backend driver.
-  - [ ] Start VidaiMock as a subprocess and configure chaos/physics via
-        supported mechanisms (headers/env/config), using VidaiMock’s advertised
-        primitives. [^11]
-  - [ ] Export deterministic fixtures into the VidaiMock format once the schema
-        is confirmed.
-
-#### 1.4. Multi-protocol support
-
-- [ ] 1.4.1. Add OpenAI Responses endpoint support (`POST /v1/responses`).
-  - [ ] Record and replay typed streaming events (`response.created`,
-        `response.output_text.delta`, `response.completed`, `error`).
-        [^5][^16]
-- [ ] 1.4.2. Add Anthropic Messages endpoint support (`POST /v1/messages`).
-  - [ ] Record and replay SSE with `event:` names and content block events.
-        [^6]
-- [ ] 1.4.3. Add DeepSeek compatibility presets.
-  - [ ] Support base URL presets (`https://api.deepseek.com/v1`) and model IDs
-        as configuration. [^7]
+- [ ] 1.4.1. Embed library Fluent resources and expose loader-injected message
+      rendering.
+  - [ ] Library-owned FTL assets are embedded in the library crate and
+        versioned with the API.
+  - [ ] Localized message rendering APIs accept an application-provided
+        `FluentLanguageLoader`.
+  - [ ] Library components do not create process-global language loaders.
+- [ ] 1.4.2. Add localization configuration layering for the binary application.
+  - [ ] `locale` and `fallback_locale` are loadable through
+        `CLI > env > config files > defaults`.
+  - [ ] Startup locale negotiation is deterministic and tested for fallback
+        behaviour.
+  - [ ] One authoritative language loader is created at startup and reused.
+- [ ] 1.4.3. Localize CLI help and parse errors via OrthoConfig localizer hooks.
+  - [ ] CLI help output uses `Command::localize(&localizer)` with a Fluent
+        localizer implementation.
+  - [ ] `clap` parsing failures are rendered via
+        `localize_clap_error_with_command(..)`.
 
 ## Known risks and limitations
 
