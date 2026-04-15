@@ -9,8 +9,8 @@ use spycatcher_harness::config::MatchMode;
 
 use super::fixtures::{InteractionSpec, create_interaction};
 use super::helpers::{
-    check_matched_count, check_mode_order, check_response_set,
-    extract_response_id, initialise_engine, run_requests,
+    check_matched_count, check_mode_order, check_response_set, extract_response_id,
+    initialise_engine, run_requests,
 };
 use super::world::MatchingWorld;
 
@@ -220,13 +220,16 @@ fn the_first_request_matches_and_consumes_the_interaction(
         .ok_or("engine must be set before matching")?;
 
     let outcome = engine.next_match("hash_single", &json!({"method": "POST"}));
-
-    if matches!(outcome, MatchOutcome::Matched(_)) {
-        matching_world.matched_count.set(1);
-    }
+    let matched = matches!(outcome, MatchOutcome::Matched(_));
 
     matching_world.engine.set(engine);
-    Ok(())
+
+    if matched {
+        matching_world.matched_count.set(1);
+        Ok(())
+    } else {
+        Err("Expected MatchOutcome::Matched but got non-matching outcome".into())
+    }
 }
 
 #[when("a second request arrives")]
@@ -268,10 +271,7 @@ fn assert_slot_string_eq(
         .with_ref(String::clone)
         .ok_or_else(|| format!("{slot_name} must be set"))?;
     if value != expected {
-        return Err(format!(
-            "{slot_name} should equal {expected:?}, got {value:?}"
-        )
-        .into());
+        return Err(format!("{slot_name} should equal {expected:?}, got {value:?}").into());
     }
     Ok(())
 }
