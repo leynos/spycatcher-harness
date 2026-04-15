@@ -413,7 +413,7 @@ impl ReplayMatchEngine {
     pub fn next_match(
         &mut self,
         observed_hash: &str,
-        observed_canonical: &CanonicalRequest,
+        observed_canonical: &Value,
     ) -> MatchOutcome<'_>;
 }
 ```
