@@ -2,9 +2,7 @@
 
 use rstest_bdd_macros::{given, then, when};
 use serde_json::json;
-use spycatcher_harness::cassette::{
-    DIAGNOSTIC_EXHAUSTED, InteractionPosition, MatchOutcome,
-};
+use spycatcher_harness::cassette::{DIAGNOSTIC_EXHAUSTED, InteractionPosition, MatchOutcome};
 use spycatcher_harness::config::MatchMode;
 
 use super::fixtures::{InteractionSpec, build_cassette};

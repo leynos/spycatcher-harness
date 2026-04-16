@@ -177,6 +177,115 @@ make fmt        # apply formatting (Rust + Markdown)
 
 See `AGENTS.md` for the full command expansions and commit gating requirements.
 
+## Replay matching architecture
+
+The replay matching subsystem lives in the `cassette::matching` module and
+decides which recorded interaction to serve for each incoming request during
+replay mode. It is built around four core types:
+
+### `MatchMode` (defined in `config`)
+
+An enum selecting the matching strategy:
+
+| Variant            | Behaviour                                                                                          |
+| ------------------ | -------------------------------------------------------------------------------------------------- |
+| `SequentialStrict` | Default. Expects requests in recorded order; mismatches fail fast.                                 |
+| `Keyed`            | Matches by request hash, consuming the next unused interaction with that hash regardless of order. |
+
+_Table 3: Matching mode variants._
+
+### `ReplayMatchEngine`
+
+The stateful matching engine, constructed from a loaded `Cassette` and a
+`MatchMode`. Construction validates that every interaction carries a
+`stable_hash`, returning `HarnessError::InvalidCassette` if any is missing.
+
+The single public entry point is
+`next_match(observed_hash, observed_canonical)` which returns a `MatchOutcome`.
+Internally it dispatches to one of two private strategies:
+
+- **Sequential strict** — maintains a cursor tracking the next expected
+  index. The incoming hash must equal the hash at the cursor position; on
+  success the cursor advances, on failure a `MismatchDiagnostic` is returned
+  and the cursor stays put (allowing retry at the application level).
+- **Keyed** — builds a `HashMap<String, Vec<usize>>` at construction
+  time mapping each hash to its interaction indices. On each call it finds the
+  first unconsumed index for the observed hash, marks it consumed, and returns
+  the interaction. When no index exists or all matching indices are consumed, a
+  `MismatchDiagnostic` is returned.
+
+### `MatchOutcome`
+
+The return type of `next_match`:
+
+- `Matched(&Interaction)` — the request matched; carries a borrow of the
+  recorded interaction for the caller to replay.
+- `Mismatch(MismatchDiagnostic)` — no match found; carries structured
+  diagnostics.
+
+### `MismatchDiagnostic`
+
+A plain struct carrying everything the adapter layer needs to build an HTTP 409
+response without coupling the domain to HTTP types:
+
+| Field           | Type                  | Purpose                                                                 |
+| --------------- | --------------------- | ----------------------------------------------------------------------- |
+| `position`      | `InteractionPosition` | Identifies which interaction (or bound) the mismatch relates to.        |
+| `expected_hash` | `String`              | Stable hash of the expected request (sequential) or empty (keyed miss). |
+| `observed_hash` | `String`              | Stable hash of the incoming request.                                    |
+| `diff_summary`  | `String`              | Field-level diff produced by the `diff` module.                         |
+
+_Table 4: `MismatchDiagnostic` fields._
+
+### `InteractionPosition`
+
+Disambiguates the positional semantics carried inside a `MismatchDiagnostic`:
+
+| Variant        | Mode(s)    | Payload meaning                                                        |
+| -------------- | ---------- | ---------------------------------------------------------------------- |
+| `Expected(n)`  | Sequential | Zero-based index of the next expected interaction.                     |
+| `Exhausted(n)` | Sequential | Cassette is exhausted; `n` is the total interaction count.             |
+| `KeyedMiss(n)` | Keyed      | No unconsumed interaction matched; `n` is the total interaction count. |
+
+_Table 5: `InteractionPosition` variants._
+
+### Diagnostic constants
+
+Three sentinel strings identify the mismatch category in the `diff_summary`
+field:
+
+- `DIAGNOSTIC_EXHAUSTED` (`"cassette-exhausted"`) — no more
+  interactions available.
+- `DIAGNOSTIC_NO_MATCH` (`"no-matching-interaction"`) — keyed mode
+  found no interaction with the observed hash.
+- `DIAGNOSTIC_CONSUMED` (`"interaction-already-consumed"`) — keyed
+  mode found interactions but all are already consumed.
+
+### Relationship to `HarnessError::RequestMismatch`
+
+`MismatchDiagnostic` is a domain-internal type that does not leave the
+`cassette` module boundary as an error. The adapter layer (HTTP server) maps a
+`MatchOutcome::Mismatch` into a `HarnessError::RequestMismatch` when surfacing
+the failure to callers. `RequestMismatch` mirrors the diagnostic fields
+(`interaction_id`, `expected_hash`, `observed_hash`, `diff_summary`) so the
+error can be formatted for logging and HTTP responses without re-importing
+matching internals.
+
+### Supporting module: `diff`
+
+The `diff` module (`cassette::diff`) provides `canonical_diff_summary`, which
+compares two `serde_json::Value` trees and produces a human-readable summary of
+field-level differences. The matching engine calls this function when building
+a `MismatchDiagnostic` to populate the `diff_summary` field. Output format uses
+newline-separated change lines:
+
+- `added: <path>: <value>` — field present in observed but not expected.
+- `removed: <path>` — field present in expected but not observed.
+- `changed: <path>: <expected> -> <observed>` — differing values.
+
+Determinism of this output depends on the `serde_json` `preserve_order` feature
+documented in the build configuration section above.
+
 ## Extension guidelines
 
 When adding new modules or test files:
