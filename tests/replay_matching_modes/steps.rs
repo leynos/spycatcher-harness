@@ -196,6 +196,16 @@ fn two_requests_arrive_with_the_shared_hash(
     let id_1_result = extract_response_id(&outcome_1)
         .ok_or_else(|| format!("first request expected to match but got: {outcome_1:?}"));
 
+    // Propagate first error before mutating engine state further
+    let id_1 = match id_1_result {
+        Ok(id) => id,
+        Err(e) => {
+            matching_world.engine.set(engine);
+            return Err(e.into());
+        }
+    };
+    matching_world.first_response_id.set(id_1);
+
     let outcome_2 = engine.next_match(
         "shared_hash",
         &json!({"method": "POST", "content": "second"}),
@@ -204,9 +214,6 @@ fn two_requests_arrive_with_the_shared_hash(
         .ok_or_else(|| format!("second request expected to match but got: {outcome_2:?}"));
 
     matching_world.engine.set(engine);
-
-    let id_1 = id_1_result?;
-    matching_world.first_response_id.set(id_1);
 
     let id_2 = id_2_result?;
     matching_world.second_response_id.set(id_2);
