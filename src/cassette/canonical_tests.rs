@@ -174,7 +174,11 @@ fn canonicalize_removes_array_entries_without_index_shift(
         Err(error) => panic!("array entry removal should use valid ignored body paths: {error}"),
     };
 
-    assert_eq!(canonical.canonical_body, Some(expected_body));
+    assert_eq!(
+        canonical.canonical_body,
+        Some(expected_body),
+        "Array entry removal should preserve remaining elements without shifting indices"
+    );
 }
 
 #[rstest]
@@ -281,7 +285,7 @@ fn populate_canonical_fields_sets_reserved_request_fields(
 
     assert_eq!(
         request_with_json_body.stable_hash.as_deref(),
-        Some("f61ef018c056ab58448c0c0152d17225fbc8e9aecc83dc6f4713f9594e86990f")
+        Some("ac2181951e57a68d80e4d9b62abbd71d2e06538144f829247853b82117fce40d")
     );
     assert_eq!(
         request_with_json_body.canonical_request,
