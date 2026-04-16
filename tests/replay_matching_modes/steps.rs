@@ -3,11 +3,11 @@
 use rstest_bdd_macros::{given, then, when};
 use serde_json::json;
 use spycatcher_harness::cassette::{
-    Cassette, DIAGNOSTIC_EXHAUSTED, InteractionPosition, MatchOutcome,
+    DIAGNOSTIC_EXHAUSTED, InteractionPosition, MatchOutcome,
 };
 use spycatcher_harness::config::MatchMode;
 
-use super::fixtures::{InteractionSpec, create_interaction};
+use super::fixtures::{InteractionSpec, build_cassette};
 use super::helpers::{
     check_matched_count, check_mode_order, check_response_set, extract_response_id,
     initialise_engine, run_requests,
@@ -22,29 +22,29 @@ use super::world::MatchingWorld;
 fn a_cassette_with_three_recorded_interactions(
     matching_world: &MatchingWorld,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let mut cassette = Cassette::new();
-    cassette.append(create_interaction(InteractionSpec {
-        method: "POST",
-        path: "/v1/chat",
-        canonical: json!({"method": "POST"}),
-        hash: "hash_a",
-        response_id: "resp_a",
-    }));
-    cassette.append(create_interaction(InteractionSpec {
-        method: "POST",
-        path: "/v1/chat",
-        canonical: json!({"method": "POST", "messages": [1]}),
-        hash: "hash_b",
-        response_id: "resp_b",
-    }));
-    cassette.append(create_interaction(InteractionSpec {
-        method: "GET",
-        path: "/v1/models",
-        canonical: json!({"method": "GET"}),
-        hash: "hash_c",
-        response_id: "resp_c",
-    }));
-    matching_world.cassette.set(cassette);
+    matching_world.cassette.set(build_cassette(vec![
+        InteractionSpec {
+            method: "POST",
+            path: "/v1/chat",
+            canonical: json!({"method": "POST"}),
+            hash: "hash_a",
+            response_id: "resp_a",
+        },
+        InteractionSpec {
+            method: "POST",
+            path: "/v1/chat",
+            canonical: json!({"method": "POST", "messages": [1]}),
+            hash: "hash_b",
+            response_id: "resp_b",
+        },
+        InteractionSpec {
+            method: "GET",
+            path: "/v1/models",
+            canonical: json!({"method": "GET"}),
+            hash: "hash_c",
+            response_id: "resp_c",
+        },
+    ]));
     Ok(())
 }
 
@@ -64,22 +64,22 @@ fn a_cassette_with_three_recorded_interactions_with_distinct_hashes(
 fn a_cassette_with_two_interactions_sharing_the_same_hash(
     matching_world: &MatchingWorld,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let mut cassette = Cassette::new();
-    cassette.append(create_interaction(InteractionSpec {
-        method: "POST",
-        path: "/v1/chat",
-        canonical: json!({"method": "POST", "content": "first"}),
-        hash: "shared_hash",
-        response_id: "first_response",
-    }));
-    cassette.append(create_interaction(InteractionSpec {
-        method: "POST",
-        path: "/v1/chat",
-        canonical: json!({"method": "POST", "content": "second"}),
-        hash: "shared_hash",
-        response_id: "second_response",
-    }));
-    matching_world.cassette.set(cassette);
+    matching_world.cassette.set(build_cassette(vec![
+        InteractionSpec {
+            method: "POST",
+            path: "/v1/chat",
+            canonical: json!({"method": "POST", "content": "first"}),
+            hash: "shared_hash",
+            response_id: "first_response",
+        },
+        InteractionSpec {
+            method: "POST",
+            path: "/v1/chat",
+            canonical: json!({"method": "POST", "content": "second"}),
+            hash: "shared_hash",
+            response_id: "second_response",
+        },
+    ]));
     Ok(())
 }
 
@@ -91,15 +91,15 @@ fn a_cassette_with_two_interactions_sharing_the_same_hash(
 fn a_cassette_with_one_recorded_interaction(
     matching_world: &MatchingWorld,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let mut cassette = Cassette::new();
-    cassette.append(create_interaction(InteractionSpec {
-        method: "POST",
-        path: "/v1/chat",
-        canonical: json!({"method": "POST"}),
-        hash: "hash_single",
-        response_id: "resp_single",
-    }));
-    matching_world.cassette.set(cassette);
+    matching_world
+        .cassette
+        .set(build_cassette(vec![InteractionSpec {
+            method: "POST",
+            path: "/v1/chat",
+            canonical: json!({"method": "POST"}),
+            hash: "hash_single",
+            response_id: "resp_single",
+        }]));
     Ok(())
 }
 

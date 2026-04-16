@@ -51,7 +51,7 @@ cargo insta review
 ```
 
 This prevents accidental regressions in human-readable diagnostic output
-without requiring hand-written expected strings for every format variation.
+without requiring handwritten expected strings for every format variation.
 
 ### `proptest` — property-based testing
 
@@ -71,7 +71,7 @@ property tests validate diff invariants:
   order does not change the diff result.
 
 These properties complement the example-based `#[rstest]` cases and snapshot
-tests, catching edge cases that hand-written examples might miss.
+tests, catching edge cases that handwritten examples might miss.
 
 ### `rstest` and `rstest-bdd` — fixtures and BDD scenarios
 
@@ -185,7 +185,9 @@ When adding new modules or test files:
   or in a sibling `*_tests.rs` file.
 - For BDD scenarios, add a `.feature` file in `tests/features/` and
   wire it through a `*_bdd.rs` entrypoint.
-- New dev-dependencies must use caret version requirements and should
-  be documented in this guide with their rationale.
+- Dependency versions in `Cargo.toml` must use implicit semver caret
+  versioning (e.g. `"1.2.3"`); an explicit `'^'` must not appear (e.g. not
+  `"^1.2.3"`). New dev-dependencies must be documented in this guide with their
+  rationale.
 - New `serde_json` feature flags or build configuration changes must
   be documented here with the invariant they support.
