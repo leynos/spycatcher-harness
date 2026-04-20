@@ -25,6 +25,7 @@ pub mod cassette;
 pub mod cli;
 pub mod config;
 pub mod error;
+mod http_exchange;
 pub mod i18n;
 pub mod protocol;
 pub mod replay;
@@ -39,6 +40,7 @@ use std::net::SocketAddr;
 use camino::Utf8PathBuf;
 
 use crate::cassette::{filesystem::FilesystemCassetteStore, filesystem::probe_record_write_access};
+use crate::server::RecordServerHandle;
 
 /// A running harness instance.
 ///
@@ -52,6 +54,7 @@ pub struct RunningHarness {
     pub addr: SocketAddr,
     /// The path to the cassette file in use.
     pub cassette_path: Utf8PathBuf,
+    runtime: Option<RecordServerHandle>,
 }
 
 impl RunningHarness {
@@ -60,22 +63,18 @@ impl RunningHarness {
     /// # Errors
     ///
     /// Returns [`HarnessError`] if shutdown fails.
-    #[expect(
-        clippy::unused_async,
-        reason = "async is part of the public API contract; \
-                  server teardown will require async in task 1.3.1"
-    )]
     pub async fn shutdown(self) -> HarnessResult<()> {
-        Ok(())
+        match self.runtime {
+            Some(runtime) => runtime.shutdown().await,
+            None => Ok(()),
+        }
     }
 }
 
 /// Starts the harness with the given configuration.
 ///
 /// Validates the configuration, prepares cassette access for the selected
-/// mode, and prepares the harness for operation. In the current skeleton no
-/// HTTP server is bound; the returned address reflects the configured listen
-/// address.
+/// mode, and starts the record-mode server when recording is enabled.
 ///
 /// # Errors
 ///
@@ -102,20 +101,23 @@ impl RunningHarness {
 /// # Ok(())
 /// # }
 /// ```
-#[expect(
-    clippy::unused_async,
-    reason = "async is part of the public API contract; \
-              server binding will require async in task 1.3.1"
-)]
 pub async fn start_harness(cfg: HarnessConfig) -> HarnessResult<RunningHarness> {
     validate_config(&cfg)?;
 
     let cassette_path = cfg.cassette_dir.join(&cfg.cassette_name);
     prepare_cassette(&cfg, &cassette_path)?;
+    let (addr, runtime) = match cfg.mode {
+        config::Mode::Record => {
+            let (addr, runtime) = server::start_record_server(&cfg, &cassette_path).await?;
+            (addr, Some(runtime))
+        }
+        config::Mode::Replay | config::Mode::Verify => (cfg.listen.as_socket_addr(), None),
+    };
 
     Ok(RunningHarness {
-        addr: cfg.listen.as_socket_addr(),
+        addr,
         cassette_path,
+        runtime,
     })
 }
 
@@ -173,9 +175,10 @@ mod tests {
     #[tokio::test]
     async fn start_harness_with_record_config_succeeds() {
         let cfg = record_config(unique_cassette_name("record-valid"));
-        let _harness = start_harness(cfg)
+        let harness = start_harness(cfg)
             .await
             .expect("startup with valid record config should succeed");
+        harness.shutdown().await.expect("shutdown should succeed");
     }
 
     #[rstest]
@@ -228,7 +231,7 @@ mod tests {
     async fn start_harness_record_mode_with_upstream_succeeds() {
         let cassette_name = unique_cassette_name("record-upstream");
         let cfg = record_config(cassette_name.clone());
-        let _harness = start_harness(cfg)
+        let harness = start_harness(cfg)
             .await
             .expect("startup should succeed with upstream");
         let cassette_path = Utf8PathBuf::from("target/test-harness").join(cassette_name);
@@ -236,6 +239,7 @@ mod tests {
             cassette_path.is_file(),
             "record startup should create cassette file"
         );
+        harness.shutdown().await.expect("shutdown should succeed");
     }
 
     #[rstest]
@@ -264,14 +268,16 @@ mod tests {
 
     #[rstest]
     #[tokio::test]
-    async fn start_harness_returns_configured_listen_address() {
-        let expected = SocketAddr::from(([10, 0, 0, 1], 9090));
+    async fn start_harness_returns_bound_loopback_address() {
+        let requested = SocketAddr::from(([127, 0, 0, 1], 0));
         let cfg = HarnessConfig {
-            listen: expected.into(),
+            listen: requested.into(),
             ..record_config(unique_cassette_name("listen"))
         };
         let harness = start_harness(cfg).await.expect("startup should succeed");
-        assert_eq!(harness.addr, expected);
+        assert_eq!(harness.addr.ip(), requested.ip());
+        assert_ne!(harness.addr.port(), 0);
+        harness.shutdown().await.expect("shutdown should succeed");
     }
 
     #[rstest]
@@ -335,6 +341,7 @@ mod tests {
     fn record_config(cassette_name: String) -> HarnessConfig {
         HarnessConfig {
             mode: config::Mode::Record,
+            listen: SocketAddr::from(([127, 0, 0, 1], 0)).into(),
             cassette_dir: Utf8PathBuf::from("target/test-harness"),
             cassette_name,
             upstream: Some(config::UpstreamConfig::default()),

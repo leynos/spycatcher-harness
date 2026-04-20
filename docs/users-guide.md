@@ -12,9 +12,11 @@ lifecycle management.
 ### Starting the harness
 
 Call `start_harness` with a `HarnessConfig` to validate configuration and
-prepare the harness for operation. In replay mode, startup now opens the
-configured cassette file read-only and validates its `format_version` before
-returning a `RunningHarness`:
+prepare the harness for operation. In record mode, startup now binds a real
+local HTTP listener and returns the actual bound socket address in
+`RunningHarness.addr`. In replay mode, startup opens the configured cassette
+file read-only and validates its `format_version` before returning a
+`RunningHarness`:
 
 ```rust,no_run
 use spycatcher_harness::{start_harness, HarnessConfig};
@@ -69,6 +71,41 @@ Replay startup expectations:
 - The file name is exactly `cassette_name`; the harness does not append an
   implicit `.json` suffix.
 - The stored cassette must use the currently supported `format_version`.
+
+Record-mode startup expectations:
+
+- `upstream` must be configured.
+- The listener is bound during `start_harness`, so `RunningHarness.addr` may
+  differ from the requested address when the configured port is `0`.
+- `shutdown()` gracefully stops the bound record-mode server.
+
+### Record mode proxying
+
+Task `1.3.1` ships the first live HTTP-serving slice for record mode:
+
+- The harness accepts `POST /v1/chat/completions`.
+- Requests with `stream` unset or `false` are proxied upstream, returned to the
+  client, and appended to the configured cassette.
+- Requests with `stream: true` currently return HTTP `501 Not Implemented` and
+  do not write to the cassette.
+
+Upstream authentication and enrichment:
+
+- The bearer token is sourced from `upstream.api_key_env` at request time.
+- `upstream.extra_headers` are added only to the outbound upstream request.
+- The recorded request in the cassette reflects the client-visible inbound
+  request after header selection and redaction, not the enriched outbound proxy
+  request.
+
+Header capture and redaction:
+
+- Request capture drops hop-by-hop and framing headers.
+- Persisted request headers additionally exclude `host`, `content-length`, and
+  `accept-encoding`.
+- Persisted response headers exclude hop-by-hop headers and `content-length`.
+- `redaction.drop_headers` removes matching header names
+  case-insensitively immediately before persistence, preserving the observed
+  order and duplicates of the retained headers.
 
 ### Replay matching modes
 

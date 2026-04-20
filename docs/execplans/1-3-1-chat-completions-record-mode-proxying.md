@@ -5,10 +5,9 @@ This ExecPlan (execution plan) is a living document. The sections
 `Decision Log`, and `Outcomes & Retrospective` must be kept up to date as work
 proceeds.
 
-Status: DRAFT
+Status: COMPLETE
 
-This plan must be explicitly approved before implementation begins. Drafting
-the plan does not authorize code changes beyond the plan document itself.
+Implementation was explicitly approved by the user on 2026-04-20.
 
 ## Purpose / big picture
 
@@ -160,13 +159,15 @@ Skills to apply during implementation:
       `src/upstream.rs` are placeholders, so task `1.3.1` introduces the first
       real server and proxy path.
 - [x] Drafted this ExecPlan.
-- [ ] Obtain explicit user approval for the plan.
-- [ ] Implement server binding and graceful shutdown for the harness runtime.
-- [ ] Implement non-stream record-mode proxying for
+- [x] Obtain explicit user approval for the plan.
+- [x] Reconfirm repository guidance, implementation constraints, and available
+      tools at execution start.
+- [x] Implement server binding and graceful shutdown for the harness runtime.
+- [x] Implement non-stream record-mode proxying for
       `POST /v1/chat/completions`.
-- [ ] Add unit and behavioural tests.
-- [ ] Update the design document, user's guide, and roadmap.
-- [ ] Run all required validation gates and record outcomes here.
+- [x] Add unit and behavioural tests.
+- [x] Update the design document, user's guide, and roadmap.
+- [x] Run all required validation gates and record outcomes here.
 
 ## Surprises & Discoveries
 
@@ -186,36 +187,52 @@ Skills to apply during implementation:
 - Existing BDD tests use `rstest-bdd` worlds plus helper modules under
   `tests/`, which is the right pattern to reuse for an end-to-end record-mode
   flow with a stub upstream.
+- The project-scoped qdrant memory protocol is documented in `AGENTS.md`, but
+  the qdrant MCP tools are not exposed in this session. Local repository
+  documents and the existing ExecPlan therefore serve as the working memory
+  substitute for this turn.
+- BDD support had to change once record mode became real: step-local Tokio
+  runtimes were sufficient for the placeholder harness, but they dropped the
+  real server task between steps. The scenario worlds now retain a shared
+  runtime for the full scenario lifetime.
 
 ## Decision Log
 
-- Proposed decision: use an Axum/Hyper-based inbound server adapter and a
-  single outbound HTTP client adapter, keeping both confined to adapter
-  modules. This matches the design document's crate layout and avoids a custom
-  HTTP stack for the first slice.
+- Confirmed decision: use an Axum/Hyper-based inbound server adapter and a
+  single Reqwest-based outbound HTTP client adapter, keeping both confined to
+  adapter modules. This matches the design document's crate layout and avoids a
+  custom HTTP stack for the first slice.
 - Proposed decision: mount the actual server in all modes once task `1.3.1`
   lands, but only record mode will have a working `POST /v1/chat/completions`
   path in this slice. Replay-mode request handling remains for task `1.3.2`.
-- Proposed decision: reject `stream: true` requests with a clear
+- Confirmed decision: keep replay and verify on the existing startup-only path
+  in this slice, and bind a real listener only for record mode. This trims the
+  first serving change to the minimum needed for `1.3.1` without weakening the
+  public API contract.
+- Confirmed decision: reject `stream: true` requests with a clear
   "not implemented yet" adapter response and do not append to the cassette.
   Record this temporary limitation in both the design document and user's guide.
-- Proposed decision: construct the upstream URL for this endpoint by joining
+- Confirmed decision: construct the upstream URL for this endpoint by joining
   `HarnessConfig.upstream.base_url` with `/chat/completions`, not by naively
   concatenating the inbound `/v1/chat/completions` path, because the current
   default base URL already includes `/api/v1`.
-- Proposed decision: persist the filtered inbound request headers after
+- Confirmed decision: persist the filtered inbound request headers after
   redaction, but forward an enriched outbound request that also includes the
   configured upstream API key and `extra_headers`.
-- Proposed decision: populate canonical request fields during recording with
+- Confirmed decision: populate canonical request fields during recording with
   `IgnorePathConfig::default()` until a later task introduces configuration for
   ignore paths at startup.
-
-If any of these proposed decisions are rejected during approval, revise this
-plan before implementation begins.
+- Confirmed decision: treat hop-by-hop and framing headers as non-selected for
+  both forwarding and persistence. Preserve the observed order and duplicates
+  of the retained headers, then apply case-insensitive redaction immediately
+  before persistence.
+- Confirmed decision: disable Reqwest content decoding in the upstream adapter
+  for this slice so the recorded response body remains the exact byte payload
+  read from the upstream transport.
 
 ## Outcomes & Retrospective
 
-Pending implementation. Success for this task means:
+Implementation completed. Success for this task means:
 
 - a real harness server starts and shuts down cleanly;
 - non-stream chat completions requests proxy successfully in record mode;
@@ -226,6 +243,30 @@ Pending implementation. Success for this task means:
 
 Retrospective notes and final command results must be added here during
 execution.
+
+Interim evidence captured during implementation:
+
+- `cargo test --lib` passes with new unit coverage for:
+  - request-header filtering and case-insensitive redaction;
+  - upstream URL construction;
+  - unsupported `stream: true` rejection without cassette writes;
+  - missing API key rejection without cassette writes;
+  - invalid JSON response capture preserving exact bytes with
+    `parsed_json: None`.
+- `cargo test --test harness_startup_bdd -- --nocapture` passes after updating
+  the startup BDD suite for real record-mode server binding and graceful
+  shutdown.
+- `cargo test --test record_mode_proxying_bdd -- --nocapture` passes with
+  end-to-end scenarios proving successful proxying, redaction, unsupported
+  streaming rejection, and upstream failure handling.
+- Final validation commands all passed and their logs were captured under
+  `/tmp/1-3-1-*.log`:
+  - `make fmt`
+  - `make check-fmt`
+  - `make lint`
+  - `make test`
+  - `make markdownlint`
+  - `make nixie`
 
 ## Context and orientation
 

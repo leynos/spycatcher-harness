@@ -18,7 +18,7 @@ Feature: Harness startup and shutdown
     When the harness is shut down
     Then the shutdown succeeds
 
-  Scenario: Start harness preserves listen address
-    Given a harness configuration with listen address 127.0.0.1:9090
+  Scenario: Start harness binds an OS-selected localhost port
+    Given a harness configuration with listen address 127.0.0.1:0
     When the harness is started
-    Then the harness address is 127.0.0.1:9090
+    Then the harness address is bound on 127.0.0.1

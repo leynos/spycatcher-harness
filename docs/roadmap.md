@@ -78,14 +78,14 @@ units with explicit dependencies and completion criteria.
 
 ### 1.3. OpenAI chat completions non-stream path
 
-- [ ] 1.3.1. Implement `POST /v1/chat/completions` record mode proxying.
+- [x] 1.3.1. Implement `POST /v1/chat/completions` record mode proxying.
   - Depends on: 1.1.2, 1.2.2.
   - Success criteria:
-    - [ ] Requests are proxied to configured upstream with selected headers and
+    - [x] Requests are proxied to configured upstream with selected headers and
           body capture.
-    - [ ] Non-stream responses are stored as exact bytes plus parsed JSON when
+    - [x] Non-stream responses are stored as exact bytes plus parsed JSON when
           valid.
-    - [ ] Redaction rules remove configured secret headers before persistence.
+    - [x] Redaction rules remove configured secret headers before persistence.
   - Design references:
     [Architecture overview](spycatcher-harness-design.md#architecture-overview),
     [Streaming capture and replay](spycatcher-harness-design.md#streaming-capture-and-replay).

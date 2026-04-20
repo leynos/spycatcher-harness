@@ -8,6 +8,7 @@
 )]
 
 use std::net::SocketAddr;
+use std::sync::Arc;
 
 use camino::Utf8PathBuf;
 use rstest::fixture;
@@ -34,7 +35,7 @@ fn make_record_config(prefix: &str, listen: Option<ListenAddr>) -> (HarnessConfi
     let cassette_dir = Utf8PathBuf::from("target/test-harness-bdd");
     let expected_cassette_path = cassette_dir.join(&cassette_name);
     let cfg = HarnessConfig {
-        listen: listen.unwrap_or_default(),
+        listen: listen.unwrap_or_else(|| ListenAddr::from(SocketAddr::from(([127, 0, 0, 1], 0)))),
         mode: spycatcher_harness::config::Mode::Record,
         cassette_dir,
         cassette_name,
@@ -46,12 +47,27 @@ fn make_record_config(prefix: &str, listen: Option<ListenAddr>) -> (HarnessConfi
 
 // -- World fixture ----------------------------------------------------------
 
-#[derive(Default, ScenarioState)]
+#[derive(ScenarioState)]
 struct HarnessWorld {
+    runtime: Slot<Arc<tokio::runtime::Runtime>>,
     config: Slot<HarnessConfig>,
     start_result: Slot<HarnessResult<RunningHarness>>,
     shutdown_result: Slot<HarnessResult<()>>,
     expected_cassette_path: Slot<Utf8PathBuf>,
+}
+
+impl Default for HarnessWorld {
+    fn default() -> Self {
+        let runtime = Slot::new();
+        runtime.set(Arc::new(build_runtime()));
+        Self {
+            runtime,
+            config: Slot::default(),
+            start_result: Slot::default(),
+            shutdown_result: Slot::default(),
+            expected_cassette_path: Slot::default(),
+        }
+    }
 }
 
 #[fixture]
@@ -85,8 +101,10 @@ fn the_harness_has_been_started(harness_world: &HarnessWorld) {
         .config
         .take()
         .expect("config must be set before starting");
-    let rt = build_runtime();
-    let result = rt.block_on(start_harness(cfg));
+    let result = harness_world
+        .runtime
+        .with_ref(|runtime| runtime.block_on(start_harness(cfg)))
+        .expect("runtime must be set");
     harness_world.start_result.set(result);
 }
 
@@ -107,8 +125,10 @@ fn when_the_harness_is_started(harness_world: &HarnessWorld) {
         .config
         .take()
         .expect("config must be set before starting");
-    let rt = build_runtime();
-    let result = rt.block_on(start_harness(cfg));
+    let result = harness_world
+        .runtime
+        .with_ref(|runtime| runtime.block_on(start_harness(cfg)))
+        .expect("runtime must be set");
     harness_world.start_result.set(result);
 }
 
@@ -119,8 +139,10 @@ fn when_the_harness_is_shut_down(harness_world: &HarnessWorld) {
         .take()
         .expect("harness must be started before shutdown")
         .expect("start_result must be Ok to shut down");
-    let rt = build_runtime();
-    let result = rt.block_on(harness.shutdown());
+    let result = harness_world
+        .runtime
+        .with_ref(|runtime| runtime.block_on(harness.shutdown()))
+        .expect("runtime must be set");
     harness_world.shutdown_result.set(result);
 }
 
@@ -186,13 +208,14 @@ fn the_shutdown_succeeds(harness_world: &HarnessWorld) {
     assert!(is_ok, "expected shutdown to succeed");
 }
 
-#[then("the harness address is {addr}")]
-fn the_harness_address_is(harness_world: &HarnessWorld, addr: SocketAddr) {
+#[then("the harness address is bound on {ip}")]
+fn the_harness_address_is_bound_on(harness_world: &HarnessWorld, ip: std::net::IpAddr) {
     let actual = harness_world
         .start_result
         .with_ref(|r| r.as_ref().expect("harness should be running").addr)
         .expect("start_result must be set");
-    assert_eq!(actual, addr);
+    assert_eq!(actual.ip(), ip);
+    assert_ne!(actual.port(), 0, "expected OS-assigned port");
 }
 
 // -- Scenario bindings ------------------------------------------------------
@@ -223,8 +246,8 @@ fn shutdown_a_running_harness(harness_world: HarnessWorld) {
 
 #[scenario(
     path = "tests/features/harness_startup.feature",
-    name = "Start harness preserves listen address"
+    name = "Start harness binds an OS-selected localhost port"
 )]
-fn start_harness_preserves_listen_address(harness_world: HarnessWorld) {
+fn start_harness_binds_an_os_selected_localhost_port(harness_world: HarnessWorld) {
     let _ = harness_world;
 }
