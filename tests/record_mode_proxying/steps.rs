@@ -36,48 +36,20 @@ fn a_stub_upstream_that_returns_a_successful_chat_completion(
 fn a_record_mode_harness_configured_for_that_upstream(
     proxy_world: &ProxyWorld,
 ) -> Result<(), Box<dyn Error>> {
-    let upstream = proxy_world
-        .upstream
-        .with_ref(StubUpstream::base_url)
-        .ok_or_else(|| std::io::Error::other("stub upstream must be configured"))?;
-    let cassette_path = unique_cassette_path("success");
-    proxy_world.cassette_path.set(cassette_path.clone());
-    proxy_world.config.set(make_record_config(
-        &cassette_path,
-        UpstreamConfig {
-            kind: UpstreamKind::OpenRouter,
-            base_url: upstream,
-            api_key_env: present_env_name()?.to_owned(),
-            extra_headers: std::collections::BTreeMap::new(),
-        },
-        RedactionConfig::default(),
-    )?);
-    Ok(())
+    configure_harness_with_proxy_world_upstream(proxy_world, "success", RedactionConfig::default())
 }
 
 #[given("a record-mode harness configured for that upstream with header redaction")]
 fn a_record_mode_harness_configured_for_that_upstream_with_header_redaction(
     proxy_world: &ProxyWorld,
 ) -> Result<(), Box<dyn Error>> {
-    let upstream = proxy_world
-        .upstream
-        .with_ref(StubUpstream::base_url)
-        .ok_or_else(|| std::io::Error::other("stub upstream must be configured"))?;
-    let cassette_path = unique_cassette_path("redaction");
-    proxy_world.cassette_path.set(cassette_path.clone());
-    proxy_world.config.set(make_record_config(
-        &cassette_path,
-        UpstreamConfig {
-            kind: UpstreamKind::OpenRouter,
-            base_url: upstream,
-            api_key_env: present_env_name()?.to_owned(),
-            extra_headers: std::collections::BTreeMap::new(),
-        },
+    configure_harness_with_proxy_world_upstream(
+        proxy_world,
+        "redaction",
         RedactionConfig {
             drop_headers: vec!["x-session-secret".to_owned()],
         },
-    )?);
-    Ok(())
+    )
 }
 
 #[given("a record-mode harness configured with an unavailable upstream")]
@@ -158,11 +130,7 @@ fn the_client_receives_the_upstream_response_unchanged(
 fn the_cassette_contains_one_recorded_interaction(
     proxy_world: &ProxyWorld,
 ) -> Result<(), Box<dyn Error>> {
-    let cassette_path = proxy_world
-        .cassette_path
-        .with_ref(Clone::clone)
-        .ok_or_else(|| std::io::Error::other("cassette path should be recorded"))?;
-    let cassette = load_cassette(&cassette_path)?;
+    let cassette = cassette_from_world(proxy_world)?;
     assert_eq!(cassette.interactions.len(), 1);
     Ok(())
 }
@@ -190,11 +158,7 @@ fn the_upstream_receives_the_header(proxy_world: &ProxyWorld) -> Result<(), Box<
 fn the_cassette_request_headers_omit_secret(
     proxy_world: &ProxyWorld,
 ) -> Result<(), Box<dyn Error>> {
-    let cassette_path = proxy_world
-        .cassette_path
-        .with_ref(Clone::clone)
-        .ok_or_else(|| std::io::Error::other("cassette path should be recorded"))?;
-    let cassette = load_cassette(&cassette_path)?;
+    let cassette = cassette_from_world(proxy_world)?;
     let interaction = cassette
         .interactions
         .first()
@@ -234,11 +198,7 @@ fn the_harness_returns_a_bad_gateway_error(proxy_world: &ProxyWorld) -> Result<(
 
 #[then("the cassette remains empty")]
 fn the_cassette_remains_empty(proxy_world: &ProxyWorld) -> Result<(), Box<dyn Error>> {
-    let cassette_path = proxy_world
-        .cassette_path
-        .with_ref(Clone::clone)
-        .ok_or_else(|| std::io::Error::other("cassette path should be recorded"))?;
-    let cassette = load_cassette(&cassette_path)?;
+    let cassette = cassette_from_world(proxy_world)?;
     assert!(cassette.interactions.is_empty());
     Ok(())
 }
@@ -317,4 +277,38 @@ fn make_record_config(
         redaction,
         ..HarnessConfig::default()
     })
+}
+
+fn configure_harness_with_proxy_world_upstream(
+    proxy_world: &ProxyWorld,
+    cassette_label: &str,
+    redaction: RedactionConfig,
+) -> Result<(), Box<dyn Error>> {
+    let upstream = proxy_world
+        .upstream
+        .with_ref(StubUpstream::base_url)
+        .ok_or_else(|| std::io::Error::other("stub upstream must be configured"))?;
+    let cassette_path = unique_cassette_path(cassette_label);
+    proxy_world.cassette_path.set(cassette_path.clone());
+    proxy_world.config.set(make_record_config(
+        &cassette_path,
+        UpstreamConfig {
+            kind: UpstreamKind::OpenRouter,
+            base_url: upstream,
+            api_key_env: present_env_name()?.to_owned(),
+            extra_headers: std::collections::BTreeMap::new(),
+        },
+        redaction,
+    )?);
+    Ok(())
+}
+
+fn cassette_from_world(
+    proxy_world: &ProxyWorld,
+) -> Result<spycatcher_harness::cassette::Cassette, Box<dyn Error>> {
+    let cassette_path = proxy_world
+        .cassette_path
+        .with_ref(Clone::clone)
+        .ok_or_else(|| std::io::Error::other("cassette path should be recorded"))?;
+    load_cassette(&cassette_path)
 }
