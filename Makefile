@@ -4,7 +4,10 @@
 TARGET ?= spycatcher-harness
 
 PATH := $(PATH):$(HOME)/.cargo/bin:$(HOME)/.bun/bin:$(HOME)/.local/bin
-CARGO ?= cargo
+CARGO_BIN ?= $(HOME)/.cargo/bin
+LOCAL_BIN ?= $(HOME)/.local/bin
+BUN_BIN ?= $(HOME)/.bun/bin
+CARGO ?= $(firstword $(wildcard $(CARGO_BIN)/cargo) cargo)
 BUILD_JOBS ?=
 RUST_FLAGS ?=
 RUST_FLAGS := -D warnings $(RUST_FLAGS)
@@ -14,8 +17,9 @@ CARGO_FLAGS ?= --all-targets --all-features
 CLIPPY_FLAGS ?= $(CARGO_FLAGS) -- $(RUST_FLAGS)
 TEST_FLAGS ?= $(CARGO_FLAGS)
 TEST_CMD := $(if $(shell $(CARGO) nextest --version 2>/dev/null),nextest run,test)
-MDLINT ?= markdownlint-cli2
+MDLINT ?= $(firstword $(wildcard $(BUN_BIN)/markdownlint-cli2) markdownlint-cli2)
 NIXIE ?= nixie
+WHITAKER ?= $(firstword $(wildcard $(LOCAL_BIN)/whitaker) whitaker)
 
 build: target/debug/$(TARGET) ## Build debug binary
 release: target/release/$(TARGET) ## Build release binary
@@ -35,7 +39,7 @@ target/%/$(TARGET): ## Build binary in debug or release mode
 lint: ## Run Clippy with warnings denied
 	RUSTDOCFLAGS="$(RUSTDOC_FLAGS)" $(CARGO) doc --no-deps
 	$(CARGO) clippy $(CLIPPY_FLAGS)
-	RUSTFLAGS="$(RUST_FLAGS)" whitaker --all -- $(CARGO_FLAGS)
+	RUSTFLAGS="$(RUST_FLAGS)" $(WHITAKER) --all -- $(CARGO_FLAGS)
 
 typecheck: ## Type-check without building
 	RUSTFLAGS="$(RUST_FLAGS)" $(CARGO) check $(CARGO_FLAGS)
