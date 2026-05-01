@@ -49,46 +49,59 @@ impl ChatCompletionsUpstream for FakeUpstream {
     }
 }
 
-#[rstest]
-#[tokio::test]
-async fn unsupported_stream_requests_do_not_append() {
-    let cassette_path = unique_cassette_path("stream");
+#[expect(
+    clippy::too_many_arguments,
+    reason = "test helper signature keeps each failing request case explicit"
+)]
+async fn assert_error_does_not_append(
+    slug: &str,
+    env_provider: FakeEnvProvider,
+    request: ObservedRequest,
+    fail_msg: &str,
+    check_error: impl FnOnce(RecordError),
+) {
+    let cassette_path = unique_cassette_path(slug);
     let service = service_fixture(
         &cassette_path,
         FakeUpstream {
             response: Ok(sample_response(br#"{"id":"unused"}"#)),
         },
-        FakeEnvProvider(Some("token".to_owned())),
+        env_provider,
     );
 
     let error = service
-        .handle_chat_completions(sample_request(Some(json!({"stream": true}))))
+        .handle_chat_completions(request)
         .await
-        .expect_err("stream requests should be rejected");
+        .expect_err(fail_msg);
 
-    assert_eq!(error, RecordError::UnsupportedStream);
+    check_error(error);
     assert!(load_cassette(&cassette_path).interactions.is_empty());
 }
 
 #[rstest]
 #[tokio::test]
+async fn unsupported_stream_requests_do_not_append() {
+    assert_error_does_not_append(
+        "stream",
+        FakeEnvProvider(Some("token".to_owned())),
+        sample_request(Some(json!({"stream": true}))),
+        "stream requests should be rejected",
+        |error| assert_eq!(error, RecordError::UnsupportedStream),
+    )
+    .await;
+}
+
+#[rstest]
+#[tokio::test]
 async fn missing_api_key_does_not_append() {
-    let cassette_path = unique_cassette_path("missing-key");
-    let service = service_fixture(
-        &cassette_path,
-        FakeUpstream {
-            response: Ok(sample_response(br#"{"id":"unused"}"#)),
-        },
+    assert_error_does_not_append(
+        "missing-key",
         FakeEnvProvider(None),
-    );
-
-    let error = service
-        .handle_chat_completions(sample_request(None))
-        .await
-        .expect_err("missing key should fail");
-
-    assert!(matches!(error, RecordError::MissingApiKeyEnv { .. }));
-    assert!(load_cassette(&cassette_path).interactions.is_empty());
+        sample_request(None),
+        "missing key should fail",
+        |error| assert!(matches!(error, RecordError::MissingApiKeyEnv { .. })),
+    )
+    .await;
 }
 
 #[rstest]
@@ -129,11 +142,13 @@ fn service_fixture(
     upstream: FakeUpstream,
     env_provider: FakeEnvProvider,
 ) -> RecordService<FakeUpstream, FakeEnvProvider, FakeMetadataFactory> {
+    let cassette_store = match FilesystemCassetteStore::open_or_create_for_record(cassette_path) {
+        Ok(store) => store,
+        Err(error) => panic!("cassette should open: {error}"),
+    };
+
     RecordService {
-        cassette_store: Arc::new(Mutex::new(
-            FilesystemCassetteStore::open_or_create_for_record(cassette_path)
-                .expect("cassette should open"),
-        )),
+        cassette_store: Arc::new(Mutex::new(cassette_store)),
         upstream_client: upstream,
         env_provider,
         metadata: FakeMetadataFactory,
@@ -168,10 +183,15 @@ fn sample_response(body: &[u8]) -> ObservedResponse {
 }
 
 fn load_cassette(cassette_path: &camino::Utf8Path) -> Cassette {
-    FilesystemCassetteStore::open_for_replay(cassette_path)
-        .expect("cassette should reopen")
-        .load()
-        .expect("cassette should decode")
+    let store = match FilesystemCassetteStore::open_for_replay(cassette_path) {
+        Ok(store) => store,
+        Err(error) => panic!("cassette should reopen: {error}"),
+    };
+
+    match store.load() {
+        Ok(cassette) => cassette,
+        Err(error) => panic!("cassette should decode: {error}"),
+    }
 }
 
 fn unique_cassette_path(name: &str) -> Utf8PathBuf {

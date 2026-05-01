@@ -366,8 +366,10 @@ mod tests {
 
     fn seed_replay_cassette(cassette_name: &str) -> Utf8PathBuf {
         let cassette_path = Utf8PathBuf::from("target/test-harness").join(cassette_name);
-        let _store = FilesystemCassetteStore::open_or_create_for_record(&cassette_path)
-            .expect("seeding replay cassette should succeed");
+        let _store = match FilesystemCassetteStore::open_or_create_for_record(&cassette_path) {
+            Ok(store) => store,
+            Err(error) => panic!("seeding replay cassette should succeed: {error}"),
+        };
         cassette_path
     }
 }
