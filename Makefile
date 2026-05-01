@@ -3,6 +3,7 @@
 
 TARGET ?= spycatcher-harness
 
+PATH := $(HOME)/.cargo/bin:$(HOME)/.bun/bin:$(PATH)
 CARGO ?= cargo
 BUILD_JOBS ?=
 RUST_FLAGS ?=
