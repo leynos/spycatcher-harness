@@ -45,6 +45,18 @@ fn make_record_config(prefix: &str, listen: Option<ListenAddr>) -> (HarnessConfi
     (cfg, expected_cassette_path)
 }
 
+fn start_and_store_harness(harness_world: &HarnessWorld) {
+    let cfg = harness_world
+        .config
+        .take()
+        .expect("config must be set before starting");
+    let result = harness_world
+        .runtime
+        .with_ref(|runtime| runtime.block_on(start_harness(cfg)))
+        .expect("runtime must be set");
+    harness_world.start_result.set(result);
+}
+
 // -- World fixture ----------------------------------------------------------
 
 #[derive(ScenarioState)]
@@ -97,15 +109,7 @@ fn a_harness_configuration_with_an_empty_cassette_name(harness_world: &HarnessWo
 
 #[given("the harness has been started")]
 fn the_harness_has_been_started(harness_world: &HarnessWorld) {
-    let cfg = harness_world
-        .config
-        .take()
-        .expect("config must be set before starting");
-    let result = harness_world
-        .runtime
-        .with_ref(|runtime| runtime.block_on(start_harness(cfg)))
-        .expect("runtime must be set");
-    harness_world.start_result.set(result);
+    start_and_store_harness(harness_world);
 }
 
 #[given("a harness configuration with listen address {addr}")]
@@ -121,15 +125,7 @@ fn a_harness_configuration_with_listen_address(harness_world: &HarnessWorld, add
 
 #[when("the harness is started")]
 fn when_the_harness_is_started(harness_world: &HarnessWorld) {
-    let cfg = harness_world
-        .config
-        .take()
-        .expect("config must be set before starting");
-    let result = harness_world
-        .runtime
-        .with_ref(|runtime| runtime.block_on(start_harness(cfg)))
-        .expect("runtime must be set");
-    harness_world.start_result.set(result);
+    start_and_store_harness(harness_world);
 }
 
 #[when("the harness is shut down")]
