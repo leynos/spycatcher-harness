@@ -178,22 +178,12 @@ fn the_cassette_request_headers_omit_secret(
 fn the_harness_rejects_the_request_as_unsupported_streaming(
     proxy_world: &ProxyWorld,
 ) -> Result<(), Box<dyn Error>> {
-    let response = proxy_world
-        .response
-        .with_ref(Clone::clone)
-        .ok_or_else(|| std::io::Error::other("client response should be recorded"))?;
-    assert_eq!(response.status, 501);
-    Ok(())
+    assert_response_status(proxy_world, 501)
 }
 
 #[then("the harness returns a bad gateway error")]
 fn the_harness_returns_a_bad_gateway_error(proxy_world: &ProxyWorld) -> Result<(), Box<dyn Error>> {
-    let response = proxy_world
-        .response
-        .with_ref(Clone::clone)
-        .ok_or_else(|| std::io::Error::other("client response should be recorded"))?;
-    assert_eq!(response.status, 502);
-    Ok(())
+    assert_response_status(proxy_world, 502)
 }
 
 #[then("the cassette remains empty")]
@@ -251,6 +241,19 @@ fn send_request_to_harness(
         .with_ref(|runtime| send_request(runtime, harness_addr, body, extra_headers))
         .ok_or_else(|| std::io::Error::other("runtime must be set"))??;
     proxy_world.response.set(response);
+    Ok(())
+}
+
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "BDD assertion helper preserves step assertion behaviour"
+)]
+fn assert_response_status(proxy_world: &ProxyWorld, expected: u16) -> Result<(), Box<dyn Error>> {
+    let response = proxy_world
+        .response
+        .with_ref(Clone::clone)
+        .ok_or_else(|| std::io::Error::other("client response should be recorded"))?;
+    assert_eq!(response.status, expected);
     Ok(())
 }
 
