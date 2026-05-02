@@ -244,19 +244,6 @@ fn send_request_to_harness(
     Ok(())
 }
 
-#[expect(
-    clippy::panic_in_result_fn,
-    reason = "BDD assertion helper preserves step assertion behaviour"
-)]
-fn assert_response_status(proxy_world: &ProxyWorld, expected: u16) -> Result<(), Box<dyn Error>> {
-    let response = proxy_world
-        .response
-        .with_ref(Clone::clone)
-        .ok_or_else(|| std::io::Error::other("client response should be recorded"))?;
-    assert_eq!(response.status, expected);
-    Ok(())
-}
-
 fn make_record_config(
     cassette_path: &camino::Utf8PathBuf,
     upstream: UpstreamConfig,
@@ -314,4 +301,17 @@ fn cassette_from_world(
         .with_ref(Clone::clone)
         .ok_or_else(|| std::io::Error::other("cassette path should be recorded"))?;
     load_cassette(&cassette_path)
+}
+
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "BDD assertion helper preserves step assertion behaviour"
+)]
+fn assert_response_status(proxy_world: &ProxyWorld, expected: u16) -> Result<(), Box<dyn Error>> {
+    let response = proxy_world
+        .response
+        .with_ref(Clone::clone)
+        .ok_or_else(|| std::io::Error::other("client response should be recorded"))?;
+    assert_eq!(response.status, expected);
+    Ok(())
 }
