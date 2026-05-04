@@ -223,13 +223,13 @@ where
 
         let upstream_latency = upstream_start.elapsed().as_millis();
 
-        let upstream_response = upstream_result.map_err(|_| {
+        let upstream_response = upstream_result.map_err(|err| {
             self.failure_count.fetch_add(1, Ordering::Relaxed);
             error!(
                 target: "spycatcher.harness.record",
                 "upstream request failed interaction_id={interaction_id} \
                  mode=record protocol={protocol} upstream_latency_ms={upstream_latency} \
-                 outcome=failed cassette={cassette}",
+                 outcome=failed cassette={cassette} error={err}",
                 protocol = CHAT_COMPLETIONS_PROTOCOL_ID,
                 cassette = upstream_id(self.upstream.kind),
             );
