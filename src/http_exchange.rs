@@ -4,6 +4,8 @@
 //! server and upstream adapters agree on what gets forwarded, returned, and
 //! persisted.
 
+use std::collections::HashSet;
+
 use axum::http::{HeaderMap, HeaderName};
 use percent_encoding::{NON_ALPHANUMERIC, percent_encode};
 use serde_json::Value;
@@ -84,9 +86,10 @@ pub(crate) fn selected_response_headers(headers: &HeaderMap) -> Vec<(String, Str
 }
 
 fn selected_headers(headers: &HeaderMap, excluded: &[&str]) -> Vec<(String, String)> {
+    let connection_tokens = parse_connection_tokens(headers);
     headers
         .iter()
-        .filter(|(name, _)| should_keep_header(name, excluded))
+        .filter(|(name, _)| should_keep_header(name, excluded, &connection_tokens))
         .map(|(name, value)| (name.as_str().to_owned(), header_value_string(value)))
         .collect()
 }
@@ -98,11 +101,28 @@ fn header_value_string(value: &axum::http::HeaderValue) -> String {
     )
 }
 
-fn should_keep_header(name: &HeaderName, excluded: &[&str]) -> bool {
-    !HOP_BY_HOP_HEADERS
+fn should_keep_header(
+    name: &HeaderName,
+    excluded: &[&str],
+    connection_tokens: &HashSet<String>,
+) -> bool {
+    let name_text = name.as_str();
+    !connection_tokens.contains(&name_text.to_ascii_lowercase())
+        && !HOP_BY_HOP_HEADERS
         .iter()
         .chain(excluded.iter())
-        .any(|candidate| name.as_str().eq_ignore_ascii_case(candidate))
+        .any(|candidate| name_text.eq_ignore_ascii_case(candidate))
+}
+
+fn parse_connection_tokens(headers: &HeaderMap) -> HashSet<String> {
+    headers
+        .get_all(axum::http::header::CONNECTION)
+        .iter()
+        .filter_map(|value| value.to_str().ok())
+        .flat_map(|value| value.split(','))
+        .map(|token| token.trim().to_ascii_lowercase())
+        .filter(|token| !token.is_empty())
+        .collect()
 }
 
 /// Applies case-insensitive configured header redaction before persistence.
@@ -190,6 +210,22 @@ mod tests {
         assert_eq!(
             selected_response_headers(&headers),
             vec![("x-raw".to_owned(), "%FF%FE".to_owned())],
+        );
+    }
+
+    #[rstest]
+    fn selected_headers_drop_connection_token_headers() {
+        let mut headers = HeaderMap::new();
+        headers.insert("connection", "keep-alive, x-hop".parse().expect("valid header"));
+        headers.insert("x-hop", "drop-me".parse().expect("valid header"));
+        headers.insert(
+            "content-type",
+            "application/json".parse().expect("valid header"),
+        );
+
+        assert_eq!(
+            selected_request_headers(&headers),
+            vec![("content-type".to_owned(), "application/json".to_owned())],
         );
     }
 }
