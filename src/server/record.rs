@@ -12,7 +12,7 @@ use axum::body::Bytes;
 use axum::extract::{OriginalUri, State};
 use axum::http::{HeaderMap, HeaderName, HeaderValue, Response, StatusCode};
 use axum::response::IntoResponse;
-use log::{error, info};
+use log::{error, info, warn};
 use serde_json::json;
 use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
@@ -311,7 +311,21 @@ where
         };
         recorded_request
             .populate_canonical_fields(&IgnorePathConfig::default())
-            .map_err(|_| RecordError::Internal)?;
+            .map_err(|e| {
+                error!(
+                    target: "spycatcher.harness.record",
+                    "failed to populate canonical fields: {e}"
+                );
+                RecordError::Internal
+            })?;
+
+        let metadata = self.metadata.create().map_err(|e| {
+            error!(
+                target: "spycatcher.harness.record",
+                "failed to create interaction metadata: {e}"
+            );
+            RecordError::Internal
+        })?;
 
         Ok(Interaction {
             request: recorded_request,
@@ -321,7 +335,7 @@ where
                 body: response.body.clone(),
                 parsed_json: response.parsed_json.clone(),
             },
-            metadata: self.metadata.create().map_err(|_| RecordError::Internal)?,
+            metadata,
         })
     }
 
@@ -360,11 +374,19 @@ fn build_proxy_response(response: ProxyResponse) -> Response<axum::body::Body> {
     let mut built = Response::new(axum::body::Body::from(response.body));
     *built.status_mut() = StatusCode::from_u16(response.status).unwrap_or(StatusCode::BAD_GATEWAY);
     for (name, value) in response.headers {
-        if let (Ok(header_name), Ok(header_value)) = (
+        match (
             HeaderName::try_from(name.as_str()),
             HeaderValue::from_str(&value),
         ) {
-            built.headers_mut().append(header_name, header_value);
+            (Ok(header_name), Ok(header_value)) => {
+                built.headers_mut().append(header_name, header_value);
+            }
+            _ => {
+                warn!(
+                    target: "spycatcher.harness.record",
+                    "dropping unparseable proxy response header name={name:?} value={value:?}"
+                );
+            }
         }
     }
     built
