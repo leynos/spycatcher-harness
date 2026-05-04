@@ -236,24 +236,62 @@ where
             RecordError::Internal
         })?;
 
-        let interaction = self.build_interaction(request, &upstream_response)?;
-        self.append_interaction(interaction).await?;
-
-        self.recorded_count.fetch_add(1, Ordering::Relaxed);
-        info!(
-            target: "spycatcher.harness.record",
-            "interaction recorded interaction_id={interaction_id} \
-             mode=record protocol={protocol} upstream_latency_ms={upstream_latency} \
-             outcome=recorded cassette={cassette}",
-            protocol = CHAT_COMPLETIONS_PROTOCOL_ID,
-            cassette = upstream_id(self.upstream.kind),
-        );
+        self.record_response(
+            (request, &upstream_response),
+            &interaction_id,
+            upstream_latency,
+        )
+        .await;
 
         Ok(ProxyResponse {
             status: upstream_response.status,
             headers: upstream_response.headers,
             body: upstream_response.body,
         })
+    }
+
+    async fn record_response(
+        &self,
+        (request, upstream_response): (ObservedRequest, &crate::http_exchange::ObservedResponse),
+        interaction_id: &str,
+        upstream_latency: u128,
+    ) {
+        match self.build_interaction(request, upstream_response) {
+            Ok(interaction) => {
+                if let Err(e) = self.append_interaction(interaction).await {
+                    self.failure_count.fetch_add(1, Ordering::Relaxed);
+                    error!(
+                        target: "spycatcher.harness.record",
+                        "cassette write failed interaction_id={interaction_id} \
+                         mode=record protocol={protocol} upstream_latency_ms={upstream_latency} \
+                         outcome=write_failed cassette={cassette} error={e:?}",
+                        protocol = CHAT_COMPLETIONS_PROTOCOL_ID,
+                        cassette = upstream_id(self.upstream.kind),
+                    );
+                } else {
+                    self.recorded_count.fetch_add(1, Ordering::Relaxed);
+                    info!(
+                        target: "spycatcher.harness.record",
+                        "interaction recorded interaction_id={interaction_id} \
+                         mode=record protocol={protocol} upstream_latency_ms={upstream_latency} \
+                         outcome=recorded cassette={cassette}",
+                        protocol = CHAT_COMPLETIONS_PROTOCOL_ID,
+                        cassette = upstream_id(self.upstream.kind),
+                    );
+                }
+            }
+            Err(e) => {
+                self.failure_count.fetch_add(1, Ordering::Relaxed);
+                error!(
+                    target: "spycatcher.harness.record",
+                    "cassette build failed interaction_id={interaction_id} \
+                     mode=record protocol={protocol} upstream_latency_ms={upstream_latency} \
+                     outcome=build_failed cassette={cassette} error={e:?}",
+                    protocol = CHAT_COMPLETIONS_PROTOCOL_ID,
+                    cassette = upstream_id(self.upstream.kind),
+                );
+            }
+        }
     }
 
     fn build_interaction(
