@@ -22,3 +22,4 @@ Feature: Harness startup and shutdown
     Given a harness configuration with listen address 127.0.0.1:0
     When the harness is started
     Then the harness address is bound on 127.0.0.1
+    And the harness port is non-zero

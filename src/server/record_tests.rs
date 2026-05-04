@@ -4,6 +4,7 @@ use super::*;
 use camino::Utf8PathBuf;
 use rstest::rstest;
 use serde_json::json;
+use std::sync::atomic::AtomicU64;
 
 use crate::cassette::{Cassette, CassetteReader, filesystem::FilesystemCassetteStore};
 use crate::config::UpstreamKind;
@@ -106,6 +107,28 @@ async fn missing_api_key_does_not_append() {
 
 #[rstest]
 #[tokio::test]
+async fn upstream_transport_failure_does_not_append() {
+    let cassette_path = unique_cassette_path("upstream-fail");
+    let service = service_fixture(
+        &cassette_path,
+        FakeUpstream { response: Err(()) },
+        FakeEnvProvider(Some("token".to_owned())),
+    );
+
+    let result = service.handle_chat_completions(sample_request(None)).await;
+
+    assert!(
+        matches!(result, Err(RecordError::Internal)),
+        "upstream transport failure should return RecordError::Internal"
+    );
+    assert!(
+        load_cassette(&cassette_path).interactions.is_empty(),
+        "no interaction should be recorded on upstream failure"
+    );
+}
+
+#[rstest]
+#[tokio::test]
 async fn invalid_json_response_keeps_exact_bytes() {
     let cassette_path = unique_cassette_path("invalid-json");
     let service = service_fixture(
@@ -156,6 +179,8 @@ fn service_fixture(
         redaction: RedactionConfig {
             drop_headers: vec!["authorization".to_owned()],
         },
+        recorded_count: Arc::new(AtomicU64::new(0)),
+        failure_count: Arc::new(AtomicU64::new(0)),
     }
 }
 

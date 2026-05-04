@@ -106,6 +106,10 @@ struct StubState {
     seen_requests: Arc<Mutex<Vec<CapturedRequest>>>,
 }
 
+#[expect(
+    clippy::expect_used,
+    reason = "fail fast on poisoned mutex during integration tests"
+)]
 async fn stub_handler(
     State(state): State<StubState>,
     headers: HeaderMap,
@@ -123,9 +127,11 @@ async fn stub_handler(
             .collect(),
         body: body.to_vec(),
     };
-    if let Ok(mut seen_requests) = state.seen_requests.lock() {
-        seen_requests.push(captured);
-    }
+    state
+        .seen_requests
+        .lock()
+        .expect("captured requests mutex should not be poisoned")
+        .push(captured);
 
     let mut response_headers = HeaderMap::new();
     response_headers.insert(

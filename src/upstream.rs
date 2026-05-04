@@ -47,6 +47,8 @@ pub(crate) struct ChatCompletionsRequest<'a> {
     pub headers: &'a [(String, String)],
     /// Exact inbound request body bytes.
     pub body: &'a [u8],
+    /// Raw query string from the inbound request.
+    pub query: &'a str,
 }
 
 /// Reqwest-backed upstream adapter for record mode.
@@ -81,10 +83,13 @@ impl ChatCompletionsUpstream for ReqwestUpstreamClient {
         &self,
         request: ChatCompletionsRequest<'_>,
     ) -> HarnessResult<ObservedResponse> {
-        let url = chat_completions_url(&request.config.base_url)?;
+        let url = chat_completions_url(&request.config.base_url, request.query)?;
         let mut outbound = self.client.post(url).bearer_auth(request.api_key);
 
         for (name, value) in request.headers {
+            if name.eq_ignore_ascii_case("authorization") {
+                continue;
+            }
             let header_name = HeaderName::try_from(name.as_str()).map_err(|error| {
                 HarnessError::InvalidConfig {
                     message: format!("invalid outbound header name {name:?}: {error}"),
@@ -123,13 +128,14 @@ impl ChatCompletionsUpstream for ReqwestUpstreamClient {
     }
 }
 
-/// Builds the upstream chat completions URL from the configured base URL.
+/// Builds the upstream chat completions URL from the configured base URL and
+/// optional query string.
 ///
 /// # Errors
 ///
 /// Returns [`HarnessError::InvalidConfig`] when the base URL is not a valid
 /// absolute URL.
-pub(crate) fn chat_completions_url(base_url: &str) -> HarnessResult<Url> {
+pub(crate) fn chat_completions_url(base_url: &str, query: &str) -> HarnessResult<Url> {
     let mut url = Url::parse(base_url).map_err(|error| HarnessError::InvalidConfig {
         message: format!("invalid upstream base URL {base_url:?}: {error}"),
     })?;
@@ -142,6 +148,9 @@ pub(crate) fn chat_completions_url(base_url: &str) -> HarnessResult<Url> {
         segments.pop_if_empty();
         segments.push("chat");
         segments.push("completions");
+    }
+    if !query.is_empty() {
+        url.set_query(Some(query));
     }
     Ok(url)
 }
@@ -157,14 +166,25 @@ mod tests {
     #[rstest]
     #[case(
         "https://openrouter.ai/api/v1",
+        "",
         "https://openrouter.ai/api/v1/chat/completions"
     )]
     #[case(
         "https://openrouter.ai/api/v1/",
+        "",
         "https://openrouter.ai/api/v1/chat/completions"
     )]
-    fn chat_completions_url_appends_endpoint_path(#[case] base_url: &str, #[case] expected: &str) {
-        let actual = chat_completions_url(base_url).expect("base URL should parse");
+    #[case(
+        "https://openrouter.ai/api/v1",
+        "foo=bar&baz=1",
+        "https://openrouter.ai/api/v1/chat/completions?foo=bar&baz=1"
+    )]
+    fn chat_completions_url_appends_endpoint_path(
+        #[case] base_url: &str,
+        #[case] query: &str,
+        #[case] expected: &str,
+    ) {
+        let actual = chat_completions_url(base_url, query).expect("base URL should parse");
         assert_eq!(actual.as_str(), expected);
     }
 }

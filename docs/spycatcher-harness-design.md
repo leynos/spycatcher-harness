@@ -979,6 +979,8 @@ avoiding time commitments.
   - [x] Non-stream responses are stored as exact bytes plus parsed JSON when
         valid.
   - [x] Redaction rules remove configured secret headers before persistence.
+  - [x] Requests with `stream: true` return HTTP 501 Not Implemented and
+        produce zero cassette writes (shipped: `stream: true` guardrail).
 - [ ] 1.3.2. Implement non-stream replay for `POST /v1/chat/completions`.
   - [ ] Replay returns recorded status, headers, and body bytes verbatim for
         non-stream interactions.

@@ -2205,6 +2205,7 @@ dependencies = [
  "clap",
  "eyre",
  "insta",
+ "log",
  "ortho_config",
  "proptest",
  "reqwest",

@@ -4,6 +4,7 @@
 //! adapter-neutral exchange types defined here, delegating proxying and
 //! cassette assembly to small testable helpers.
 
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
@@ -11,6 +12,7 @@ use axum::body::Bytes;
 use axum::extract::{OriginalUri, State};
 use axum::http::{HeaderMap, HeaderName, HeaderValue, Response, StatusCode};
 use axum::response::IntoResponse;
+use log::{error, info};
 use serde_json::json;
 use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
@@ -68,6 +70,8 @@ impl RecordAppState {
                 metadata: SessionMetadata::new(upstream.kind),
                 upstream,
                 redaction: cfg.redaction.clone(),
+                recorded_count: Arc::new(AtomicU64::new(0)),
+                failure_count: Arc::new(AtomicU64::new(0)),
             },
         })
     }
@@ -82,6 +86,8 @@ pub(crate) struct RecordService<U, E, M> {
     metadata: M,
     upstream: UpstreamConfig,
     redaction: RedactionConfig,
+    recorded_count: Arc<AtomicU64>,
+    failure_count: Arc<AtomicU64>,
 }
 
 /// Timestamp and relative-offset factory for recorded interactions.
@@ -195,19 +201,51 @@ where
                 env_var: self.upstream.api_key_env.clone(),
             })?;
 
-        let upstream_response = self
+        let interaction_id = format!(
+            "{proto}-{seq}",
+            proto = CHAT_COMPLETIONS_PROTOCOL_ID,
+            seq = self.recorded_count.load(Ordering::Relaxed),
+        );
+        let upstream_start = Instant::now();
+
+        let upstream_result = self
             .upstream_client
             .send_chat_completions(ChatCompletionsRequest {
                 config: &self.upstream,
                 api_key: &api_key,
                 headers: &request.headers,
                 body: &request.body,
+                query: &request.query,
             })
-            .await
-            .map_err(|_| RecordError::Internal)?;
+            .await;
+
+        let upstream_latency = upstream_start.elapsed().as_millis();
+
+        let upstream_response = upstream_result.map_err(|_| {
+            self.failure_count.fetch_add(1, Ordering::Relaxed);
+            error!(
+                target: "spycatcher.harness.record",
+                "upstream request failed interaction_id={interaction_id} \
+                 mode=record protocol={protocol} upstream_latency_ms={upstream_latency} \
+                 outcome=failed cassette={cassette}",
+                protocol = CHAT_COMPLETIONS_PROTOCOL_ID,
+                cassette = upstream_id(self.upstream.kind),
+            );
+            RecordError::Internal
+        })?;
 
         let interaction = self.build_interaction(request, &upstream_response)?;
         self.append_interaction(interaction).await?;
+
+        self.recorded_count.fetch_add(1, Ordering::Relaxed);
+        info!(
+            target: "spycatcher.harness.record",
+            "interaction recorded interaction_id={interaction_id} \
+             mode=record protocol={protocol} upstream_latency_ms={upstream_latency} \
+             outcome=recorded cassette={cassette}",
+            protocol = CHAT_COMPLETIONS_PROTOCOL_ID,
+            cassette = upstream_id(self.upstream.kind),
+        );
 
         Ok(ProxyResponse {
             status: upstream_response.status,

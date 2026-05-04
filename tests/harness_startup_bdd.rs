@@ -211,6 +211,14 @@ fn the_harness_address_is_bound_on(harness_world: &HarnessWorld, ip: std::net::I
         .with_ref(|r| r.as_ref().expect("harness should be running").addr)
         .expect("start_result must be set");
     assert_eq!(actual.ip(), ip);
+}
+
+#[then("the harness port is non-zero")]
+fn the_harness_port_is_non_zero(harness_world: &HarnessWorld) {
+    let actual = harness_world
+        .start_result
+        .with_ref(|r| r.as_ref().expect("harness should be running").addr)
+        .expect("start_result must be set");
     assert_ne!(actual.port(), 0, "expected OS-assigned port");
 }
 

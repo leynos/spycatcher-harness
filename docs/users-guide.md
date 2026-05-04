@@ -107,6 +107,18 @@ Header capture and redaction:
   case-insensitively immediately before persistence, preserving the observed
   order and duplicates of the retained headers.
 
+Persisted response contract:
+
+- Persisted response headers exclude hop-by-hop headers and `content-length`.
+  Redaction via `redaction.drop_headers` removes matching header names
+  case-insensitively immediately before persistence, preserving the observed
+  order and duplicates of the retained headers.
+- Non-stream upstream response bodies are stored byte-for-byte in the
+  cassette.
+- `parsed_json` is populated only when the response body decodes and parses as
+  valid JSON; otherwise `parsed_json` is left empty so consumers know what
+  replay can reconstruct.
+
 ### Replay matching modes
 
 The harness supports two matching modes for replay:

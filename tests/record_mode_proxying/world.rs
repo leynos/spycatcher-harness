@@ -9,6 +9,9 @@ use rstest_bdd_macros::ScenarioState;
 use spycatcher_harness::{HarnessConfig, HarnessResult, RunningHarness};
 
 use crate::record_mode_proxying::helpers::{ClientResponse, StubUpstream};
+#[path = "../support/test_utils.rs"]
+mod test_utils;
+use test_utils::build_runtime;
 
 /// Shared state for record-mode proxying scenarios.
 #[derive(ScenarioState)]
@@ -35,15 +38,5 @@ impl Default for ProxyWorld {
             upstream: Slot::default(),
             shutdown_result: Slot::default(),
         }
-    }
-}
-
-fn build_runtime() -> tokio::runtime::Runtime {
-    match tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()
-    {
-        Ok(runtime) => runtime,
-        Err(error) => panic!("BDD runtime should build: {error}"),
     }
 }
