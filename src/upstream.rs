@@ -194,5 +194,3 @@ mod tests {
         assert_eq!(actual.as_str(), expected);
     }
 }
-
-pub(crate) struct ProcessEnvProvider;
