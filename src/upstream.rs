@@ -12,6 +12,12 @@ use crate::http_exchange::{ObservedResponse, parse_json_bytes, selected_response
 use crate::{HarnessError, HarnessResult};
 use std::time::Duration;
 
+/// Request timeout applied to the Reqwest client.
+///
+/// Thirty seconds bounds non-stream LLM completions without allowing
+/// indefinite upstream hangs.
+pub(crate) const UPSTREAM_TIMEOUT: Duration = Duration::from_secs(30);
+
 /// Narrow environment lookup port used by record-mode request handling.
 pub(crate) trait EnvProvider {
     /// Returns the value of an environment variable when it is present.
@@ -71,7 +77,7 @@ impl ReqwestUpstreamClient {
             .no_brotli()
             .no_deflate()
             .no_zstd()
-            .timeout(Duration::from_secs(30))
+            .timeout(UPSTREAM_TIMEOUT)
             .build()
             .map_err(|error| HarnessError::InvalidConfig {
                 message: format!("failed to construct upstream client: {error}"),

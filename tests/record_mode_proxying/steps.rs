@@ -103,6 +103,17 @@ fn a_non_stream_chat_completions_request_with_header_is_sent_to_the_harness(
     )
 }
 
+#[when("a non-stream chat completions request with header Authorization is sent to the harness")]
+fn a_non_stream_chat_completions_request_with_authorization_is_sent_to_the_harness(
+    proxy_world: &ProxyWorld,
+) -> Result<(), Box<dyn Error>> {
+    send_request_to_harness(
+        proxy_world,
+        NON_STREAM_REQUEST,
+        &[("authorization", "Bearer downstream-secret")],
+    )
+}
+
 #[when("a streaming chat completions request is sent to the harness")]
 fn a_streaming_chat_completions_request_is_sent_to_the_harness(
     proxy_world: &ProxyWorld,
@@ -135,15 +146,18 @@ fn the_cassette_contains_one_recorded_interaction(
     Ok(())
 }
 
+#[then("the upstream receives the request body unchanged")]
+fn the_upstream_receives_the_request_body_unchanged(
+    proxy_world: &ProxyWorld,
+) -> Result<(), Box<dyn Error>> {
+    let request = first_upstream_request(proxy_world)?;
+    assert_eq!(request.body, NON_STREAM_REQUEST);
+    Ok(())
+}
+
 #[then("the upstream receives the header x-session-secret")]
 fn the_upstream_receives_the_header(proxy_world: &ProxyWorld) -> Result<(), Box<dyn Error>> {
-    let requests = proxy_world
-        .upstream
-        .with_ref(StubUpstream::captured_requests)
-        .ok_or_else(|| std::io::Error::other("stub upstream must be available"))??;
-    let request = requests
-        .first()
-        .ok_or_else(|| std::io::Error::other("expected one proxied request"))?;
+    let request = first_upstream_request(proxy_world)?;
     assert!(
         request
             .headers
@@ -154,9 +168,38 @@ fn the_upstream_receives_the_header(proxy_world: &ProxyWorld) -> Result<(), Box<
     Ok(())
 }
 
+#[then("the upstream does not receive the header Authorization")]
+fn the_upstream_does_not_receive_authorization(
+    proxy_world: &ProxyWorld,
+) -> Result<(), Box<dyn Error>> {
+    let request = first_upstream_request(proxy_world)?;
+    assert!(
+        request
+            .headers
+            .iter()
+            .all(|(name, _)| !name.eq_ignore_ascii_case("authorization")),
+        "expected Authorization to be replaced by configured upstream auth",
+    );
+    Ok(())
+}
+
 #[then("the cassette request headers omit x-session-secret")]
 fn the_cassette_request_headers_omit_secret(
     proxy_world: &ProxyWorld,
+) -> Result<(), Box<dyn Error>> {
+    assert_cassette_request_omits_header(proxy_world, "x-session-secret")
+}
+
+#[then("the cassette request headers omit Authorization")]
+fn the_cassette_request_headers_omit_authorization(
+    proxy_world: &ProxyWorld,
+) -> Result<(), Box<dyn Error>> {
+    assert_cassette_request_omits_header(proxy_world, "authorization")
+}
+
+fn assert_cassette_request_omits_header(
+    proxy_world: &ProxyWorld,
+    header_name: &str,
 ) -> Result<(), Box<dyn Error>> {
     let cassette = cassette_from_world(proxy_world)?;
     let interaction = cassette
@@ -168,8 +211,8 @@ fn the_cassette_request_headers_omit_secret(
             .request
             .headers
             .iter()
-            .all(|(name, _)| name != "x-session-secret"),
-        "expected redacted header to be absent from cassette",
+            .all(|(name, _)| !name.eq_ignore_ascii_case(header_name)),
+        "expected {header_name} to be absent from cassette",
     );
     Ok(())
 }
@@ -301,6 +344,19 @@ fn cassette_from_world(
         .with_ref(Clone::clone)
         .ok_or_else(|| std::io::Error::other("cassette path should be recorded"))?;
     load_cassette(&cassette_path)
+}
+
+fn first_upstream_request(
+    proxy_world: &ProxyWorld,
+) -> Result<crate::record_mode_proxying::helpers::CapturedRequest, Box<dyn Error>> {
+    let requests = proxy_world
+        .upstream
+        .with_ref(StubUpstream::captured_requests)
+        .ok_or_else(|| std::io::Error::other("stub upstream must be available"))??;
+    requests
+        .first()
+        .cloned()
+        .ok_or_else(|| std::io::Error::other("expected one proxied request").into())
 }
 
 #[expect(

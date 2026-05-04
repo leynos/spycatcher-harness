@@ -2417,7 +2417,6 @@ name = "spycatcher-harness"
 version = "0.1.0"
 dependencies = [
  "axum",
- "base64",
  "camino",
  "cap-std",
  "clap",
@@ -2425,6 +2424,7 @@ dependencies = [
  "insta",
  "log",
  "ortho_config",
+ "percent-encoding",
  "proptest",
  "reqwest",
  "rstest",

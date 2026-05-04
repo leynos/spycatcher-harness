@@ -5,8 +5,7 @@
 //! persisted.
 
 use axum::http::{HeaderMap, HeaderName};
-use base64::Engine as _;
-use base64::engine::general_purpose::STANDARD as BASE64;
+use percent_encoding::{NON_ALPHANUMERIC, percent_encode};
 use serde_json::Value;
 
 use crate::config::RedactionConfig;
@@ -94,7 +93,7 @@ fn selected_headers(headers: &HeaderMap, excluded: &[&str]) -> Vec<(String, Stri
 
 fn header_value_string(value: &axum::http::HeaderValue) -> String {
     value.to_str().map_or_else(
-        |_| format!("B64:{}", BASE64.encode(value.as_bytes())),
+        |_| percent_encode(value.as_bytes(), NON_ALPHANUMERIC).to_string(),
         ToOwned::to_owned,
     )
 }
@@ -178,5 +177,19 @@ mod tests {
     #[rstest]
     fn parse_json_bytes_returns_none_for_invalid_json() {
         assert_eq!(parse_json_bytes(br#"{"unterminated": true"#), None);
+    }
+
+    #[rstest]
+    fn selected_response_headers_preserve_non_utf8_values() {
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            "x-raw",
+            axum::http::HeaderValue::from_bytes(b"\xff\xfe").expect("valid raw header"),
+        );
+
+        assert_eq!(
+            selected_response_headers(&headers),
+            vec![("x-raw".to_owned(), "%FF%FE".to_owned())],
+        );
     }
 }
