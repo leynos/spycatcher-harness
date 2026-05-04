@@ -72,6 +72,7 @@ impl RecordAppState {
                 redaction: cfg.redaction.clone(),
                 recorded_count: Arc::new(AtomicU64::new(0)),
                 failure_count: Arc::new(AtomicU64::new(0)),
+                interaction_seq: Arc::new(AtomicU64::new(0)),
             },
         })
     }
@@ -88,6 +89,7 @@ pub(crate) struct RecordService<U, E, M> {
     redaction: RedactionConfig,
     recorded_count: Arc<AtomicU64>,
     failure_count: Arc<AtomicU64>,
+    interaction_seq: Arc<AtomicU64>,
 }
 
 /// Timestamp and relative-offset factory for recorded interactions.
@@ -204,7 +206,7 @@ where
         let interaction_id = format!(
             "{proto}-{seq}",
             proto = CHAT_COMPLETIONS_PROTOCOL_ID,
-            seq = self.recorded_count.load(Ordering::Relaxed),
+            seq = self.interaction_seq.fetch_add(1, Ordering::Relaxed),
         );
         let upstream_start = Instant::now();
 

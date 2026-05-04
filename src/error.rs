@@ -72,8 +72,12 @@ pub enum HarnessError {
     },
 
     /// A request to the upstream provider failed.
-    #[error("upstream request failed")]
-    UpstreamRequestFailed,
+    #[error("upstream request failed: {source}")]
+    UpstreamRequestFailed {
+        /// The underlying transport or protocol error.
+        #[source]
+        source: Box<dyn std::error::Error + Send + Sync>,
+    },
 
     /// An I/O operation failed.
     #[error("io failure")]
@@ -118,7 +122,12 @@ mod tests {
         HarnessError::UnsupportedCassetteFormatVersion { found: 2, supported: 1 },
         "unsupported cassette format version 2; supported version is 1",
     )]
-    #[case::upstream_failed(HarnessError::UpstreamRequestFailed, "upstream request failed")]
+    #[case::upstream_failed(
+        HarnessError::UpstreamRequestFailed {
+            source: Box::new(std::io::Error::new(std::io::ErrorKind::ConnectionRefused, "test failure")),
+        },
+        "upstream request failed: test failure",
+    )]
     #[case::io(
         HarnessError::Io { source: std::io::Error::new(std::io::ErrorKind::NotFound, "gone") },
         "io failure",

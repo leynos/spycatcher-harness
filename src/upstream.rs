@@ -110,13 +110,17 @@ impl ChatCompletionsUpstream for ReqwestUpstreamClient {
             .body(request.body.to_vec())
             .send()
             .await
-            .map_err(|_| HarnessError::UpstreamRequestFailed)?;
+            .map_err(|source| HarnessError::UpstreamRequestFailed {
+                source: source.into(),
+            })?;
         let status = response.status().as_u16();
         let selected_headers = selected_response_headers(response.headers());
         let response_body = response
             .bytes()
             .await
-            .map_err(|_| HarnessError::UpstreamRequestFailed)?
+            .map_err(|source| HarnessError::UpstreamRequestFailed {
+                source: source.into(),
+            })?
             .to_vec();
 
         Ok(ObservedResponse {

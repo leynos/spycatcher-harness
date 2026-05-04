@@ -44,7 +44,14 @@ impl ChatCompletionsUpstream for FakeUpstream {
         _request: ChatCompletionsRequest<'_>,
     ) -> HarnessResult<ObservedResponse> {
         self.response.as_ref().map_or_else(
-            |()| Err(HarnessError::UpstreamRequestFailed),
+            |()| {
+                Err(HarnessError::UpstreamRequestFailed {
+                    source: Box::new(std::io::Error::new(
+                        std::io::ErrorKind::ConnectionRefused,
+                        "stub failure",
+                    )),
+                })
+            },
             |response| Ok(response.clone()),
         )
     }
@@ -181,6 +188,7 @@ fn service_fixture(
         },
         recorded_count: Arc::new(AtomicU64::new(0)),
         failure_count: Arc::new(AtomicU64::new(0)),
+        interaction_seq: Arc::new(AtomicU64::new(0)),
     }
 }
 
