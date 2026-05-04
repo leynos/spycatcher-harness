@@ -4,12 +4,13 @@
 //! authentication and forward them to the configured provider without leaking
 //! client-library types into cassette logic.
 
-use axum::http::{HeaderName, HeaderValue};
 use reqwest::{Client, Url};
+use axum::http::{HeaderName, HeaderValue};
 
 use crate::config::UpstreamConfig;
 use crate::http_exchange::{ObservedResponse, parse_json_bytes, selected_response_headers};
 use crate::{HarnessError, HarnessResult};
+use std::time::Duration;
 
 /// Narrow environment lookup port used by record-mode request handling.
 pub(crate) trait EnvProvider {
@@ -70,6 +71,7 @@ impl ReqwestUpstreamClient {
             .no_brotli()
             .no_deflate()
             .no_zstd()
+            .timeout(Duration::from_secs(30))
             .build()
             .map_err(|error| HarnessError::InvalidConfig {
                 message: format!("failed to construct upstream client: {error}"),

@@ -5,6 +5,8 @@
 //! persisted.
 
 use axum::http::{HeaderMap, HeaderName};
+use base64::Engine as _;
+use base64::engine::general_purpose::STANDARD as BASE64;
 use serde_json::Value;
 
 use crate::config::RedactionConfig;
@@ -86,13 +88,15 @@ fn selected_headers(headers: &HeaderMap, excluded: &[&str]) -> Vec<(String, Stri
     headers
         .iter()
         .filter(|(name, _)| should_keep_header(name, excluded))
-        .filter_map(|(name, value)| {
-            value
-                .to_str()
-                .ok()
-                .map(|header_value| (name.as_str().to_owned(), header_value.to_owned()))
-        })
+        .map(|(name, value)| (name.as_str().to_owned(), header_value_string(value)))
         .collect()
+}
+
+fn header_value_string(value: &axum::http::HeaderValue) -> String {
+    value.to_str().map_or_else(
+        |_| format!("B64:{}", BASE64.encode(value.as_bytes())),
+        ToOwned::to_owned,
+    )
 }
 
 fn should_keep_header(name: &HeaderName, excluded: &[&str]) -> bool {
