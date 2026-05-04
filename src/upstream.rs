@@ -4,8 +4,8 @@
 //! authentication and forward them to the configured provider without leaking
 //! client-library types into cassette logic.
 
-use reqwest::{Client, Url};
 use axum::http::{HeaderName, HeaderValue};
+use reqwest::{Client, Url};
 
 use crate::config::UpstreamConfig;
 use crate::http_exchange::{ObservedResponse, parse_json_bytes, selected_response_headers};
@@ -194,3 +194,5 @@ mod tests {
         assert_eq!(actual.as_str(), expected);
     }
 }
+
+pub(crate) struct ProcessEnvProvider;
