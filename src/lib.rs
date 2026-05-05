@@ -111,7 +111,11 @@ pub async fn start_harness(cfg: HarnessConfig) -> HarnessResult<RunningHarness> 
             let (addr, runtime) = server::start_record_server(&cfg, &cassette_path).await?;
             (addr, Some(runtime))
         }
-        config::Mode::Replay | config::Mode::Verify => (cfg.listen.as_socket_addr(), None),
+        config::Mode::Replay | config::Mode::Verify => {
+            return Err(HarnessError::ModeNotYetImplemented {
+                mode: format!("{:?}", cfg.mode),
+            });
+        }
     };
 
     Ok(RunningHarness {
@@ -242,6 +246,8 @@ mod tests {
         harness.shutdown().await.expect("shutdown should succeed");
     }
 
+    // TODO: re-enable in task 1.3.2
+    #[ignore = "replay mode not yet implemented, re-enable in task 1.3.2"]
     #[rstest]
     #[tokio::test]
     async fn start_harness_cassette_path_joins_dir_and_name() -> HarnessResult<()> {
@@ -281,6 +287,8 @@ mod tests {
         harness.shutdown().await.expect("shutdown should succeed");
     }
 
+    // TODO: re-enable in task 1.3.2
+    #[ignore = "replay mode not yet implemented, re-enable in task 1.3.2"]
     #[rstest]
     #[tokio::test]
     async fn start_harness_with_supported_replay_cassette_succeeds() -> HarnessResult<()> {
@@ -338,6 +346,21 @@ mod tests {
             }
             if found_supported == supported
         ));
+        Ok(())
+    }
+
+    #[rstest]
+    #[tokio::test]
+    async fn start_harness_replay_mode_returns_not_yet_implemented() -> HarnessResult<()> {
+        let cassette_name = unique_cassette_name("replay-nyi");
+        seed_replay_cassette(&cassette_name)?;
+
+        let result = start_harness(replay_config(cassette_name)).await;
+
+        assert!(
+            matches!(result, Err(HarnessError::ModeNotYetImplemented { .. })),
+            "expected ModeNotYetImplemented, got {result:?}"
+        );
         Ok(())
     }
 

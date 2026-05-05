@@ -79,6 +79,13 @@ pub enum HarnessError {
         source: Box<dyn std::error::Error + Send + Sync>,
     },
 
+    /// The requested harness mode has not yet been implemented.
+    #[error("mode not yet implemented: {mode}")]
+    ModeNotYetImplemented {
+        /// Debug representation of the unsupported mode.
+        mode: String,
+    },
+
     /// An I/O operation failed.
     #[error("io failure")]
     Io {
@@ -131,6 +138,10 @@ mod tests {
     #[case::io(
         HarnessError::Io { source: std::io::Error::new(std::io::ErrorKind::NotFound, "gone") },
         "io failure",
+    )]
+    #[case::mode_not_yet_implemented(
+        HarnessError::ModeNotYetImplemented { mode: "Replay".to_owned() },
+        "mode not yet implemented: Replay",
     )]
     fn error_display_matches_expected(#[case] error: HarnessError, #[case] expected: &str) {
         assert_eq!(format!("{error}"), expected);
