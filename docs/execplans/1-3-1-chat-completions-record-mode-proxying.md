@@ -170,6 +170,8 @@ Skills to apply during implementation:
 - [x] Run all required validation gates and record outcomes here.
 - [x] Address post-review fixes for deterministic metadata timestamps and raw
       `Connection` header token parsing.
+- [x] Address post-review fixes for configurable tool paths, BDD helper
+      cardinality checks, and safe proxy-header warning logs.
 
 ## Surprises & Discoveries
 
@@ -237,6 +239,9 @@ Skills to apply during implementation:
 - Confirmed decision: parse `Connection` header tokens from raw header bytes so
   one non-UTF-8 token does not suppress valid hop-by-hop tokens in the same
   header value.
+- Confirmed decision: proxy response header parse failures may log header names
+  and byte lengths, but not raw header values, because response headers can
+  carry sensitive data.
 
 ## Outcomes & Retrospective
 

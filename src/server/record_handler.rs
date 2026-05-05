@@ -52,7 +52,8 @@ fn build_proxy_response(response: ProxyResponse) -> Response<axum::body::Body> {
             _ => {
                 warn!(
                     target: "spycatcher.harness.record",
-                    "dropping unparseable proxy response header name={name:?} value={value:?}"
+                    "dropping unparseable proxy response header name={name:?} value_len={}",
+                    value.len()
                 );
             }
         }

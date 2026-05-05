@@ -201,10 +201,13 @@ fn assert_cassette_request_omits_header(
     header_name: &str,
 ) -> Result<(), Box<dyn Error>> {
     let cassette = cassette_from_world(proxy_world)?;
-    let interaction = cassette
-        .interactions
-        .first()
-        .ok_or_else(|| std::io::Error::other("expected one recorded interaction"))?;
+    let [interaction] = cassette.interactions.as_slice() else {
+        return Err(std::io::Error::other(format!(
+            "expected exactly one recorded interaction, got {}",
+            cassette.interactions.len()
+        ))
+        .into());
+    };
     if interaction
         .request
         .headers
@@ -355,10 +358,14 @@ fn first_upstream_request(
         .upstream
         .with_ref(StubUpstream::captured_requests)
         .ok_or_else(|| std::io::Error::other("stub upstream must be available"))??;
-    requests
-        .first()
-        .cloned()
-        .ok_or_else(|| std::io::Error::other("expected one proxied request").into())
+    let [request] = requests.as_slice() else {
+        return Err(std::io::Error::other(format!(
+            "expected exactly one proxied request, got {}",
+            requests.len()
+        ))
+        .into());
+    };
+    Ok(request.clone())
 }
 
 #[expect(
