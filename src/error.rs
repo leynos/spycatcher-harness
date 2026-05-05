@@ -72,8 +72,19 @@ pub enum HarnessError {
     },
 
     /// A request to the upstream provider failed.
-    #[error("upstream request failed")]
-    UpstreamRequestFailed,
+    #[error("upstream request failed: {source}")]
+    UpstreamRequestFailed {
+        /// The underlying transport or protocol error.
+        #[source]
+        source: Box<dyn std::error::Error + Send + Sync>,
+    },
+
+    /// The requested harness mode has not yet been implemented.
+    #[error("mode not yet implemented: {mode}")]
+    ModeNotYetImplemented {
+        /// Debug representation of the unsupported mode.
+        mode: String,
+    },
 
     /// An I/O operation failed.
     #[error("io failure")]
@@ -118,10 +129,19 @@ mod tests {
         HarnessError::UnsupportedCassetteFormatVersion { found: 2, supported: 1 },
         "unsupported cassette format version 2; supported version is 1",
     )]
-    #[case::upstream_failed(HarnessError::UpstreamRequestFailed, "upstream request failed")]
+    #[case::upstream_failed(
+        HarnessError::UpstreamRequestFailed {
+            source: Box::new(std::io::Error::new(std::io::ErrorKind::ConnectionRefused, "test failure")),
+        },
+        "upstream request failed: test failure",
+    )]
     #[case::io(
         HarnessError::Io { source: std::io::Error::new(std::io::ErrorKind::NotFound, "gone") },
         "io failure",
+    )]
+    #[case::mode_not_yet_implemented(
+        HarnessError::ModeNotYetImplemented { mode: "Replay".to_owned() },
+        "mode not yet implemented: Replay",
     )]
     fn error_display_matches_expected(#[case] error: HarnessError, #[case] expected: &str) {
         assert_eq!(format!("{error}"), expected);

@@ -77,14 +77,17 @@ SSE and multi-protocol evolution. [^12][^13]
 ## Architecture overview
 
 The harness is an HTTP server plus a cassette store, with a protocol adapter
-layer. In record mode it proxies to OpenRouter’s OpenAI-compatible API base
-(`/api/v1/chat/completions`) and records the full request/response exchange.
-OpenRouter documents its OpenAI-like request/response schema and that streaming
-is SSE with occasional comment payloads. [^1][^2]
+layer. In record mode it now binds a real local listener, proxies
+`POST /v1/chat/completions` to the configured OpenRouter-style OpenAI-
+compatible API base, and records the full request/response exchange. OpenRouter
+documents its OpenAI-like request/response schema and that streaming is SSE
+with occasional comment payloads. [^1][^2]
 
-The same server runs in replay mode and answers from the cassette. VidaiMock
-can be used as an optional replay backend to simulate time-to-first-token
-(TTFT), jitter, and chaos failure modes that it explicitly advertises. [^11]
+Replay-mode HTTP serving remains the next slice (`1.3.2`); replay and verify
+startup still validate cassette state without yet mounting a replay handler.
+VidaiMock can be used as an optional replay backend to simulate
+time-to-first-token (TTFT), jitter, and chaos failure modes that it explicitly
+advertises. [^11]
 
 A short diagram description follows. The diagram shows the record/replay data
 flow and the adapter boundary.
@@ -134,9 +137,22 @@ Key architectural points:
   - Read-only in replay mode.
   - Supports strict sequential replay and keyed replay modes.
 - **Upstream client**:
-  - Targets OpenRouter’s base URL and endpoints.
+  - Targets the configured upstream base URL, appending
+    `chat/completions` to the base path for this slice.
+  - Sources the bearer token from `UpstreamConfig.api_key_env`.
   - Adds OpenRouter optional attribution headers if configured (`HTTP-Referer`,
     `X-Title`). [^14][^15]
+- **Header policy**:
+  - Request capture and forwarding drop hop-by-hop and framing headers.
+  - Request persistence additionally excludes `host`, `content-length`, and
+    `accept-encoding`.
+  - Response persistence excludes hop-by-hop headers and `content-length`.
+  - Configured redaction removes matching header names case-insensitively
+    immediately before cassette persistence.
+- **Streaming guardrail**:
+  - `stream: true` is rejected with an explicit "not implemented yet"
+    response in task `1.3.1`, and the harness does not append a cassette entry
+    for that request.
 - **Replay backend selection**:
   - Native replay: earliest slice, no external dependency.
   - VidaiMock replay: optional enhancement to simulate streaming physics and
@@ -206,6 +222,13 @@ harness does not append an implicit `.json` suffix. Each interaction contains:
   - Protocol identifier (e.g., `openai.chat_completions.v1`).
   - Upstream identifier (`openrouter`).
   - Timestamps (recorded and relative offsets).
+
+For the shipped `1.3.1` slice, "selected headers" means the inbound
+request-header subset after hop-by-hop and framing removal, with persistence
+redaction applied case-insensitively just before writing the cassette. The
+recorded request intentionally reflects what the client sent to the harness,
+not the enriched outbound upstream request after bearer-token injection and
+configured `extra_headers`.
 
 ### Matching modes
 
@@ -950,12 +973,14 @@ avoiding time commitments.
 
 #### 1.3. OpenAI chat completions non-stream path
 
-- [ ] 1.3.1. Implement `POST /v1/chat/completions` record mode proxying.
-  - [ ] Requests are proxied to configured upstream with selected headers and
+- [x] 1.3.1. Implement `POST /v1/chat/completions` record mode proxying.
+  - [x] Requests are proxied to configured upstream with selected headers and
         body capture.
-  - [ ] Non-stream responses are stored as exact bytes plus parsed JSON when
+  - [x] Non-stream responses are stored as exact bytes plus parsed JSON when
         valid.
-  - [ ] Redaction rules remove configured secret headers before persistence.
+  - [x] Redaction rules remove configured secret headers before persistence.
+  - [x] Requests with `stream: true` return HTTP 501 Not Implemented and
+        produce zero cassette writes (shipped: `stream: true` guardrail).
 - [ ] 1.3.2. Implement non-stream replay for `POST /v1/chat/completions`.
   - [ ] Replay returns recorded status, headers, and body bytes verbatim for
         non-stream interactions.
