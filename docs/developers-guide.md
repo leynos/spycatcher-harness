@@ -89,19 +89,23 @@ integration tests, preventing collisions when tests run in parallel.
 
 The library crate (`src/lib.rs`) exposes the following public modules:
 
-| Module     | Purpose                                                                       |
-| ---------- | ----------------------------------------------------------------------------- |
-| `cassette` | Schema, canonicalization, hashing, matching, diff, and filesystem persistence |
-| `cli`      | CLI argument parsing via `clap`                                               |
-| `config`   | `HarnessConfig` and related structures                                        |
-| `error`    | `HarnessError` enum and `HarnessResult` alias                                 |
-| `i18n`     | Internationalization via Fluent                                               |
-| `protocol` | Protocol identifier definitions                                               |
-| `replay`   | Replay mode logic (placeholder)                                               |
-| `server`   | HTTP server logic (placeholder)                                               |
-| `upstream` | Upstream target configuration                                                 |
+| Module     | Purpose                                                                    |
+| ---------- | -------------------------------------------------------------------------- |
+| `cassette` | Schema, canonicalization, hashing, matching, diff, filesystem persistence  |
+| `cli`      | CLI argument parsing via `clap`                                            |
+| `config`   | `HarnessConfig`, `UpstreamConfig`, `RedactionConfig`, and related types    |
+| `error`    | `HarnessError` enum and `HarnessResult` alias                              |
+| `i18n`     | Internationalization via Fluent                                            |
+| `protocol` | Capture and redaction helpers: header selection, hop-by-hop filtering      |
+| `replay`   | Replay mode logic                                                          |
+| `server`   | Axum record-mode HTTP server: routing, handler, graceful shutdown          |
+| `upstream` | Outbound HTTP adapter: URL construction, secret resolution, reqwest client |
 
 _Table 1: Top-level library modules._
+
+The crate root re-exports the public entry points `start_harness`,
+`RunningHarness`, and `shutdown` (from `RunningHarness`) as well as
+`HarnessConfig`, `HarnessError`, and `HarnessResult`.
 
 The `cassette` module contains several submodules:
 
