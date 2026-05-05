@@ -4,7 +4,6 @@
 //! adapter-neutral exchange types defined here, delegating proxying and
 //! cassette assembly to small testable helpers.
 
-use std::fmt::Debug;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
@@ -13,19 +12,18 @@ use axum::http::{HeaderValue, Response, StatusCode};
 use axum::response::IntoResponse;
 use log::{error, info};
 use serde_json::json;
-use time::OffsetDateTime;
-use time::format_description::well_known::Rfc3339;
 use tokio::task::spawn_blocking;
 
 use crate::cassette::{
-    CassetteAppender, IgnorePathConfig, Interaction, InteractionMetadata, RecordedRequest,
-    RecordedResponse, filesystem::FilesystemCassetteStore,
+    CassetteAppender, IgnorePathConfig, Interaction, RecordedRequest, RecordedResponse,
+    filesystem::FilesystemCassetteStore,
 };
 use crate::config::{HarnessConfig, RedactionConfig, UpstreamConfig};
 use crate::http_exchange::{ObservedRequest, ProxyResponse, redact_headers};
 use crate::protocol::{
     CHAT_COMPLETIONS_PROTOCOL_ID, is_streaming_chat_completions_request, upstream_id,
 };
+use crate::server::record_metadata::{MetadataFactory, SessionMetadata};
 use crate::upstream::{
     ChatCompletionsRequest, ChatCompletionsUpstream, EnvProvider, ProcessEnvProvider,
     ReqwestUpstreamClient,
@@ -86,81 +84,6 @@ pub(crate) struct RecordService<U, E, M> {
     recorded_count: Arc<AtomicU64>,
     failure_count: Arc<AtomicU64>,
     interaction_seq: Arc<AtomicU64>,
-}
-
-/// Timestamp and relative-offset factory for recorded interactions.
-pub(crate) trait MetadataFactory: Clone + Send + Sync + 'static {
-    /// Creates one metadata payload for a newly observed interaction.
-    fn create(&self) -> HarnessResult<InteractionMetadata>;
-}
-
-/// Clock abstraction used by record-mode metadata.
-pub(crate) trait Clock: Debug + Send + Sync {
-    /// Returns the current timestamp in RFC 3339 format.
-    ///
-    /// # Errors
-    ///
-    /// Returns a harness error when the timestamp cannot be formatted.
-    fn now_rfc3339(&self) -> HarnessResult<String>;
-}
-
-/// Clock backed by the system UTC time source.
-#[derive(Debug, Clone, Copy)]
-pub(crate) struct SystemClock;
-
-impl Clock for SystemClock {
-    fn now_rfc3339(&self) -> HarnessResult<String> {
-        OffsetDateTime::now_utc()
-            .format(&Rfc3339)
-            .map_err(|error| HarnessError::InvalidConfig {
-                message: format!("failed to format recording timestamp: {error}"),
-            })
-    }
-}
-
-/// Metadata factory backed by the current UTC clock and session start time.
-#[derive(Debug, Clone)]
-pub(crate) struct SessionMetadata {
-    session_start: Instant,
-    upstream_kind: crate::config::UpstreamKind,
-    clock: Arc<dyn Clock>,
-}
-
-impl SessionMetadata {
-    #[must_use]
-    pub(crate) fn new(upstream_kind: crate::config::UpstreamKind) -> Self {
-        Self::with_clock(upstream_kind, Arc::new(SystemClock))
-    }
-
-    #[must_use]
-    pub(crate) fn with_clock(
-        upstream_kind: crate::config::UpstreamKind,
-        clock: Arc<dyn Clock>,
-    ) -> Self {
-        Self {
-            session_start: Instant::now(),
-            upstream_kind,
-            clock,
-        }
-    }
-}
-
-impl MetadataFactory for SessionMetadata {
-    fn create(&self) -> HarnessResult<InteractionMetadata> {
-        let recorded_at = self.clock.now_rfc3339()?;
-        let elapsed = self.session_start.elapsed().as_millis();
-        let relative_offset_ms =
-            u64::try_from(elapsed).map_err(|_| HarnessError::InvalidConfig {
-                message: "relative offset exceeded u64 range".to_owned(),
-            })?;
-
-        Ok(InteractionMetadata {
-            protocol_id: CHAT_COMPLETIONS_PROTOCOL_ID.to_owned(),
-            upstream_id: upstream_id(self.upstream_kind).to_owned(),
-            recorded_at,
-            relative_offset_ms,
-        })
-    }
 }
 
 /// Request-level record-mode failures mapped to concrete HTTP responses.

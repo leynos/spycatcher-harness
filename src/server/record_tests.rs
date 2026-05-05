@@ -5,11 +5,15 @@ use camino::Utf8PathBuf;
 use rstest::rstest;
 use serde_json::json;
 use std::sync::atomic::AtomicU64;
+use std::time::Instant;
 
-use crate::cassette::{Cassette, CassetteReader, filesystem::FilesystemCassetteStore};
+use crate::cassette::{
+    Cassette, CassetteReader, InteractionMetadata, filesystem::FilesystemCassetteStore,
+};
 use crate::config::UpstreamKind;
 use crate::http_exchange::{ObservedResponse, parse_json_bytes};
 use crate::protocol::CHAT_COMPLETIONS_PATH;
+use crate::server::record_metadata::{Clock, MetadataFactory, SessionMetadata, SystemClock};
 
 #[derive(Debug, Clone)]
 struct FakeEnvProvider(Option<String>);
@@ -154,6 +158,20 @@ fn session_metadata_uses_injected_clock() {
         .expect("session metadata should be created with fixed clock");
 
     assert_eq!(metadata.recorded_at, "2024-01-01T00:00:00Z");
+}
+
+#[rstest]
+fn session_metadata_uses_injected_session_start() {
+    let session_start = Instant::now();
+    let metadata = SessionMetadata::with_clock_and_start(
+        UpstreamKind::OpenRouter,
+        Arc::new(FixedClock),
+        session_start,
+    )
+    .create()
+    .expect("session metadata should be created with fixed start");
+
+    assert!(metadata.relative_offset_ms < 100);
 }
 
 #[rstest]

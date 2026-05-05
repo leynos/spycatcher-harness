@@ -84,7 +84,13 @@ impl ReqwestUpstreamClient {
             .map_err(|error| HarnessError::InvalidConfig {
                 message: format!("failed to construct upstream client: {error}"),
             })?;
-        Ok(Self { client })
+        Ok(Self::with_client(client))
+    }
+
+    /// Creates an upstream client with a custom pre-built reqwest client.
+    /// Intended for tests that need to control timeout or TLS behaviour.
+    pub(crate) const fn with_client(client: Client) -> Self {
+        Self { client }
     }
 }
 
@@ -202,5 +208,15 @@ mod tests {
     ) {
         let actual = chat_completions_url(base_url, query).expect("base URL should parse");
         assert_eq!(actual.as_str(), expected);
+    }
+
+    #[rstest]
+    fn reqwest_upstream_client_accepts_injected_client() {
+        let client = Client::builder()
+            .timeout(Duration::from_millis(1))
+            .build()
+            .expect("custom reqwest client should build");
+
+        drop(ReqwestUpstreamClient::with_client(client));
     }
 }
