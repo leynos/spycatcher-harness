@@ -168,6 +168,8 @@ Skills to apply during implementation:
 - [x] Add unit and behavioural tests.
 - [x] Update the design document, user's guide, and roadmap.
 - [x] Run all required validation gates and record outcomes here.
+- [x] Address post-review fixes for deterministic metadata timestamps and raw
+      `Connection` header token parsing.
 
 ## Surprises & Discoveries
 
@@ -195,6 +197,9 @@ Skills to apply during implementation:
   runtimes were sufficient for the placeholder harness, but they dropped the
   real server task between steps. The scenario worlds now retain a shared
   runtime for the full scenario lifetime.
+- Post-review comments referred to pre-rebase files such as `src/server.rs`,
+  but the equivalent implementation now lives in focused modules under
+  `src/server/` and `src/http_exchange.rs`.
 
 ## Decision Log
 
@@ -229,6 +234,9 @@ Skills to apply during implementation:
 - Confirmed decision: disable Reqwest content decoding in the upstream adapter
   for this slice so the recorded response body remains the exact byte payload
   read from the upstream transport.
+- Confirmed decision: parse `Connection` header tokens from raw header bytes so
+  one non-UTF-8 token does not suppress valid hop-by-hop tokens in the same
+  header value.
 
 ## Outcomes & Retrospective
 

@@ -107,6 +107,11 @@ The crate root re-exports the public entry points `start_harness`,
 `RunningHarness`, and `shutdown` (from `RunningHarness`) as well as
 `HarnessConfig`, `HarnessError`, and `HarnessResult`.
 
+The upstream adapter returns `ObservedResponse` values carrying the HTTP status
+code, raw header byte pairs for proxying as `Vec<(String, Vec<u8>)>`, and exact
+response body bytes. Header value percent-encoding happens only at the
+persistence boundary when cassette-safe string headers are derived.
+
 The `cassette` module contains several submodules:
 
 | Submodule    | Purpose                                     |

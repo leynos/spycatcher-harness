@@ -150,11 +150,28 @@ fn parse_connection_tokens(headers: &HeaderMap) -> HashSet<String> {
     headers
         .get_all(axum::http::header::CONNECTION)
         .iter()
-        .filter_map(|value| value.to_str().ok())
-        .flat_map(|value| value.split(','))
-        .map(|token| token.trim().to_ascii_lowercase())
+        .flat_map(|value| value.as_bytes().split(|byte| *byte == b','))
+        .map(lowercase_trimmed_ascii_token)
         .filter(|token| !token.is_empty())
         .collect()
+}
+
+fn lowercase_trimmed_ascii_token(token: &[u8]) -> String {
+    let start = token
+        .iter()
+        .position(|byte| !byte.is_ascii_whitespace())
+        .unwrap_or(token.len());
+    let end = token
+        .iter()
+        .rposition(|byte| !byte.is_ascii_whitespace())
+        .map_or(start, |position| position + 1);
+    let normalized = token
+        .iter()
+        .enumerate()
+        .filter(|(index, _)| start <= *index && *index < end)
+        .map(|(_, byte)| byte.to_ascii_lowercase())
+        .collect::<Vec<_>>();
+    String::from_utf8_lossy(&normalized).into_owned()
 }
 
 /// Applies case-insensitive configured header redaction before persistence.
@@ -265,6 +282,26 @@ mod tests {
         headers.insert(
             "connection",
             "keep-alive, x-hop".parse().expect("valid header"),
+        );
+        headers.insert("x-hop", "drop-me".parse().expect("valid header"));
+        headers.insert(
+            "content-type",
+            "application/json".parse().expect("valid header"),
+        );
+
+        assert_eq!(
+            selected_request_headers(&headers),
+            vec![("content-type".to_owned(), "application/json".to_owned())],
+        );
+    }
+
+    #[rstest]
+    fn selected_headers_parse_connection_tokens_from_raw_bytes() {
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            "connection",
+            axum::http::HeaderValue::from_bytes(b" x-hop , \xff")
+                .expect("valid opaque header bytes"),
         );
         headers.insert("x-hop", "drop-me".parse().expect("valid header"));
         headers.insert(
