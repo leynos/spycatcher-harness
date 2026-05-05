@@ -10,8 +10,9 @@ use spycatcher_harness::config::{ListenAddr, Mode, RedactionConfig, UpstreamConf
 use spycatcher_harness::{HarnessConfig, start_harness};
 
 use crate::record_mode_proxying::helpers::{
-    CapturedRequest, StubUpstream, assert_upstream_bearer_token, load_cassette, present_env_name,
-    sample_success_body, send_request, unique_cassette_path,
+    CapturedRequest, StubUpstream, assert_cassette_matches_success_snapshot,
+    assert_upstream_bearer_token, load_cassette, present_env_name, sample_success_body,
+    send_request, unique_cassette_path,
 };
 use crate::record_mode_proxying::world::ProxyWorld;
 
@@ -144,6 +145,12 @@ fn the_cassette_contains_one_recorded_interaction(
     let cassette = cassette_from_world(proxy_world)?;
     assert_eq!(cassette.interactions.len(), 1);
     Ok(())
+}
+
+#[then("the cassette matches the expected snapshot")]
+fn the_cassette_matches_expected_snapshot(proxy_world: &ProxyWorld) -> Result<(), Box<dyn Error>> {
+    let cassette = cassette_from_world(proxy_world)?;
+    assert_cassette_matches_success_snapshot(&cassette)
 }
 
 #[then("the upstream receives the request body unchanged")]

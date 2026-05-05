@@ -30,7 +30,7 @@ time = { version = "0.3.41", features = ["formatting"] }
 tokio = { version = "1.52.1", features = ["rt", "macros", "net", "sync", "time"] }
 
 [dev-dependencies]
-insta = "1.47.2"
+insta = { version = "1.47.2", features = ["json"] }
 proptest = "1.11.0"
 rstest = "0.26.1"
 rstest-bdd = "0.5.0"

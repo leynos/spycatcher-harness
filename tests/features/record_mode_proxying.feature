@@ -8,6 +8,7 @@ Feature: Record mode proxying for chat completions
     Then the client receives the upstream response unchanged
     And the upstream receives the request body unchanged
     And the cassette contains one recorded interaction
+    And the cassette matches the expected snapshot
     And the background services shut down cleanly
 
   Scenario: Redacted headers are not persisted
