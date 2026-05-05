@@ -196,19 +196,31 @@ mod tests {
 
     use crate::config::RedactionConfig;
 
+    /// Build a `HeaderMap` from raw byte pairs.
+    fn make_header_map(entries: &[(&str, &[u8])]) -> HeaderMap {
+        let mut map = HeaderMap::new();
+        for (name, value) in entries {
+            let header_name = match axum::http::HeaderName::from_bytes(name.as_bytes()) {
+                Ok(header_name) => header_name,
+                Err(error) => panic!("valid header name: {error}"),
+            };
+            let header_value = match axum::http::HeaderValue::from_bytes(value) {
+                Ok(header_value) => header_value,
+                Err(error) => panic!("valid header value bytes: {error}"),
+            };
+            map.insert(header_name, header_value);
+        }
+        map
+    }
+
     #[rstest]
     fn selected_request_headers_drop_hop_by_hop_and_framing_headers() {
-        let mut headers = HeaderMap::new();
-        headers.insert(
-            "content-type",
-            "application/json".parse().expect("valid header"),
-        );
-        headers.insert("host", "example.invalid".parse().expect("valid header"));
-        headers.insert("connection", "keep-alive".parse().expect("valid header"));
-        headers.insert(
-            "authorization",
-            "Bearer keep-me".parse().expect("valid header"),
-        );
+        let headers = make_header_map(&[
+            ("content-type", b"application/json"),
+            ("host", b"example.invalid"),
+            ("connection", b"keep-alive"),
+            ("authorization", b"Bearer keep-me"),
+        ]);
 
         assert_eq!(
             selected_request_headers(&headers),
@@ -243,11 +255,7 @@ mod tests {
 
     #[rstest]
     fn selected_response_headers_preserve_non_utf8_values() {
-        let mut headers = HeaderMap::new();
-        headers.insert(
-            "x-raw",
-            axum::http::HeaderValue::from_bytes(b"\xff\xfe").expect("valid raw header"),
-        );
+        let headers = make_header_map(&[("x-raw", b"\xff\xfe")]);
 
         assert_eq!(
             selected_response_headers(&headers),
@@ -257,11 +265,7 @@ mod tests {
 
     #[rstest]
     fn selected_response_proxy_headers_preserve_raw_values() {
-        let mut headers = HeaderMap::new();
-        headers.insert(
-            "x-raw",
-            axum::http::HeaderValue::from_bytes(b"\xff\xfe").expect("valid raw header"),
-        );
+        let headers = make_header_map(&[("x-raw", b"\xff\xfe")]);
 
         assert_eq!(
             selected_response_proxy_headers(&headers),
@@ -271,16 +275,11 @@ mod tests {
 
     #[rstest]
     fn selected_headers_drop_connection_token_headers() {
-        let mut headers = HeaderMap::new();
-        headers.insert(
-            "connection",
-            "keep-alive, x-hop".parse().expect("valid header"),
-        );
-        headers.insert("x-hop", "drop-me".parse().expect("valid header"));
-        headers.insert(
-            "content-type",
-            "application/json".parse().expect("valid header"),
-        );
+        let headers = make_header_map(&[
+            ("connection", b"keep-alive, x-hop"),
+            ("x-hop", b"drop-me"),
+            ("content-type", b"application/json"),
+        ]);
 
         assert_eq!(
             selected_request_headers(&headers),
@@ -290,17 +289,11 @@ mod tests {
 
     #[rstest]
     fn selected_headers_parse_connection_tokens_from_raw_bytes() {
-        let mut headers = HeaderMap::new();
-        headers.insert(
-            "connection",
-            axum::http::HeaderValue::from_bytes(b" x-hop , \xff")
-                .expect("valid opaque header bytes"),
-        );
-        headers.insert("x-hop", "drop-me".parse().expect("valid header"));
-        headers.insert(
-            "content-type",
-            "application/json".parse().expect("valid header"),
-        );
+        let headers = make_header_map(&[
+            ("connection", b" x-hop , \xff"),
+            ("x-hop", b"drop-me"),
+            ("content-type", b"application/json"),
+        ]);
 
         assert_eq!(
             selected_request_headers(&headers),
@@ -310,11 +303,7 @@ mod tests {
 
     #[rstest]
     fn selected_forward_headers_preserve_raw_values() {
-        let mut headers = HeaderMap::new();
-        headers.insert(
-            "x-raw",
-            axum::http::HeaderValue::from_bytes(b"\xff\xfe").expect("valid raw header"),
-        );
+        let headers = make_header_map(&[("x-raw", b"\xff\xfe")]);
 
         assert_eq!(
             selected_forward_headers(&headers),
