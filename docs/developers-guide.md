@@ -126,6 +126,51 @@ _Table 2: Cassette submodules._
 The binary crate (`src/bin/spycatcher_harness.rs`) delegates all behaviour to
 the library entry points.
 
+## Internal abstractions
+
+The record-mode server is built around several narrow traits and helpers that
+allow unit tests to inject fakes without spawning real HTTP servers or reading
+process state.
+
+### `Clock` and `SystemClock` (`src/server/record_metadata.rs`)
+
+`Clock` is a single-method trait returning the current time as an RFC 3339
+string. `SystemClock` is the production implementation backed by
+`time::OffsetDateTime::now_utc()`. Tests inject `FixedClock`, which returns a
+hard-coded timestamp, to make `recorded_at` deterministic. Use
+`SessionMetadata::with_clock_and_start` to inject both the clock and a
+pre-captured `Instant` session start.
+
+### `EnvProvider` and `ProcessEnvProvider` (`src/upstream.rs`)
+
+`EnvProvider` provides one method, `read(&self, name: &str) -> Option<String>`,
+wrapping environment variable lookup. `ProcessEnvProvider` delegates to
+`std::env::var`. Tests inject `FakeEnvProvider` to simulate absent or preset API
+keys without mutating process state.
+
+### `ChatCompletionsUpstream` and `ReqwestUpstreamClient` (`src/upstream.rs`)
+
+`ChatCompletionsUpstream` is a one-method async trait that forwards a
+`ChatCompletionsRequest` to an upstream provider and returns an
+`ObservedResponse`. `ReqwestUpstreamClient` is the production implementation;
+use `ReqwestUpstreamClient::with_client(client)` in tests to inject a client
+with custom timeout or intercept behaviour. Tests inject `FakeUpstream`, which
+returns a hard-coded `ObservedResponse` or an error.
+
+### Header selection helpers (`src/http_exchange.rs`)
+
+| Helper                            | Output type                 | Use                                                           |
+| --------------------------------- | --------------------------- | ------------------------------------------------------------- |
+| `selected_request_headers`        | `Vec<(String, String)>`     | Inbound headers for cassette persistence                      |
+| `selected_forward_headers`        | `Vec<(String, Vec<u8>)>`    | Inbound headers forwarded to upstream as raw bytes            |
+| `selected_response_headers`       | `Vec<(String, String)>`     | Response headers for cassette persistence; encodes non-UTF-8  |
+| `selected_response_proxy_headers` | `Vec<(String, Vec<u8>)>`    | Response headers forwarded downstream as raw bytes            |
+
+Hop-by-hop headers, `Connection`-token-listed headers, and context-specific
+exclusions (`host`, `content-length`, `accept-encoding`) are removed by all
+four helpers. Percent-encoding of non-UTF-8 values occurs only in the
+string-returning helpers, preserving raw bytes throughout the proxy path.
+
 ## Test structure
 
 ### Unit tests
