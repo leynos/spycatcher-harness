@@ -25,7 +25,7 @@ Feature: Record mode proxying for chat completions
     When the harness is started
     And a non-stream chat completions request with header Authorization is sent to the harness
     Then the client receives the upstream response unchanged
-    And the upstream does not receive the header Authorization
+    And the upstream does not receive the downstream Authorization header
     And the cassette request headers omit Authorization
     And the background services shut down cleanly
 

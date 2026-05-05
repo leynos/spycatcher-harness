@@ -89,7 +89,9 @@ pub(crate) fn selected_forward_headers(headers: &HeaderMap) -> Vec<(String, Vec<
     let connection_tokens = parse_connection_tokens(headers);
     headers
         .iter()
-        .filter(|(name, _)| should_keep_header(name, REQUEST_ONLY_EXCLUDED_HEADERS, &connection_tokens))
+        .filter(|(name, _)| {
+            should_keep_header(name, REQUEST_ONLY_EXCLUDED_HEADERS, &connection_tokens)
+        })
         .map(|(name, value)| (name.as_str().to_owned(), value.as_bytes().to_vec()))
         .collect()
 }
@@ -139,9 +141,9 @@ fn should_keep_header(
     let name_text = name.as_str();
     !connection_tokens.contains(&name_text.to_ascii_lowercase())
         && !HOP_BY_HOP_HEADERS
-        .iter()
-        .chain(excluded.iter())
-        .any(|candidate| name_text.eq_ignore_ascii_case(candidate))
+            .iter()
+            .chain(excluded.iter())
+            .any(|candidate| name_text.eq_ignore_ascii_case(candidate))
 }
 
 fn parse_connection_tokens(headers: &HeaderMap) -> HashSet<String> {
@@ -260,7 +262,10 @@ mod tests {
     #[rstest]
     fn selected_headers_drop_connection_token_headers() {
         let mut headers = HeaderMap::new();
-        headers.insert("connection", "keep-alive, x-hop".parse().expect("valid header"));
+        headers.insert(
+            "connection",
+            "keep-alive, x-hop".parse().expect("valid header"),
+        );
         headers.insert("x-hop", "drop-me".parse().expect("valid header"));
         headers.insert(
             "content-type",

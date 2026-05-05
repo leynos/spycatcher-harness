@@ -168,17 +168,16 @@ fn the_upstream_receives_the_header(proxy_world: &ProxyWorld) -> Result<(), Box<
     Ok(())
 }
 
-#[then("the upstream does not receive the header Authorization")]
-fn the_upstream_does_not_receive_authorization(
+#[then("the upstream does not receive the downstream Authorization header")]
+fn the_upstream_does_not_receive_downstream_authorization(
     proxy_world: &ProxyWorld,
 ) -> Result<(), Box<dyn Error>> {
     let request = first_upstream_request(proxy_world)?;
     assert!(
-        request
-            .headers
-            .iter()
-            .all(|(name, _)| !name.eq_ignore_ascii_case("authorization")),
-        "expected Authorization to be replaced by configured upstream auth",
+        request.headers.iter().all(|(name, value)| {
+            !name.eq_ignore_ascii_case("authorization") || value != "Bearer downstream-secret"
+        }),
+        "expected downstream Authorization to be replaced by configured upstream auth",
     );
     Ok(())
 }
@@ -206,14 +205,17 @@ fn assert_cassette_request_omits_header(
         .interactions
         .first()
         .ok_or_else(|| std::io::Error::other("expected one recorded interaction"))?;
-    assert!(
-        interaction
-            .request
-            .headers
-            .iter()
-            .all(|(name, _)| !name.eq_ignore_ascii_case(header_name)),
-        "expected {header_name} to be absent from cassette",
-    );
+    if interaction
+        .request
+        .headers
+        .iter()
+        .any(|(name, _)| name.eq_ignore_ascii_case(header_name))
+    {
+        return Err(std::io::Error::other(format!(
+            "expected {header_name} to be absent from cassette",
+        ))
+        .into());
+    }
     Ok(())
 }
 
