@@ -310,4 +310,55 @@ mod tests {
             vec![("x-raw".to_owned(), b"\xff\xfe".to_vec())],
         );
     }
+
+    mod prop_tests {
+        //! Property tests for header selection invariants.
+
+        use super::*;
+        use proptest::prelude::*;
+
+        proptest! {
+            #[test]
+            fn hop_by_hop_headers_are_always_dropped(value in "[a-zA-Z0-9]{1,16}") {
+                for name in HOP_BY_HOP_HEADERS {
+                    let mut map = axum::http::HeaderMap::new();
+                    map.insert(
+                        axum::http::HeaderName::from_bytes(name.as_bytes())
+                            .expect("hop-by-hop header name should be valid"),
+                        axum::http::HeaderValue::from_str(&value)
+                            .expect("generated header value should be valid"),
+                    );
+                    let result = selected_request_headers(&map);
+                    prop_assert!(
+                        result.iter().all(|(n, _)| !n.eq_ignore_ascii_case(name)),
+                        "hop-by-hop header {name:?} must be dropped"
+                    );
+                }
+            }
+        }
+
+        proptest! {
+            #[test]
+            fn non_utf8_bytes_are_percent_encoded_not_dropped(
+                suffix in proptest::collection::vec(0x80u8..=0xFFu8, 1..8),
+            ) {
+                let mut map = axum::http::HeaderMap::new();
+                map.insert(
+                    axum::http::HeaderName::from_bytes(b"x-custom")
+                        .expect("custom header name should be valid"),
+                    axum::http::HeaderValue::from_bytes(&suffix)
+                        .expect("generated non-UTF-8 header value should be valid"),
+                );
+                let result = selected_request_headers(&map);
+                prop_assert!(!result.is_empty(), "non-UTF-8 header must not be dropped");
+                let (_, value) = result
+                    .first()
+                    .expect("selected headers should contain x-custom");
+                prop_assert!(
+                    value.starts_with('%'),
+                    "non-UTF-8 value must be percent-encoded"
+                );
+            }
+        }
+    }
 }

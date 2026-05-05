@@ -219,4 +219,24 @@ mod tests {
 
         drop(ReqwestUpstreamClient::with_client(client));
     }
+
+    mod prop_tests {
+        //! Property tests for upstream URL construction.
+
+        use super::*;
+        use proptest::prelude::*;
+
+        proptest! {
+            #[test]
+            fn url_query_string_is_preserved(query in "[a-z0-9=&]{0,40}") {
+                let base = "https://example.invalid/v1";
+                let url = chat_completions_url(base, &query).expect("URL must build");
+                if query.is_empty() {
+                    prop_assert!(!url.as_str().contains('?'));
+                } else {
+                    prop_assert!(url.as_str().contains(&query));
+                }
+            }
+        }
+    }
 }
