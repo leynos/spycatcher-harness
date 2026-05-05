@@ -50,8 +50,8 @@ pub(crate) struct ChatCompletionsRequest<'a> {
     pub config: &'a UpstreamConfig,
     /// Bearer token resolved from the configured environment variable.
     pub api_key: &'a str,
-    /// Selected inbound request headers to forward upstream.
-    pub headers: &'a [(String, String)],
+    /// Selected inbound request headers to forward upstream as raw bytes.
+    pub headers: &'a [(String, Vec<u8>)],
     /// Exact inbound request body bytes.
     pub body: &'a [u8],
     /// Raw query string from the inbound request.
@@ -104,7 +104,7 @@ impl ChatCompletionsUpstream for ReqwestUpstreamClient {
                 }
             })?;
             let header_value =
-                HeaderValue::from_str(value).map_err(|error| HarnessError::InvalidConfig {
+                HeaderValue::from_bytes(value).map_err(|error| HarnessError::InvalidConfig {
                     message: format!("invalid outbound header value for {name:?}: {error}"),
                 })?;
             outbound = outbound.header(header_name, header_value);

@@ -10,7 +10,8 @@ use axum::http::{HeaderMap, HeaderName, HeaderValue, Response, StatusCode};
 use log::warn;
 
 use crate::http_exchange::{
-    ObservedRequest, ProxyResponse, parse_json_bytes, selected_request_headers,
+    ObservedRequest, ProxyResponse, parse_json_bytes, selected_forward_headers,
+    selected_request_headers,
 };
 use crate::protocol::CHAT_COMPLETIONS_PATH;
 
@@ -29,6 +30,7 @@ pub(crate) async fn record_chat_completions_handler(
         path: CHAT_COMPLETIONS_PATH.to_owned(),
         query: uri.query().unwrap_or_default().to_owned(),
         headers: selected_request_headers(&headers),
+        forward_headers: selected_forward_headers(&headers),
         parsed_json: parse_json_bytes(&body_bytes),
         body: body_bytes,
     };

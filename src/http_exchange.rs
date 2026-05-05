@@ -37,6 +37,8 @@ pub(crate) struct ObservedRequest {
     pub query: String,
     /// Selected headers in observed order.
     pub headers: Vec<(String, String)>,
+    /// Selected inbound headers as raw bytes for upstream forwarding.
+    pub forward_headers: Vec<(String, Vec<u8>)>,
     /// Raw request body bytes.
     pub body: Vec<u8>,
     /// Parsed JSON body when the bytes form valid JSON.
@@ -77,6 +79,17 @@ pub(crate) fn parse_json_bytes(bytes: &[u8]) -> Option<Value> {
 #[must_use]
 pub(crate) fn selected_request_headers(headers: &HeaderMap) -> Vec<(String, String)> {
     selected_headers(headers, REQUEST_ONLY_EXCLUDED_HEADERS)
+}
+
+/// Selects request headers for upstream forwarding without re-encoding values.
+#[must_use]
+pub(crate) fn selected_forward_headers(headers: &HeaderMap) -> Vec<(String, Vec<u8>)> {
+    let connection_tokens = parse_connection_tokens(headers);
+    headers
+        .iter()
+        .filter(|(name, _)| should_keep_header(name, REQUEST_ONLY_EXCLUDED_HEADERS, &connection_tokens))
+        .map(|(name, value)| (name.as_str().to_owned(), value.as_bytes().to_vec()))
+        .collect()
 }
 
 /// Selects response headers that are meaningful for proxying and persistence.
@@ -226,6 +239,20 @@ mod tests {
         assert_eq!(
             selected_request_headers(&headers),
             vec![("content-type".to_owned(), "application/json".to_owned())],
+        );
+    }
+
+    #[rstest]
+    fn selected_forward_headers_preserve_raw_values() {
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            "x-raw",
+            axum::http::HeaderValue::from_bytes(b"\xff\xfe").expect("valid raw header"),
+        );
+
+        assert_eq!(
+            selected_forward_headers(&headers),
+            vec![("x-raw".to_owned(), b"\xff\xfe".to_vec())],
         );
     }
 }

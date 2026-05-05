@@ -195,6 +195,10 @@ fn sample_request(parsed_json: Option<serde_json::Value>) -> ObservedRequest {
             ("content-type".to_owned(), "application/json".to_owned()),
             ("authorization".to_owned(), "Bearer secret".to_owned()),
         ],
+        forward_headers: vec![
+            ("content-type".to_owned(), b"application/json".to_vec()),
+            ("authorization".to_owned(), b"Bearer secret".to_vec()),
+        ],
         body: br#"{"model":"gpt-test"}"#.to_vec(),
         parsed_json,
     }

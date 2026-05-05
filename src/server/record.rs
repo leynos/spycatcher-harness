@@ -210,7 +210,7 @@ where
             .send_chat_completions(ChatCompletionsRequest {
                 config: &self.upstream,
                 api_key: &api_key,
-                headers: &request.headers,
+                headers: &request.forward_headers,
                 body: &request.body,
                 query: &request.query,
             })
