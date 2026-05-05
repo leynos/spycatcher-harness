@@ -44,7 +44,7 @@ fn build_proxy_response(response: ProxyResponse) -> Response<axum::body::Body> {
     for (name, value) in response.headers {
         match (
             HeaderName::try_from(name.as_str()),
-            HeaderValue::from_str(&value),
+            HeaderValue::from_bytes(&value),
         ) {
             (Ok(header_name), Ok(header_value)) => {
                 built.headers_mut().append(header_name, header_value);

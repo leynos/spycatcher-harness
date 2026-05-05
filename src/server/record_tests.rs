@@ -208,6 +208,7 @@ fn sample_response(body: &[u8]) -> ObservedResponse {
     ObservedResponse {
         status: 200,
         headers: vec![("content-type".to_owned(), "application/json".to_owned())],
+        proxy_headers: vec![("content-type".to_owned(), b"application/json".to_vec())],
         body: body.to_vec(),
         parsed_json: parse_json_bytes(body),
     }

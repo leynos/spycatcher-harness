@@ -50,8 +50,10 @@ pub(crate) struct ObservedRequest {
 pub(crate) struct ObservedResponse {
     /// HTTP status code.
     pub status: u16,
-    /// Selected headers in observed order.
+    /// Selected headers in observed order for cassette persistence.
     pub headers: Vec<(String, String)>,
+    /// Selected headers as raw bytes for downstream proxying.
+    pub proxy_headers: Vec<(String, Vec<u8>)>,
     /// Raw body bytes.
     pub body: Vec<u8>,
     /// Parsed JSON body when the bytes form valid JSON.
@@ -63,8 +65,8 @@ pub(crate) struct ObservedResponse {
 pub(crate) struct ProxyResponse {
     /// HTTP status code.
     pub status: u16,
-    /// Selected headers in observed order.
-    pub headers: Vec<(String, String)>,
+    /// Selected headers as raw bytes in observed order.
+    pub headers: Vec<(String, Vec<u8>)>,
     /// Raw body bytes.
     pub body: Vec<u8>,
 }
@@ -96,6 +98,21 @@ pub(crate) fn selected_forward_headers(headers: &HeaderMap) -> Vec<(String, Vec<
 #[must_use]
 pub(crate) fn selected_response_headers(headers: &HeaderMap) -> Vec<(String, String)> {
     selected_headers(headers, RESPONSE_ONLY_EXCLUDED_HEADERS)
+}
+
+/// Selects response headers for downstream proxying without re-encoding values.
+#[must_use]
+pub(crate) fn selected_response_proxy_headers(headers: &HeaderMap) -> Vec<(String, Vec<u8>)> {
+    selected_header_bytes(headers, RESPONSE_ONLY_EXCLUDED_HEADERS)
+}
+
+fn selected_header_bytes(headers: &HeaderMap, excluded: &[&str]) -> Vec<(String, Vec<u8>)> {
+    let connection_tokens = parse_connection_tokens(headers);
+    headers
+        .iter()
+        .filter(|(name, _)| should_keep_header(name, excluded, &connection_tokens))
+        .map(|(name, value)| (name.as_str().to_owned(), value.as_bytes().to_vec()))
+        .collect()
 }
 
 fn selected_headers(headers: &HeaderMap, excluded: &[&str]) -> Vec<(String, String)> {
@@ -223,6 +240,20 @@ mod tests {
         assert_eq!(
             selected_response_headers(&headers),
             vec![("x-raw".to_owned(), "%FF%FE".to_owned())],
+        );
+    }
+
+    #[rstest]
+    fn selected_response_proxy_headers_preserve_raw_values() {
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            "x-raw",
+            axum::http::HeaderValue::from_bytes(b"\xff\xfe").expect("valid raw header"),
+        );
+
+        assert_eq!(
+            selected_response_proxy_headers(&headers),
+            vec![("x-raw".to_owned(), b"\xff\xfe".to_vec())],
         );
     }
 

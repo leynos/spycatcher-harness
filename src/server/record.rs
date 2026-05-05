@@ -240,7 +240,7 @@ where
 
         Ok(ProxyResponse {
             status: upstream_response.status,
-            headers: upstream_response.headers,
+            headers: upstream_response.proxy_headers,
             body: upstream_response.body,
         })
     }

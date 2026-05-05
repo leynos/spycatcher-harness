@@ -8,7 +8,9 @@ use axum::http::{HeaderName, HeaderValue};
 use reqwest::{Client, Url};
 
 use crate::config::UpstreamConfig;
-use crate::http_exchange::{ObservedResponse, parse_json_bytes, selected_response_headers};
+use crate::http_exchange::{
+    ObservedResponse, parse_json_bytes, selected_response_headers, selected_response_proxy_headers,
+};
 use crate::{HarnessError, HarnessResult};
 use std::time::Duration;
 
@@ -123,6 +125,7 @@ impl ChatCompletionsUpstream for ReqwestUpstreamClient {
             })?;
         let status = response.status().as_u16();
         let selected_headers = selected_response_headers(response.headers());
+        let proxy_headers = selected_response_proxy_headers(response.headers());
         let response_body = response
             .bytes()
             .await
@@ -134,6 +137,7 @@ impl ChatCompletionsUpstream for ReqwestUpstreamClient {
         Ok(ObservedResponse {
             status,
             headers: selected_headers,
+            proxy_headers,
             parsed_json: parse_json_bytes(&response_body),
             body: response_body,
         })
