@@ -34,6 +34,15 @@ impl MetadataFactory for FakeMetadataFactory {
     }
 }
 
+#[derive(Debug)]
+struct FixedClock;
+
+impl Clock for FixedClock {
+    fn now_rfc3339(&self) -> HarnessResult<String> {
+        Ok("2024-01-01T00:00:00Z".to_owned())
+    }
+}
+
 #[derive(Debug, Clone)]
 struct FakeUpstream {
     response: Result<ObservedResponse, ()>,
@@ -126,6 +135,25 @@ async fn upstream_transport_failure_does_not_append() {
         load_cassette(&cassette_path).interactions.is_empty(),
         "no interaction should be recorded on upstream failure"
     );
+}
+
+#[rstest]
+fn system_clock_produces_rfc3339_string() {
+    let ts = SystemClock
+        .now_rfc3339()
+        .expect("system clock should produce an RFC 3339 timestamp");
+
+    assert!(!ts.is_empty());
+    assert!(ts.contains('T'));
+}
+
+#[rstest]
+fn session_metadata_uses_injected_clock() {
+    let metadata = SessionMetadata::with_clock(UpstreamKind::OpenRouter, Arc::new(FixedClock))
+        .create()
+        .expect("session metadata should be created with fixed clock");
+
+    assert_eq!(metadata.recorded_at, "2024-01-01T00:00:00Z");
 }
 
 #[rstest]
