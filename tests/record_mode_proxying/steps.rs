@@ -10,8 +10,8 @@ use spycatcher_harness::config::{ListenAddr, Mode, RedactionConfig, UpstreamConf
 use spycatcher_harness::{HarnessConfig, start_harness};
 
 use crate::record_mode_proxying::helpers::{
-    StubUpstream, load_cassette, present_env_name, sample_success_body, send_request,
-    unique_cassette_path,
+    CapturedRequest, StubUpstream, assert_upstream_bearer_token, load_cassette, present_env_name,
+    sample_success_body, send_request, unique_cassette_path,
 };
 use crate::record_mode_proxying::world::ProxyWorld;
 
@@ -173,14 +173,21 @@ fn the_upstream_does_not_receive_downstream_authorization(
     proxy_world: &ProxyWorld,
 ) -> Result<(), Box<dyn Error>> {
     let request = first_upstream_request(proxy_world)?;
-    let expected_authorization = format!("Bearer {}", std::env::var(present_env_name()?)?);
     assert!(
-        request.headers.iter().any(|(name, value)| {
-            name.eq_ignore_ascii_case("authorization") && value == &expected_authorization
+        request.headers.iter().all(|(name, value)| {
+            !name.eq_ignore_ascii_case("authorization") || value != "Bearer downstream-secret"
         }),
         "expected downstream Authorization to be replaced by configured upstream auth",
     );
-    Ok(())
+    assert_upstream_bearer_token(&request)
+}
+
+#[then("the upstream receives the configured upstream Bearer token")]
+fn the_upstream_receives_configured_upstream_bearer_token(
+    proxy_world: &ProxyWorld,
+) -> Result<(), Box<dyn Error>> {
+    let request = first_upstream_request(proxy_world)?;
+    assert_upstream_bearer_token(&request)
 }
 
 #[then("the cassette request headers omit x-session-secret")]
@@ -352,9 +359,7 @@ fn cassette_from_world(
     load_cassette(&cassette_path)
 }
 
-fn first_upstream_request(
-    proxy_world: &ProxyWorld,
-) -> Result<crate::record_mode_proxying::helpers::CapturedRequest, Box<dyn Error>> {
+fn first_upstream_request(proxy_world: &ProxyWorld) -> Result<CapturedRequest, Box<dyn Error>> {
     let requests = proxy_world
         .upstream
         .with_ref(StubUpstream::captured_requests)

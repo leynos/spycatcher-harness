@@ -202,3 +202,30 @@ pub(crate) fn present_env_name() -> Result<&'static str, Box<dyn Error>> {
         "expected at least one stable environment variable for integration tests",
     )))
 }
+
+/// Returns the value of the present-in-process env var used in record-mode tests.
+pub(crate) fn present_env_value() -> Result<String, Box<dyn std::error::Error>> {
+    let name = present_env_name()?;
+    std::env::var(name).map_err(|error| {
+        std::io::Error::other(format!("env var {name:?} must be set for tests: {error}")).into()
+    })
+}
+
+pub(crate) fn assert_upstream_bearer_token(
+    request: &CapturedRequest,
+) -> Result<(), Box<dyn Error>> {
+    let api_key = present_env_value()?;
+    let expected = format!("Bearer {api_key}");
+    if request
+        .headers
+        .iter()
+        .any(|(name, value)| name.eq_ignore_ascii_case("authorization") && value == &expected)
+    {
+        return Ok(());
+    }
+    Err(std::io::Error::other(format!(
+        "expected upstream Authorization: {expected}, got: {:?}",
+        request.headers
+    ))
+    .into())
+}
