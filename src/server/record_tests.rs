@@ -58,15 +58,10 @@ impl ChatCompletionsUpstream for FakeUpstream {
     }
 }
 
-#[expect(
-    clippy::too_many_arguments,
-    reason = "test helper signature keeps each failing request case explicit"
-)]
 async fn assert_error_does_not_append(
     slug: &str,
     env_provider: FakeEnvProvider,
     request: ObservedRequest,
-    fail_msg: &str,
     check_error: impl FnOnce(RecordError),
 ) {
     let cassette_path = unique_cassette_path(slug);
@@ -81,7 +76,7 @@ async fn assert_error_does_not_append(
     let error = service
         .handle_chat_completions(request)
         .await
-        .expect_err(fail_msg);
+        .expect_err("expected handle_chat_completions to return Err");
 
     check_error(error);
     assert!(load_cassette(&cassette_path).interactions.is_empty());
@@ -94,7 +89,6 @@ async fn unsupported_stream_requests_do_not_append() {
         "stream",
         FakeEnvProvider(Some("token".to_owned())),
         sample_request(Some(json!({"stream": true}))),
-        "stream requests should be rejected",
         |error| assert_eq!(error, RecordError::UnsupportedStream),
     )
     .await;
@@ -107,7 +101,6 @@ async fn missing_api_key_does_not_append() {
         "missing-key",
         FakeEnvProvider(None),
         sample_request(None),
-        "missing key should fail",
         |error| assert!(matches!(error, RecordError::MissingApiKeyEnv { .. })),
     )
     .await;
