@@ -172,6 +172,8 @@ Skills to apply during implementation:
       `Connection` header token parsing.
 - [x] Address post-review fixes for configurable tool paths, BDD helper
       cardinality checks, and safe proxy-header warning logs.
+- [x] Address post-review simplification of request-forwarding header
+      selection and raw `Connection` token normalization.
 
 ## Surprises & Discoveries
 

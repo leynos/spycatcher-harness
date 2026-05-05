@@ -86,14 +86,7 @@ pub(crate) fn selected_request_headers(headers: &HeaderMap) -> Vec<(String, Stri
 /// Selects request headers for upstream forwarding without re-encoding values.
 #[must_use]
 pub(crate) fn selected_forward_headers(headers: &HeaderMap) -> Vec<(String, Vec<u8>)> {
-    let connection_tokens = parse_connection_tokens(headers);
-    headers
-        .iter()
-        .filter(|(name, _)| {
-            should_keep_header(name, REQUEST_ONLY_EXCLUDED_HEADERS, &connection_tokens)
-        })
-        .map(|(name, value)| (name.as_str().to_owned(), value.as_bytes().to_vec()))
-        .collect()
+    selected_header_bytes(headers, REQUEST_ONLY_EXCLUDED_HEADERS)
 }
 
 /// Selects response headers that are meaningful for proxying and persistence.
@@ -166,10 +159,10 @@ fn lowercase_trimmed_ascii_token(token: &[u8]) -> String {
         .rposition(|byte| !byte.is_ascii_whitespace())
         .map_or(start, |position| position + 1);
     let normalized = token
+        .get(start..end)
+        .unwrap_or_default()
         .iter()
-        .enumerate()
-        .filter(|(index, _)| start <= *index && *index < end)
-        .map(|(_, byte)| byte.to_ascii_lowercase())
+        .map(u8::to_ascii_lowercase)
         .collect::<Vec<_>>();
     String::from_utf8_lossy(&normalized).into_owned()
 }
