@@ -173,9 +173,10 @@ fn the_upstream_does_not_receive_downstream_authorization(
     proxy_world: &ProxyWorld,
 ) -> Result<(), Box<dyn Error>> {
     let request = first_upstream_request(proxy_world)?;
+    let expected_authorization = format!("Bearer {}", std::env::var(present_env_name()?)?);
     assert!(
-        request.headers.iter().all(|(name, value)| {
-            !name.eq_ignore_ascii_case("authorization") || value != "Bearer downstream-secret"
+        request.headers.iter().any(|(name, value)| {
+            name.eq_ignore_ascii_case("authorization") && value == &expected_authorization
         }),
         "expected downstream Authorization to be replaced by configured upstream auth",
     );
