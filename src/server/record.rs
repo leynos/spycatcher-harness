@@ -10,7 +10,7 @@ use std::time::Instant;
 
 use axum::http::{HeaderValue, Response, StatusCode};
 use axum::response::IntoResponse;
-use log::{error, info};
+use log::{error, info, warn};
 use serde_json::json;
 use tokio::task::spawn_blocking;
 
@@ -142,14 +142,28 @@ where
         request: ObservedRequest,
     ) -> Result<ProxyResponse, RecordError> {
         if is_streaming_chat_completions_request(request.parsed_json.as_ref()) {
+            warn!(
+                target: "spycatcher.harness.record",
+                "streaming request rejected path={path} mode=record protocol={protocol}",
+                path = request.path,
+                protocol = CHAT_COMPLETIONS_PROTOCOL_ID,
+            );
             return Err(RecordError::UnsupportedStream);
         }
 
         let api_key = self
             .env_provider
             .read(&self.upstream.api_key_env)
-            .ok_or_else(|| RecordError::MissingApiKeyEnv {
-                env_var: self.upstream.api_key_env.clone(),
+            .ok_or_else(|| {
+                warn!(
+                    target: "spycatcher.harness.record",
+                    "upstream API key not found env_var={env_var} mode=record protocol={protocol}",
+                    env_var = self.upstream.api_key_env,
+                    protocol = CHAT_COMPLETIONS_PROTOCOL_ID,
+                );
+                RecordError::MissingApiKeyEnv {
+                    env_var: self.upstream.api_key_env.clone(),
+                }
             })?;
 
         let interaction_id = format!(
