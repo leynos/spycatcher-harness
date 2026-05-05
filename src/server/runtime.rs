@@ -13,7 +13,8 @@ use tokio::task::JoinHandle;
 use crate::cassette::filesystem::FilesystemCassetteStore;
 use crate::config::HarnessConfig;
 use crate::protocol::CHAT_COMPLETIONS_PATH;
-use crate::server::record::{RecordAppState, record_chat_completions_handler};
+use crate::server::record::RecordAppState;
+use crate::server::record_handler::record_chat_completions_handler;
 use crate::{HarnessError, HarnessResult};
 
 /// Runtime handle for a bound record-mode HTTP server.

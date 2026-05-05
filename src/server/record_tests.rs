@@ -8,7 +8,8 @@ use std::sync::atomic::AtomicU64;
 
 use crate::cassette::{Cassette, CassetteReader, filesystem::FilesystemCassetteStore};
 use crate::config::UpstreamKind;
-use crate::http_exchange::ObservedResponse;
+use crate::http_exchange::{ObservedResponse, parse_json_bytes};
+use crate::protocol::CHAT_COMPLETIONS_PATH;
 
 #[derive(Debug, Clone)]
 struct FakeEnvProvider(Option<String>);

@@ -4,6 +4,7 @@
 //! shutdown for record mode without leaking `axum` types into cassette logic.
 
 mod record;
+mod record_handler;
 mod runtime;
 
 pub(crate) use runtime::{RecordServerHandle, start_record_server};

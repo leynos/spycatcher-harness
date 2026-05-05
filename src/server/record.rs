@@ -8,11 +8,9 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
-use axum::body::Bytes;
-use axum::extract::{OriginalUri, State};
-use axum::http::{HeaderMap, HeaderName, HeaderValue, Response, StatusCode};
+use axum::http::{HeaderValue, Response, StatusCode};
 use axum::response::IntoResponse;
-use log::{error, info, warn};
+use log::{error, info};
 use serde_json::json;
 use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
@@ -23,12 +21,9 @@ use crate::cassette::{
     RecordedResponse, filesystem::FilesystemCassetteStore,
 };
 use crate::config::{HarnessConfig, RedactionConfig, UpstreamConfig};
-use crate::http_exchange::{
-    ObservedRequest, ProxyResponse, parse_json_bytes, redact_headers, selected_request_headers,
-};
+use crate::http_exchange::{ObservedRequest, ProxyResponse, redact_headers};
 use crate::protocol::{
-    CHAT_COMPLETIONS_PATH, CHAT_COMPLETIONS_PROTOCOL_ID, is_streaming_chat_completions_request,
-    upstream_id,
+    CHAT_COMPLETIONS_PROTOCOL_ID, is_streaming_chat_completions_request, upstream_id,
 };
 use crate::upstream::{
     ChatCompletionsRequest, ChatCompletionsUpstream, EnvProvider, ProcessEnvProvider,
@@ -342,54 +337,30 @@ where
     async fn append_interaction(&self, interaction: Interaction) -> Result<(), RecordError> {
         let store = Arc::clone(&self.cassette_store);
         spawn_blocking(move || {
-            let mut guard = store.lock().map_err(|_| RecordError::Internal)?;
-            CassetteAppender::append(&mut *guard, interaction).map_err(|_| RecordError::Internal)
+            let mut guard = store.lock().map_err(|e| {
+                error!(
+                    target: "spycatcher.harness.record",
+                    "failed to lock cassette_store: {e:?}"
+                );
+                RecordError::Internal
+            })?;
+            CassetteAppender::append(&mut *guard, interaction).map_err(|e| {
+                error!(
+                    target: "spycatcher.harness.record",
+                    "failed to append interaction: {e:?}"
+                );
+                RecordError::Internal
+            })
         })
         .await
-        .map_err(|_| RecordError::Internal)?
+        .map_err(|e| {
+            error!(
+                target: "spycatcher.harness.record",
+                "failed to spawn blocking: {e:?}"
+            );
+            RecordError::Internal
+        })?
     }
-}
-
-/// Axum route handler for record-mode chat completions proxying.
-pub(crate) async fn record_chat_completions_handler(
-    State(state): State<RecordAppState>,
-    OriginalUri(uri): OriginalUri,
-    headers: HeaderMap,
-    body: Bytes,
-) -> Result<Response<axum::body::Body>, RecordError> {
-    let body_bytes = body.to_vec();
-    let request = ObservedRequest {
-        method: "POST".to_owned(),
-        path: CHAT_COMPLETIONS_PATH.to_owned(),
-        query: uri.query().unwrap_or_default().to_owned(),
-        headers: selected_request_headers(&headers),
-        parsed_json: parse_json_bytes(&body_bytes),
-        body: body_bytes,
-    };
-    let proxied = state.service.handle_chat_completions(request).await?;
-    Ok(build_proxy_response(proxied))
-}
-
-fn build_proxy_response(response: ProxyResponse) -> Response<axum::body::Body> {
-    let mut built = Response::new(axum::body::Body::from(response.body));
-    *built.status_mut() = StatusCode::from_u16(response.status).unwrap_or(StatusCode::BAD_GATEWAY);
-    for (name, value) in response.headers {
-        match (
-            HeaderName::try_from(name.as_str()),
-            HeaderValue::from_str(&value),
-        ) {
-            (Ok(header_name), Ok(header_value)) => {
-                built.headers_mut().append(header_name, header_value);
-            }
-            _ => {
-                warn!(
-                    target: "spycatcher.harness.record",
-                    "dropping unparseable proxy response header name={name:?} value={value:?}"
-                );
-            }
-        }
-    }
-    built
 }
 
 #[cfg(test)]
