@@ -120,6 +120,50 @@ async fn missing_api_key_does_not_append() {
 }
 
 #[rstest]
+fn check_not_streaming_rejects_streaming_request() {
+    let request = sample_request(parse_json_bytes(
+        br#"{"model":"gpt-test","messages":[],"stream":true}"#,
+    ));
+    let service = service_fixture_default(FakeEnvProvider(Some("token".to_owned())));
+
+    let result = service.check_not_streaming(&request);
+
+    assert_eq!(result, Err(RecordError::UnsupportedStream));
+}
+
+#[rstest]
+fn check_not_streaming_allows_non_streaming_request() {
+    let request = sample_request(parse_json_bytes(
+        br#"{"model":"gpt-test","messages":[],"stream":false}"#,
+    ));
+    let service = service_fixture_default(FakeEnvProvider(Some("token".to_owned())));
+
+    assert!(service.check_not_streaming(&request).is_ok());
+}
+
+#[rstest]
+fn resolve_api_key_returns_key_when_present() {
+    let service = service_fixture_default(FakeEnvProvider(Some("my-secret".to_owned())));
+
+    assert_eq!(
+        service
+            .resolve_api_key()
+            .expect("API key should resolve when env provider has a value"),
+        "my-secret",
+    );
+}
+
+#[rstest]
+fn resolve_api_key_errors_when_absent() {
+    let service = service_fixture_default(FakeEnvProvider(None));
+
+    assert!(matches!(
+        service.resolve_api_key(),
+        Err(RecordError::MissingApiKeyEnv { .. })
+    ));
+}
+
+#[rstest]
 #[tokio::test]
 async fn upstream_transport_failure_does_not_append() {
     let cassette_path = unique_cassette_path("upstream-fail");
@@ -233,6 +277,19 @@ fn service_fixture(
         failure_count: Arc::new(AtomicU64::new(0)),
         interaction_seq: Arc::new(AtomicU64::new(0)),
     }
+}
+
+fn service_fixture_default(
+    env_provider: FakeEnvProvider,
+) -> RecordService<FakeUpstream, FakeEnvProvider, FakeMetadataFactory> {
+    let cassette_path = unique_cassette_path("default");
+    service_fixture(
+        &cassette_path,
+        FakeUpstream {
+            response: Ok(sample_response(br#"{"id":"ok"}"#)),
+        },
+        env_provider,
+    )
 }
 
 fn sample_request(parsed_json: Option<serde_json::Value>) -> ObservedRequest {

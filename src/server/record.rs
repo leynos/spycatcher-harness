@@ -142,25 +142,23 @@ where
     E: EnvProvider + Clone + Send + Sync + 'static,
     M: MetadataFactory,
 {
-    /// Proxies one non-stream chat completions request and records it.
-    pub(crate) async fn handle_chat_completions(
-        &self,
-        request: ObservedRequest,
-    ) -> Result<ProxyResponse, RecordError> {
-        let interaction_start = Instant::now();
-
+    fn check_not_streaming(&self, request: &ObservedRequest) -> Result<(), RecordError> {
         if is_streaming_chat_completions_request(request.parsed_json.as_ref()) {
             warn!(
                 target: "spycatcher.harness.record",
-                "streaming request rejected path={path} mode=record protocol={protocol}",
+                "streaming request rejected path={path} mode=record \
+                 protocol={protocol} cassette={cassette}",
                 path = request.path,
                 protocol = CHAT_COMPLETIONS_PROTOCOL_ID,
+                cassette = upstream_id(self.upstream.kind),
             );
             return Err(RecordError::UnsupportedStream);
         }
+        Ok(())
+    }
 
-        let api_key = self
-            .env_provider
+    fn resolve_api_key(&self) -> Result<String, RecordError> {
+        self.env_provider
             .read(&self.upstream.api_key_env)
             .ok_or_else(|| {
                 warn!(
@@ -172,7 +170,18 @@ where
                 RecordError::MissingApiKeyEnv {
                     env_var: self.upstream.api_key_env.clone(),
                 }
-            })?;
+            })
+    }
+
+    /// Proxies one non-stream chat completions request and records it.
+    pub(crate) async fn handle_chat_completions(
+        &self,
+        request: ObservedRequest,
+    ) -> Result<ProxyResponse, RecordError> {
+        let interaction_start = Instant::now();
+
+        self.check_not_streaming(&request)?;
+        let api_key = self.resolve_api_key()?;
 
         let interaction_id = format!(
             "{proto}-{seq}",
