@@ -272,23 +272,11 @@ mod tests {
     }
 
     #[rstest]
-    fn selected_headers_drop_connection_token_headers() {
+    #[case(b"keep-alive, x-hop")]
+    #[case(b" x-hop , \xff")]
+    fn selected_headers_drop_connection_token_headers(#[case] connection: &[u8]) {
         let headers = make_header_map(&[
-            ("connection", b"keep-alive, x-hop"),
-            ("x-hop", b"drop-me"),
-            ("content-type", b"application/json"),
-        ]);
-
-        assert_eq!(
-            selected_request_headers(&headers),
-            vec![("content-type".to_owned(), "application/json".to_owned())],
-        );
-    }
-
-    #[rstest]
-    fn selected_headers_parse_connection_tokens_from_raw_bytes() {
-        let headers = make_header_map(&[
-            ("connection", b" x-hop , \xff"),
+            ("connection", connection),
             ("x-hop", b"drop-me"),
             ("content-type", b"application/json"),
         ]);

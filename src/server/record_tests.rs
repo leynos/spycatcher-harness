@@ -5,7 +5,7 @@ use camino::Utf8PathBuf;
 use rstest::rstest;
 use serde_json::json;
 use std::sync::atomic::AtomicU64;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use crate::cassette::{
     Cassette, CassetteReader, InteractionMetadata, filesystem::FilesystemCassetteStore,
@@ -162,7 +162,10 @@ fn session_metadata_uses_injected_clock() {
 
 #[rstest]
 fn session_metadata_uses_injected_session_start() {
-    let session_start = Instant::now();
+    let injected_offset = Duration::from_millis(100);
+    let session_start = Instant::now()
+        .checked_sub(injected_offset)
+        .expect("fixed offset should be within Instant range");
     let metadata = SessionMetadata::with_clock_and_start(
         UpstreamKind::OpenRouter,
         Arc::new(FixedClock),
@@ -171,7 +174,7 @@ fn session_metadata_uses_injected_session_start() {
     .create()
     .expect("session metadata should be created with fixed start");
 
-    assert!(metadata.relative_offset_ms < 100);
+    assert!(u128::from(metadata.relative_offset_ms) >= injected_offset.as_millis());
 }
 
 #[rstest]

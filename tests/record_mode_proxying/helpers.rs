@@ -278,16 +278,26 @@ pub(crate) fn assert_upstream_bearer_token(
 ) -> Result<(), Box<dyn Error>> {
     let api_key = present_env_value()?;
     let expected = format!("Bearer {api_key}");
-    if request
+    let has_authorization = request
         .headers
         .iter()
-        .any(|(name, value)| name.eq_ignore_ascii_case("authorization") && value == &expected)
-    {
+        .any(|(name, _)| name.eq_ignore_ascii_case("authorization"));
+    let matches_expected = request
+        .headers
+        .iter()
+        .any(|(name, value)| name.eq_ignore_ascii_case("authorization") && value == &expected);
+    if matches_expected {
         return Ok(());
     }
+    let header_names = request
+        .headers
+        .iter()
+        .map(|(name, _)| name.as_str())
+        .collect::<Vec<_>>();
     Err(std::io::Error::other(format!(
-        "expected upstream Authorization: {expected}, got: {:?}",
-        request.headers
+        "expected upstream Authorization Bearer token to match configured API key; \
+         authorization_present={has_authorization} header_count={} header_names={header_names:?}",
+        request.headers.len()
     ))
     .into())
 }

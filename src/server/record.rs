@@ -204,7 +204,7 @@ where
             &interaction_id,
             upstream_latency,
         )
-        .await;
+        .await?;
 
         Ok(ProxyResponse {
             status: upstream_response.status,
@@ -218,10 +218,10 @@ where
         (request, upstream_response): (ObservedRequest, &crate::http_exchange::ObservedResponse),
         interaction_id: &str,
         upstream_latency: u128,
-    ) {
+    ) -> Result<(), RecordError> {
         match self.build_interaction(request, upstream_response) {
             Ok(interaction) => {
-                if let Err(e) = self.append_interaction(interaction).await {
+                self.append_interaction(interaction).await.map_err(|e| {
                     self.failure_count.fetch_add(1, Ordering::Relaxed);
                     error!(
                         target: "spycatcher.harness.record",
@@ -231,17 +231,18 @@ where
                         protocol = CHAT_COMPLETIONS_PROTOCOL_ID,
                         cassette = upstream_id(self.upstream.kind),
                     );
-                } else {
-                    self.recorded_count.fetch_add(1, Ordering::Relaxed);
-                    info!(
-                        target: "spycatcher.harness.record",
-                        "interaction recorded interaction_id={interaction_id} \
-                         mode=record protocol={protocol} upstream_latency_ms={upstream_latency} \
-                         outcome=recorded cassette={cassette}",
-                        protocol = CHAT_COMPLETIONS_PROTOCOL_ID,
-                        cassette = upstream_id(self.upstream.kind),
-                    );
-                }
+                    e
+                })?;
+                self.recorded_count.fetch_add(1, Ordering::Relaxed);
+                info!(
+                    target: "spycatcher.harness.record",
+                    "interaction recorded interaction_id={interaction_id} \
+                     mode=record protocol={protocol} upstream_latency_ms={upstream_latency} \
+                     outcome=recorded cassette={cassette}",
+                    protocol = CHAT_COMPLETIONS_PROTOCOL_ID,
+                    cassette = upstream_id(self.upstream.kind),
+                );
+                Ok(())
             }
             Err(e) => {
                 self.failure_count.fetch_add(1, Ordering::Relaxed);
@@ -253,6 +254,7 @@ where
                     protocol = CHAT_COMPLETIONS_PROTOCOL_ID,
                     cassette = upstream_id(self.upstream.kind),
                 );
+                Err(e)
             }
         }
     }

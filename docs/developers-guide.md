@@ -31,6 +31,25 @@ This feature causes `serde_json::Map` to use an insertion-ordered map
 Removing this feature flag would break both the hashing invariant and the diff
 determinism property tests.
 
+### `tokio` runtime features
+
+The `tokio` dependency enables `rt`, `rt-multi-thread`, `macros`, `net`,
+`sync`, and `time`:
+
+```toml
+tokio = { version = "1.52.1", features = ["rt", "rt-multi-thread", "macros", "net", "sync", "time"] }
+```
+
+The server uses Tokio tasks and networking for the Axum runtime, graceful
+shutdown, and blocking cassette writes (`src/server/record.rs`). The
+`rt-multi-thread` feature is also required by the concurrency regression test
+`concurrent_requests_are_recorded_without_data_loss`, which runs
+`RecordService::handle_chat_completions` on a multi-threaded test runtime to
+verify record-mode persistence under concurrent requests.
+
+Do not remove these runtime features without checking the server startup path,
+record-mode task spawning, and the concurrent record-mode tests.
+
 ## Dev-dependencies
 
 ### `insta` — snapshot testing
@@ -52,6 +71,13 @@ cargo insta review
 
 This prevents accidental regressions in human-readable diagnostic output
 without requiring handwritten expected strings for every format variation.
+
+The `json` feature is enabled because the record-mode BDD suite also snapshots
+cassette JSON with `insta::assert_json_snapshot!`, notably the
+`cassette_successful_proxying` snapshot in
+`tests/record_mode_proxying/helpers.rs`. Without this feature, only string
+snapshot assertions are available. Do not remove it without replacing or
+reworking the JSON cassette snapshot tests.
 
 ### `proptest` — property-based testing
 
@@ -96,7 +122,7 @@ The library crate (`src/lib.rs`) exposes the following public modules:
 | `config`   | `HarnessConfig`, `UpstreamConfig`, `RedactionConfig`, and related types    |
 | `error`    | `HarnessError` enum and `HarnessResult` alias                              |
 | `i18n`     | Internationalization via Fluent                                            |
-| `protocol` | Capture and redaction helpers: header selection, hop-by-hop filtering      |
+| `protocol` | Protocol identifiers and request-shape helpers                             |
 | `replay`   | Replay mode logic                                                          |
 | `server`   | Axum record-mode HTTP server: routing, handler, graceful shutdown          |
 | `upstream` | Outbound HTTP adapter: URL construction, secret resolution, reqwest client |
@@ -111,6 +137,10 @@ The upstream adapter returns `ObservedResponse` values carrying the HTTP status
 code, raw header byte pairs for proxying as `Vec<(String, Vec<u8>)>`, and exact
 response body bytes. Header value percent-encoding happens only at the
 persistence boundary when cassette-safe string headers are derived.
+
+Header selection and hop-by-hop filtering live in `src/http_exchange.rs`, not
+`src/protocol.rs`. Use that module when changing which headers are forwarded,
+proxied downstream, or persisted in cassettes.
 
 The `cassette` module contains several submodules:
 
@@ -145,8 +175,8 @@ pre-captured `Instant` session start.
 
 `EnvProvider` provides one method, `read(&self, name: &str) -> Option<String>`,
 wrapping environment variable lookup. `ProcessEnvProvider` delegates to
-`std::env::var`. Tests inject `FakeEnvProvider` to simulate absent or preset API
-keys without mutating process state.
+`std::env::var`. Tests inject `FakeEnvProvider` to simulate absent or preset
+API keys without mutating process state.
 
 ### `ChatCompletionsUpstream` and `ReqwestUpstreamClient` (`src/upstream.rs`)
 
@@ -159,12 +189,12 @@ returns a hard-coded `ObservedResponse` or an error.
 
 ### Header selection helpers (`src/http_exchange.rs`)
 
-| Helper                            | Output type                 | Use                                                           |
-| --------------------------------- | --------------------------- | ------------------------------------------------------------- |
-| `selected_request_headers`        | `Vec<(String, String)>`     | Inbound headers for cassette persistence                      |
-| `selected_forward_headers`        | `Vec<(String, Vec<u8>)>`    | Inbound headers forwarded to upstream as raw bytes            |
-| `selected_response_headers`       | `Vec<(String, String)>`     | Response headers for cassette persistence; encodes non-UTF-8  |
-| `selected_response_proxy_headers` | `Vec<(String, Vec<u8>)>`    | Response headers forwarded downstream as raw bytes            |
+| Helper                            | Output type              | Use                                                          |
+| --------------------------------- | ------------------------ | ------------------------------------------------------------ |
+| `selected_request_headers`        | `Vec<(String, String)>`  | Inbound headers for cassette persistence                     |
+| `selected_forward_headers`        | `Vec<(String, Vec<u8>)>` | Inbound headers forwarded to upstream as raw bytes           |
+| `selected_response_headers`       | `Vec<(String, String)>`  | Response headers for cassette persistence; encodes non-UTF-8 |
+| `selected_response_proxy_headers` | `Vec<(String, Vec<u8>)>` | Response headers forwarded downstream as raw bytes           |
 
 Hop-by-hop headers, `Connection`-token-listed headers, and context-specific
 exclusions (`host`, `content-length`, `accept-encoding`) are removed by all
