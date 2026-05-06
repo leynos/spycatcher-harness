@@ -55,7 +55,7 @@ record-mode task spawning, and the concurrent record-mode tests.
 The `tracing` dependency is used at the HTTP adapter boundary for structured
 record-mode request events. `record_chat_completions_handler` calls
 `log_chat_request`, which records the HTTP method and `uri.path()` only. Query
-strings are intentionally excluded so credentials passed in query parameters do
+strings are intentionally excluded, so credentials passed in query parameters do
 not enter request logs.
 
 ## Dev-dependencies
@@ -273,7 +273,7 @@ round-trip.
   the `chat/completions` path segments to the configured base path. Existing
   trailing slashes are collapsed with `pop_if_empty()`, so a provider base such
   as `/api/v1` or `/api/v1/` becomes `/api/v1/chat/completions`. Existing base
-  query parameters are preserved and inbound query parameters are appended.
+  query parameters are preserved, and inbound query parameters are appended.
 
 `ObservedRequest` ([`src/http_exchange.rs`](../src/http_exchange.rs))
 represents what the inbound adapter observed. Its `forward_headers:
