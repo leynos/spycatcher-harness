@@ -223,7 +223,13 @@ pub(crate) fn chat_completions_url(base_url: &str, query: &str) -> HarnessResult
         segments.push("completions");
     }
     if !query.is_empty() {
-        url.set_query(Some(query));
+        match url.query() {
+            Some(existing) => {
+                let merged_query = format!("{existing}&{query}");
+                url.set_query(Some(&merged_query));
+            }
+            None => url.set_query(Some(query)),
+        }
     }
     Ok(url)
 }

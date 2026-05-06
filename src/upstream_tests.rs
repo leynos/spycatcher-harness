@@ -19,6 +19,11 @@ use rstest::rstest;
     "foo=bar&baz=1",
     "https://openrouter.ai/api/v1/chat/completions?foo=bar&baz=1"
 )]
+#[case(
+    "https://openrouter.ai/api/v1?configured=true",
+    "foo=bar",
+    "https://openrouter.ai/api/v1/chat/completions?configured=true&foo=bar"
+)]
 fn chat_completions_url_appends_endpoint_path(
     #[case] base_url: &str,
     #[case] query: &str,
@@ -161,11 +166,26 @@ fn spawn_capturing_server() -> (std::net::SocketAddr, CapturedRequest, CaptureTh
         let (mut stream, _) = listener
             .accept()
             .map_err(|error| format!("server should accept one request: {error}"))?;
-        let mut buf = vec![0_u8; 4096];
-        let n = stream
-            .read(&mut buf)
-            .map_err(|error| format!("server should read one request: {error}"))?;
-        buf.truncate(n);
+        let mut buf = Vec::new();
+        let mut chunk = [0_u8; 1024];
+        loop {
+            let n = stream
+                .read(&mut chunk)
+                .map_err(|error| format!("server should read one request: {error}"))?;
+            if n == 0 {
+                break;
+            }
+            let read_bytes = chunk
+                .get(..n)
+                .ok_or_else(|| format!("server read {n} bytes beyond buffer bounds"))?;
+            buf.extend_from_slice(read_bytes);
+            if buf
+                .windows(b"\r\n\r\n".len())
+                .any(|window| window == b"\r\n\r\n")
+            {
+                break;
+            }
+        }
         stream
             .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n")
             .map_err(|error| format!("server should write response: {error}"))?;

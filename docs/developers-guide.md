@@ -269,8 +269,11 @@ round-trip.
 - `headers: &'a [(String, Vec<u8>)]`, preserving raw header bytes
 - `body: &'a [u8]`
 - `query: &'a str`
-- `config.base_url`, used to build `{base_url}/v1/chat/completions` while
-  preserving queries
+- `config.base_url`, passed to `chat_completions_url()` as-is before appending
+  the `chat/completions` path segments to the configured base path. Existing
+  trailing slashes are collapsed with `pop_if_empty()`, so a provider base such
+  as `/api/v1` or `/api/v1/` becomes `/api/v1/chat/completions`. Existing base
+  query parameters are preserved and inbound query parameters are appended.
 
 `ObservedRequest` ([`src/http_exchange.rs`](../src/http_exchange.rs))
 represents what the inbound adapter observed. Its `forward_headers:
