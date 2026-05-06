@@ -272,11 +272,20 @@ mod tests {
     }
 
     #[rstest]
-    #[case(b"keep-alive, x-hop")]
-    #[case(b" x-hop , \xff")]
-    fn selected_headers_drop_connection_token_headers(#[case] connection: &[u8]) {
+    #[case(
+        b"keep-alive, x-hop" as &[u8],
+        "UTF-8 connection tokens are parsed and applied"
+    )]
+    #[case(
+        b" x-hop , \xff" as &[u8],
+        "non-UTF-8 bytes in Connection header do not suppress valid tokens"
+    )]
+    fn selected_headers_drop_connection_token_headers(
+        #[case] connection_value: &[u8],
+        #[case] description: &str,
+    ) {
         let headers = make_header_map(&[
-            ("connection", connection),
+            ("connection", connection_value),
             ("x-hop", b"drop-me"),
             ("content-type", b"application/json"),
         ]);
@@ -284,6 +293,7 @@ mod tests {
         assert_eq!(
             selected_request_headers(&headers),
             vec![("content-type".to_owned(), "application/json".to_owned())],
+            "{description}",
         );
     }
 
