@@ -94,38 +94,55 @@ impl ReqwestUpstreamClient {
     }
 }
 
+fn to_outbound_header(name: &str, value: &[u8]) -> HarnessResult<(HeaderName, HeaderValue)> {
+    let header_name = HeaderName::try_from(name).map_err(|error| HarnessError::InvalidConfig {
+        message: format!("invalid outbound header name {name:?}: {error}"),
+    })?;
+    let header_value =
+        HeaderValue::from_bytes(value).map_err(|error| HarnessError::InvalidConfig {
+            message: format!("invalid outbound header value for {name:?}: {error}"),
+        })?;
+    Ok((header_name, header_value))
+}
+
+fn apply_forwarded_headers(
+    mut builder: reqwest::RequestBuilder,
+    headers: &[(String, Vec<u8>)],
+) -> HarnessResult<reqwest::RequestBuilder> {
+    for (name, value) in headers {
+        if name.eq_ignore_ascii_case("authorization") {
+            continue;
+        }
+        let (header_name, header_value) = to_outbound_header(name, value)?;
+        builder = builder.header(header_name, header_value);
+    }
+    Ok(builder)
+}
+
+fn apply_extra_headers(
+    mut builder: reqwest::RequestBuilder,
+    extra_headers: &std::collections::BTreeMap<String, String>,
+) -> reqwest::RequestBuilder {
+    for (name, value) in extra_headers {
+        if name.eq_ignore_ascii_case("authorization") {
+            continue;
+        }
+        builder = builder.header(name, value);
+    }
+    builder
+}
+
 impl ChatCompletionsUpstream for ReqwestUpstreamClient {
     async fn send_chat_completions(
         &self,
         request: ChatCompletionsRequest<'_>,
     ) -> HarnessResult<ObservedResponse> {
         let url = chat_completions_url(&request.config.base_url, request.query)?;
-        let mut outbound = self.client.post(url).bearer_auth(request.api_key);
+        let authed_builder = self.client.post(url).bearer_auth(request.api_key);
+        let forwarded_builder = apply_forwarded_headers(authed_builder, request.headers)?;
+        let extra_builder = apply_extra_headers(forwarded_builder, &request.config.extra_headers);
 
-        for (name, value) in request.headers {
-            if name.eq_ignore_ascii_case("authorization") {
-                continue;
-            }
-            let header_name = HeaderName::try_from(name.as_str()).map_err(|error| {
-                HarnessError::InvalidConfig {
-                    message: format!("invalid outbound header name {name:?}: {error}"),
-                }
-            })?;
-            let header_value =
-                HeaderValue::from_bytes(value).map_err(|error| HarnessError::InvalidConfig {
-                    message: format!("invalid outbound header value for {name:?}: {error}"),
-                })?;
-            outbound = outbound.header(header_name, header_value);
-        }
-
-        for (name, value) in &request.config.extra_headers {
-            if name.eq_ignore_ascii_case("authorization") {
-                continue;
-            }
-            outbound = outbound.header(name, value);
-        }
-
-        let response = outbound
+        let response = extra_builder
             .body(request.body.to_vec())
             .send()
             .await
@@ -183,10 +200,8 @@ pub(crate) fn chat_completions_url(base_url: &str, query: &str) -> HarnessResult
 #[cfg(test)]
 mod tests {
     //! Unit tests for upstream URL construction.
-
-    use rstest::rstest;
-
     use super::*;
+    use rstest::rstest;
 
     #[rstest]
     #[case(
@@ -223,9 +238,41 @@ mod tests {
         drop(ReqwestUpstreamClient::with_client(client));
     }
 
-    /// Binds an ephemeral TCP listener, spawns a thread that reads exactly one
-    /// incoming HTTP request into a shared buffer, and returns the server
-    /// address together with that buffer.
+    #[rstest]
+    fn to_outbound_header_accepts_valid_utf8_bytes() {
+        let (name, value) =
+            to_outbound_header("content-type", b"application/json").expect("valid header");
+        assert_eq!(name.as_str(), "content-type");
+        assert_eq!(value.as_bytes(), b"application/json");
+    }
+
+    #[rstest]
+    fn to_outbound_header_accepts_non_utf8_bytes() {
+        let (_, value) =
+            to_outbound_header("x-raw", b"\xff\xfe").expect("valid non-UTF-8 header value");
+        assert_eq!(value.as_bytes(), b"\xff\xfe");
+    }
+
+    #[rstest]
+    fn apply_forwarded_headers_skips_authorization() {
+        let builder = Client::new().post("http://example.invalid/");
+        let headers = vec![
+            ("authorization".to_owned(), b"Bearer secret".to_vec()),
+            ("x-custom".to_owned(), b"keep-me".to_vec()),
+        ];
+        assert!(apply_forwarded_headers(builder, &headers).is_ok());
+    }
+
+    #[rstest]
+    fn apply_extra_headers_skips_authorization() {
+        let builder = Client::new().post("http://example.invalid/");
+        let mut extra = std::collections::BTreeMap::new();
+        extra.insert("Authorization".to_owned(), "Bearer extra-secret".to_owned());
+        extra.insert("x-provider-id".to_owned(), "acme".to_owned());
+
+        let _builder = apply_extra_headers(builder, &extra);
+    }
+
     fn spawn_capturing_server() -> (
         std::net::SocketAddr,
         std::sync::Arc<std::sync::Mutex<Vec<u8>>>,
@@ -263,9 +310,6 @@ mod tests {
         (addr, captured)
     }
 
-    /// Returns an `UpstreamConfig` whose `extra_headers` contain an
-    /// `Authorization` entry that must be suppressed in favour of the
-    /// configured `api_key`.
     fn auth_test_config(addr: std::net::SocketAddr) -> UpstreamConfig {
         UpstreamConfig {
             base_url: format!("http://{addr}"),
@@ -274,9 +318,6 @@ mod tests {
         }
     }
 
-    /// Returns a header list that includes a downstream `Authorization` header
-    /// (which must be suppressed) and an innocuous custom header (which must
-    /// pass through).
     fn inbound_auth_test_headers() -> Vec<(String, Vec<u8>)> {
         vec![
             (
@@ -287,8 +328,6 @@ mod tests {
         ]
     }
 
-    /// Waits 200 ms for the background capture thread to finish reading, then
-    /// returns the captured bytes as a lossy UTF-8 string.
     fn wait_and_collect(captured: &std::sync::Arc<std::sync::Mutex<Vec<u8>>>) -> String {
         std::thread::sleep(Duration::from_millis(200));
         let raw = match captured.lock() {
