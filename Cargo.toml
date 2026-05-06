@@ -27,7 +27,7 @@ serde_json = { version = "1.0.143", features = ["preserve_order"] }
 sha2 = "0.10.9"
 thiserror = "2.0.18"
 time = { version = "0.3.41", features = ["formatting"] }
-tokio = { version = "1.52.1", features = ["rt", "macros", "net", "sync", "time"] }
+tokio = { version = "1.52.1", features = ["rt", "rt-multi-thread", "macros", "net", "sync", "time"] }
 
 [dev-dependencies]
 insta = { version = "1.47.2", features = ["json"] }

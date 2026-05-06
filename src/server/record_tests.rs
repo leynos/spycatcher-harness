@@ -278,3 +278,48 @@ fn unique_cassette_path(name: &str) -> Utf8PathBuf {
         uuid::Uuid::new_v4()
     ))
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn concurrent_requests_are_recorded_without_data_loss() {
+    let cassette_path = unique_cassette_path("concurrent");
+    let body = br#"{"model":"gpt-test","messages":[]}"#;
+
+    let service = std::sync::Arc::new(service_fixture(
+        &cassette_path,
+        FakeUpstream {
+            response: Ok(sample_response(br#"{"id":"ok"}"#)),
+        },
+        FakeEnvProvider(Some("concurrent-key".to_owned())),
+    ));
+
+    let handles: Vec<_> = (0..8)
+        .map(|_| {
+            let svc = std::sync::Arc::clone(&service);
+            let req = ObservedRequest {
+                method: "POST".to_owned(),
+                path: crate::protocol::CHAT_COMPLETIONS_PATH.to_owned(),
+                query: String::new(),
+                headers: vec![("content-type".to_owned(), "application/json".to_owned())],
+                forward_headers: vec![("content-type".to_owned(), b"application/json".to_vec())],
+                body: body.to_vec(),
+                parsed_json: crate::http_exchange::parse_json_bytes(body),
+            };
+            tokio::spawn(async move {
+                svc.handle_chat_completions(req)
+                    .await
+                    .expect("concurrent request should succeed")
+            })
+        })
+        .collect();
+
+    for handle in handles {
+        handle.await.expect("task should not panic");
+    }
+
+    let cassette = load_cassette(&cassette_path);
+    assert_eq!(
+        cassette.interactions.len(),
+        8,
+        "all eight concurrent interactions must be persisted"
+    );
+}
