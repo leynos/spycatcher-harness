@@ -8,10 +8,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
-use axum::http::{HeaderValue, Response, StatusCode};
-use axum::response::IntoResponse;
 use log::{error, info, warn};
-use serde_json::json;
 use tokio::task::spawn_blocking;
 
 use crate::cassette::{
@@ -86,11 +83,11 @@ pub(crate) struct RecordService<U, E, M> {
     interaction_seq: Arc<AtomicU64>,
 }
 
-/// Request-level record-mode failures mapped to concrete HTTP responses.
+/// Request-level record-mode failures reported to the HTTP adapter.
 #[derive(Debug, PartialEq)]
 pub(crate) enum RecordError {
     UnsupportedStream,
-    MissingApiKeyEnv,
+    MissingApiKeyNotConfigured,
     Internal,
 }
 
@@ -98,40 +95,6 @@ pub(crate) enum RecordError {
 struct RecordTiming {
     upstream_latency_ms: u128,
     interaction_start: Instant,
-}
-
-impl RecordError {
-    const fn status_code(&self) -> StatusCode {
-        match self {
-            Self::UnsupportedStream => StatusCode::NOT_IMPLEMENTED,
-            Self::MissingApiKeyEnv | Self::Internal => StatusCode::BAD_GATEWAY,
-        }
-    }
-
-    fn message(&self) -> String {
-        match self {
-            Self::UnsupportedStream => {
-                "streaming chat completions are not implemented yet".to_owned()
-            }
-            Self::MissingApiKeyEnv => "upstream credentials are not configured".to_owned(),
-            Self::Internal => "upstream request failed".to_owned(),
-        }
-    }
-}
-
-impl IntoResponse for RecordError {
-    fn into_response(self) -> Response<axum::body::Body> {
-        let message = self.message();
-        let body_bytes = format!(r#"{{"error":{{"message":{}}}}}"#, json!(message));
-        let body = axum::body::Body::from(body_bytes.into_bytes());
-        let mut response = Response::new(body);
-        *response.status_mut() = self.status_code();
-        response.headers_mut().insert(
-            axum::http::header::CONTENT_TYPE,
-            HeaderValue::from_static("application/json"),
-        );
-        response
-    }
 }
 
 impl<U, E, M> RecordService<U, E, M>
@@ -165,7 +128,7 @@ where
                     env_var = self.upstream.api_key_env,
                     protocol = CHAT_COMPLETIONS_PROTOCOL_ID,
                 );
-                RecordError::MissingApiKeyEnv
+                RecordError::MissingApiKeyNotConfigured
             })
     }
 

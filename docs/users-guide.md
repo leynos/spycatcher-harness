@@ -4,6 +4,11 @@ This guide documents the public API surface and usage patterns for the
 Spycatcher harness. The harness records and replays LLM API interactions for
 deterministic regression testing.
 
+> **Breaking changes:** record-mode proxying changed raw header handling and
+> redaction defaults before the 0.1.0 release. See
+> [MIGRATION-0.1.0.md](../MIGRATION-0.1.0.md) before updating cassette
+> assertions or proxy-path tests.
+
 ## Library API
 
 The `spycatcher_harness` crate exposes two primary entry points for harness

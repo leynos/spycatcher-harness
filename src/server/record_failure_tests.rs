@@ -47,8 +47,8 @@ impl MetadataFactory for FailingMetadataFactory {
 #[rstest]
 #[tokio::test]
 async fn recording_failure_still_returns_upstream_response() {
-    let cassette_path = unique_cassette_path("record-fail");
-    let cassette_store = FilesystemCassetteStore::open_or_create_for_record(&cassette_path)
+    let cassette = cassette_fixture("record-fail");
+    let cassette_store = FilesystemCassetteStore::open_or_create_for_record(&cassette.path)
         .expect("cassette should open");
     let failure_count = Arc::new(AtomicU64::new(0));
     let service = RecordService {
@@ -105,9 +105,33 @@ fn sample_response(body: &[u8]) -> ObservedResponse {
     }
 }
 
-fn unique_cassette_path(name: &str) -> Utf8PathBuf {
-    Utf8PathBuf::from(format!(
-        "target/test-record-service/{name}-{}.json",
-        uuid::Uuid::new_v4()
-    ))
+struct CassetteFixture {
+    path: Utf8PathBuf,
+    _temp_dir: tempfile::TempDir,
+}
+
+fn cassette_fixture(name: &str) -> CassetteFixture {
+    let temp_dir = match tempfile::Builder::new()
+        .prefix(&format!("record-service-{name}-"))
+        .tempdir_in(".")
+    {
+        Ok(dir) => dir,
+        Err(error) => panic!("temporary cassette directory should be created: {error}"),
+    };
+    let cwd = match std::env::current_dir() {
+        Ok(path) => path,
+        Err(error) => panic!("current directory should be available: {error}"),
+    };
+    let relative_dir = match temp_dir.path().strip_prefix(&cwd) {
+        Ok(path) => path,
+        Err(error) => panic!("temporary cassette directory should be project-relative: {error}"),
+    };
+    let path = match Utf8PathBuf::from_path_buf(relative_dir.join("cassette.json")) {
+        Ok(path) => path,
+        Err(path) => panic!("temporary cassette path should be UTF-8: {path:?}"),
+    };
+    CassetteFixture {
+        path,
+        _temp_dir: temp_dir,
+    }
 }

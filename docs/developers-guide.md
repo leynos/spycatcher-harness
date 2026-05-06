@@ -111,6 +111,20 @@ definitions (`#[given]`, `#[when]`, `#[then]`) driven by `.feature` files.
 The `uuid` crate (with the `v4` feature) generates unique cassette filenames in
 integration tests, preventing collisions when tests run in parallel.
 
+### `tempfile` — self-cleaning unit-test cassette paths
+
+`tempfile` provides `TempDir` for record-mode unit tests that instantiate
+`FilesystemCassetteStore` only because the current `RecordService` store field
+is filesystem-backed. Tests that exercise request-shape guards or API-key
+resolution use a `TempDir` cassette path so no files are orphaned under
+`target/test-record-service/`. The temporary directory is created under the
+project root and converted back to a relative path before it reaches
+`FilesystemCassetteStore`, matching the adapter's capability-rooted path model.
+
+Do not replace those fixtures with fixed paths. A future in-memory cassette
+store can remove this temporary filesystem dependency once `RecordService`
+accepts cassette reader/appender traits generically.
+
 ## Internal module layout
 
 The library crate (`src/lib.rs`) exposes the following public modules:
@@ -209,6 +223,22 @@ throughout the proxy path.
 `redaction.drop_headers` is applied case-insensitively immediately before
 persistence to remove any configured header names from persisted request and
 persist response headers.
+
+## Review residuals
+
+Current record-mode review residuals are tracked as deliberate follow-ups:
+
+- Observability: request logging uses bounded paths only. Metrics, alerting,
+  Prometheus export, and distributed tracing remain tracked by issues `#31`
+  and `#33`.
+- Performance: header-selection duplication has been removed through
+  `select_headers_unified` and `build_disallowed_set`.
+- Concurrency: functional concurrent recording coverage exists in
+  `concurrent_requests_are_recorded_without_data_loss`; remaining resource-use
+  concerns are fixture hygiene, not request-state correctness.
+- Test storage: record-service unit tests use `TempDir` cassette paths,
+  including tests that reload persisted cassette contents. A post-test
+  verification checks that `target/test-record-service/` remains empty.
 
 ## Test structure
 

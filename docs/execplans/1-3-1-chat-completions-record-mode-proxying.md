@@ -507,6 +507,29 @@ During implementation, add concise evidence here:
 - which BDD scenarios prove proxying, redaction, and failure handling;
 - any manual smoke test transcript if one is needed beyond automated coverage.
 
+Additional review-follow-up evidence:
+
+- Non-persistence unit tests for `check_not_streaming` and `resolve_api_key`
+  now use a `TempDir`-backed cassette path instead of a fixed
+  `target/test-record-service/default-shared.json` file. The temporary
+  directory is created under the project root and converted back to a relative
+  path so `FilesystemCassetteStore` still works through its rooted filesystem
+  adapter; the directory is removed when the fixture drops.
+- `RecordError::MissingApiKeyEnv` was renamed to
+  `MissingApiKeyNotConfigured`, and HTTP response mapping moved from
+  `src/server/record.rs` into `src/server/record_handler.rs`. The domain error
+  no longer implements `IntoResponse`.
+- README signposting and `MIGRATION-0.1.0.md` now document record-mode usage,
+  redaction defaults, raw header bytes, and cassette assertion changes.
+- Residual observability, performance, and concurrency notes are recorded in
+  `docs/developers-guide.md`. Metrics/alerting and distributed tracing remain
+  tracked by issues `#31` and `#33`.
+- Validation after these follow-ups:
+  - `make check-fmt`
+  - `make lint`
+  - `make test` (`166` nextest tests passed, `3` skipped; doctests passed)
+  - `make markdownlint`
+
 Expected completion signal:
 
 - every command above exits `0`;

@@ -6,8 +6,9 @@
 
 use axum::body::Bytes;
 use axum::extract::{OriginalUri, State};
-use axum::http::{HeaderMap, HeaderName, HeaderValue, Response, StatusCode};
+use axum::http::{HeaderMap, HeaderName, HeaderValue, Response, StatusCode, header::CONTENT_TYPE};
 use log::warn;
+use serde_json::json;
 
 use crate::http_exchange::{
     ObservedRequest, ProxyResponse, parse_json_bytes, selected_forward_headers,
@@ -23,7 +24,7 @@ pub(crate) async fn record_chat_completions_handler(
     OriginalUri(uri): OriginalUri,
     headers: HeaderMap,
     body: Bytes,
-) -> Result<Response<axum::body::Body>, RecordError> {
+) -> Response<axum::body::Body> {
     let body_bytes = body.to_vec();
     let request = ObservedRequest {
         method: "POST".to_owned(),
@@ -34,8 +35,35 @@ pub(crate) async fn record_chat_completions_handler(
         parsed_json: parse_json_bytes(&body_bytes),
         body: body_bytes,
     };
-    let proxied = state.service.handle_chat_completions(request).await?;
-    Ok(build_proxy_response(proxied))
+    match state.service.handle_chat_completions(request).await {
+        Ok(proxied) => build_proxy_response(proxied),
+        Err(error) => build_error_response(&error),
+    }
+}
+
+fn build_error_response(error: &RecordError) -> Response<axum::body::Body> {
+    let (status, message) = record_error_http_mapping(error);
+    let body_bytes = format!(r#"{{"error":{{"message":{}}}}}"#, json!(message));
+    let mut response = Response::new(axum::body::Body::from(body_bytes.into_bytes()));
+    *response.status_mut() = status;
+    response
+        .headers_mut()
+        .insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
+    response
+}
+
+const fn record_error_http_mapping(error: &RecordError) -> (StatusCode, &'static str) {
+    match error {
+        RecordError::UnsupportedStream => (
+            StatusCode::NOT_IMPLEMENTED,
+            "streaming chat completions are not implemented yet",
+        ),
+        RecordError::MissingApiKeyNotConfigured => (
+            StatusCode::BAD_GATEWAY,
+            "upstream credentials are not configured",
+        ),
+        RecordError::Internal => (StatusCode::BAD_GATEWAY, "upstream request failed"),
+    }
 }
 
 fn build_proxy_response(response: ProxyResponse) -> Response<axum::body::Body> {
@@ -128,5 +156,21 @@ mod tests {
         let response = build_proxy_response(proxy);
 
         assert_eq!(response.status(), StatusCode::BAD_GATEWAY);
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn build_error_response_hides_operational_identifiers() {
+        let response = build_error_response(&RecordError::MissingApiKeyNotConfigured);
+
+        assert_eq!(response.status(), StatusCode::BAD_GATEWAY);
+        let body_bytes = axum::body::to_bytes(response.into_body(), 1024)
+            .await
+            .expect("error response body should be readable");
+        let body_text =
+            String::from_utf8(body_bytes.to_vec()).expect("error response should be UTF-8");
+        assert!(body_text.contains("upstream credentials are not configured"));
+        assert!(!body_text.contains("SPYCATCHER"));
+        assert!(!body_text.contains("API_KEY"));
     }
 }

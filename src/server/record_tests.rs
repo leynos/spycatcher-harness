@@ -1,6 +1,6 @@
 //! Unit tests for record-mode orchestration.
 use super::*;
-use camino::Utf8PathBuf;
+use camino::{Utf8Path, Utf8PathBuf};
 use rstest::rstest;
 use serde_json::json;
 use std::sync::atomic::AtomicU64;
@@ -36,13 +36,11 @@ impl MetadataFactory for FakeMetadataFactory {
 }
 #[derive(Debug)]
 struct FixedClock;
-
 impl Clock for FixedClock {
     fn now_rfc3339(&self) -> HarnessResult<String> {
         Ok("2024-01-01T00:00:00Z".to_owned())
     }
 }
-
 #[derive(Debug, Clone)]
 struct FakeUpstream {
     response: Result<ObservedResponse, ()>,
@@ -66,16 +64,15 @@ impl ChatCompletionsUpstream for FakeUpstream {
         )
     }
 }
-
 async fn assert_error_does_not_append(
     slug: &str,
     env_provider: FakeEnvProvider,
     request: ObservedRequest,
     check_error: impl FnOnce(RecordError),
 ) {
-    let cassette_path = unique_cassette_path(slug);
+    let cassette = cassette_fixture(slug);
     let service = service_fixture(
-        &cassette_path,
+        &cassette.path,
         FakeUpstream {
             response: Ok(sample_response(br#"{"id":"unused"}"#)),
         },
@@ -88,9 +85,8 @@ async fn assert_error_does_not_append(
         .expect_err("expected handle_chat_completions to return Err");
 
     check_error(error);
-    assert!(load_cassette(&cassette_path).interactions.is_empty());
+    assert!(load_cassette(&cassette.path).interactions.is_empty());
 }
-
 #[rstest]
 #[tokio::test]
 async fn unsupported_stream_requests_do_not_append() {
@@ -102,7 +98,6 @@ async fn unsupported_stream_requests_do_not_append() {
     )
     .await;
 }
-
 #[rstest]
 #[tokio::test]
 async fn missing_api_key_does_not_append() {
@@ -110,75 +105,57 @@ async fn missing_api_key_does_not_append() {
         "missing-key",
         FakeEnvProvider(None),
         sample_request(None),
-        |error| assert_eq!(error, RecordError::MissingApiKeyEnv),
+        |error| assert_eq!(error, RecordError::MissingApiKeyNotConfigured),
     )
     .await;
 }
-
 #[rstest]
 fn check_not_streaming_rejects_streaming_request() {
     let request = sample_request(parse_json_bytes(
         br#"{"model":"gpt-test","messages":[],"stream":true}"#,
     ));
-    let service = service_fixture_shared_temp(FakeEnvProvider(Some("token".to_owned())));
+    let fixture = service_fixture_ephemeral(FakeEnvProvider(Some("token".to_owned())));
 
-    let result = service.check_not_streaming(&request);
+    let result = fixture.service.check_not_streaming(&request);
 
     assert_eq!(result, Err(RecordError::UnsupportedStream));
 }
-
 #[rstest]
 fn check_not_streaming_allows_non_streaming_request() {
     let request = sample_request(parse_json_bytes(
         br#"{"model":"gpt-test","messages":[],"stream":false}"#,
     ));
-    let service = service_fixture_shared_temp(FakeEnvProvider(Some("token".to_owned())));
+    let fixture = service_fixture_ephemeral(FakeEnvProvider(Some("token".to_owned())));
 
-    assert!(service.check_not_streaming(&request).is_ok());
+    assert!(fixture.service.check_not_streaming(&request).is_ok());
 }
-
 #[rstest]
 fn resolve_api_key_returns_key_when_present() {
-    let service = service_fixture_shared_temp(FakeEnvProvider(Some("my-secret".to_owned())));
+    let fixture = service_fixture_ephemeral(FakeEnvProvider(Some("my-secret".to_owned())));
 
     assert_eq!(
-        service
+        fixture
+            .service
             .resolve_api_key()
             .expect("API key should resolve when env provider has a value"),
         "my-secret",
     );
 }
-
 #[rstest]
 fn resolve_api_key_errors_when_absent() {
-    let service = service_fixture_shared_temp(FakeEnvProvider(None));
+    let fixture = service_fixture_ephemeral(FakeEnvProvider(None));
 
     assert!(matches!(
-        service.resolve_api_key(),
-        Err(RecordError::MissingApiKeyEnv)
+        fixture.service.resolve_api_key(),
+        Err(RecordError::MissingApiKeyNotConfigured)
     ));
 }
-
-#[rstest]
-#[tokio::test]
-async fn missing_api_key_response_hides_env_var_name() {
-    let response = RecordError::MissingApiKeyEnv.into_response();
-    let body_bytes = axum::body::to_bytes(response.into_body(), 1024)
-        .await
-        .expect("error response body should be readable");
-    let body_text = String::from_utf8(body_bytes.to_vec()).expect("error response should be UTF-8");
-
-    assert!(body_text.contains("upstream credentials are not configured"));
-    assert!(!body_text.contains("SPYCATCHER"));
-    assert!(!body_text.contains("API_KEY"));
-}
-
 #[rstest]
 #[tokio::test]
 async fn upstream_transport_failure_does_not_append() {
-    let cassette_path = unique_cassette_path("upstream-fail");
+    let cassette = cassette_fixture("upstream-fail");
     let service = service_fixture(
-        &cassette_path,
+        &cassette.path,
         FakeUpstream { response: Err(()) },
         FakeEnvProvider(Some("token".to_owned())),
     );
@@ -190,11 +167,10 @@ async fn upstream_transport_failure_does_not_append() {
         "upstream transport failure should return RecordError::Internal"
     );
     assert!(
-        load_cassette(&cassette_path).interactions.is_empty(),
+        load_cassette(&cassette.path).interactions.is_empty(),
         "no interaction should be recorded on upstream failure"
     );
 }
-
 #[rstest]
 fn system_clock_produces_rfc3339_string() {
     let ts = SystemClock
@@ -204,7 +180,6 @@ fn system_clock_produces_rfc3339_string() {
     assert!(!ts.is_empty());
     assert!(ts.contains('T'));
 }
-
 #[rstest]
 fn session_metadata_uses_injected_clock() {
     let metadata = SessionMetadata::with_clock(UpstreamKind::OpenRouter, Arc::new(FixedClock))
@@ -213,7 +188,6 @@ fn session_metadata_uses_injected_clock() {
 
     assert_eq!(metadata.recorded_at, "2024-01-01T00:00:00Z");
 }
-
 #[rstest]
 fn session_metadata_uses_injected_session_start() {
     let injected_offset = Duration::from_millis(100);
@@ -235,13 +209,12 @@ fn session_metadata_uses_injected_session_start() {
         u128::from(metadata.relative_offset_ms)
     );
 }
-
 #[rstest]
 #[tokio::test]
 async fn invalid_json_response_keeps_exact_bytes() {
-    let cassette_path = unique_cassette_path("invalid-json");
+    let cassette = cassette_fixture("invalid-json");
     let service = service_fixture(
-        &cassette_path,
+        &cassette.path,
         FakeUpstream {
             response: Ok(sample_response(br#"{"broken": true"#)),
         },
@@ -254,8 +227,8 @@ async fn invalid_json_response_keeps_exact_bytes() {
         .expect("request should succeed");
 
     assert_eq!(proxied.body, br#"{"broken": true"#.to_vec());
-    let cassette = load_cassette(&cassette_path);
-    let interaction = cassette
+    let persisted = load_cassette(&cassette.path);
+    let interaction = persisted
         .interactions
         .first()
         .expect("expected one recorded interaction");
@@ -268,9 +241,8 @@ async fn invalid_json_response_keeps_exact_bytes() {
     assert_eq!(body, &br#"{"broken": true"#.to_vec());
     assert_eq!(parsed_json, &None);
 }
-
 fn service_fixture(
-    cassette_path: &camino::Utf8Path,
+    cassette_path: &Utf8Path,
     upstream: FakeUpstream,
     env_provider: FakeEnvProvider,
 ) -> RecordService<FakeUpstream, FakeEnvProvider, FakeMetadataFactory> {
@@ -294,18 +266,53 @@ fn service_fixture(
     }
 }
 
-fn service_fixture_shared_temp(
-    env_provider: FakeEnvProvider,
-) -> RecordService<FakeUpstream, FakeEnvProvider, FakeMetadataFactory> {
-    service_fixture(
-        camino::Utf8Path::new("target/test-record-service/default-shared.json"),
+struct ServiceFixture {
+    service: RecordService<FakeUpstream, FakeEnvProvider, FakeMetadataFactory>,
+    _temp_dir: tempfile::TempDir,
+}
+struct CassetteFixture {
+    path: Utf8PathBuf,
+    temp_dir: tempfile::TempDir,
+}
+fn service_fixture_ephemeral(env_provider: FakeEnvProvider) -> ServiceFixture {
+    let CassetteFixture { path, temp_dir } = cassette_fixture("default");
+    let service = service_fixture(
+        &path,
         FakeUpstream {
             response: Ok(sample_response(br#"{"id":"ok"}"#)),
         },
         env_provider,
-    )
+    );
+    ServiceFixture {
+        service,
+        _temp_dir: temp_dir,
+    }
 }
-
+fn cassette_fixture(name: &str) -> CassetteFixture {
+    let temp_dir = match tempfile::Builder::new()
+        .prefix(&format!("record-service-{name}-"))
+        .tempdir_in(".")
+    {
+        Ok(dir) => dir,
+        Err(error) => panic!("temporary cassette directory should be created: {error}"),
+    };
+    let cwd = match std::env::current_dir() {
+        Ok(path) => path,
+        Err(error) => panic!("current directory should be available: {error}"),
+    };
+    let relative_dir = match temp_dir.path().strip_prefix(&cwd) {
+        Ok(path) => path,
+        Err(error) => panic!("temporary cassette directory should be project-relative: {error}"),
+    };
+    let cassette_path = match Utf8PathBuf::from_path_buf(relative_dir.join("cassette.json")) {
+        Ok(path) => path,
+        Err(path) => panic!("temporary cassette path should be UTF-8: {path:?}"),
+    };
+    CassetteFixture {
+        path: cassette_path,
+        temp_dir,
+    }
+}
 fn sample_request(parsed_json: Option<serde_json::Value>) -> ObservedRequest {
     ObservedRequest {
         method: "POST".to_owned(),
@@ -323,7 +330,6 @@ fn sample_request(parsed_json: Option<serde_json::Value>) -> ObservedRequest {
         parsed_json,
     }
 }
-
 fn sample_response(body: &[u8]) -> ObservedResponse {
     ObservedResponse {
         status: 200,
@@ -333,8 +339,7 @@ fn sample_response(body: &[u8]) -> ObservedResponse {
         parsed_json: parse_json_bytes(body),
     }
 }
-
-fn load_cassette(cassette_path: &camino::Utf8Path) -> Cassette {
+fn load_cassette(cassette_path: &Utf8Path) -> Cassette {
     let store = match FilesystemCassetteStore::open_for_replay(cassette_path) {
         Ok(store) => store,
         Err(error) => panic!("cassette should reopen: {error}"),
@@ -345,21 +350,13 @@ fn load_cassette(cassette_path: &camino::Utf8Path) -> Cassette {
         Err(error) => panic!("cassette should decode: {error}"),
     }
 }
-
-fn unique_cassette_path(name: &str) -> Utf8PathBuf {
-    Utf8PathBuf::from(format!(
-        "target/test-record-service/{name}-{}.json",
-        uuid::Uuid::new_v4()
-    ))
-}
-
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn concurrent_requests_are_recorded_without_data_loss() {
-    let cassette_path = unique_cassette_path("concurrent");
+    let cassette = cassette_fixture("concurrent");
     let body = br#"{"model":"gpt-test","messages":[]}"#;
 
     let service = std::sync::Arc::new(service_fixture(
-        &cassette_path,
+        &cassette.path,
         FakeUpstream {
             response: Ok(sample_response(br#"{"id":"ok"}"#)),
         },
@@ -390,9 +387,9 @@ async fn concurrent_requests_are_recorded_without_data_loss() {
         handle.await.expect("task should not panic");
     }
 
-    let cassette = load_cassette(&cassette_path);
+    let persisted = load_cassette(&cassette.path);
     assert_eq!(
-        cassette.interactions.len(),
+        persisted.interactions.len(),
         8,
         "all eight concurrent interactions must be persisted"
     );
