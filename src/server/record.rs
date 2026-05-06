@@ -147,6 +147,8 @@ where
         &self,
         request: ObservedRequest,
     ) -> Result<ProxyResponse, RecordError> {
+        let interaction_start = Instant::now();
+
         if is_streaming_chat_completions_request(request.parsed_json.as_ref()) {
             warn!(
                 target: "spycatcher.harness.record",
@@ -178,7 +180,6 @@ where
             seq = self.interaction_seq.fetch_add(1, Ordering::Relaxed),
         );
         let upstream_start = Instant::now();
-        let interaction_start = upstream_start;
 
         let upstream_result = self
             .upstream_client

@@ -226,7 +226,7 @@ mod tests {
     #[rstest]
     #[tokio::test]
     async fn send_chat_completions_uses_bearer_auth_and_skips_inbound_authorization() {
-        use std::io::Read;
+        use std::io::{Read, Write};
         use std::net::TcpListener;
         use std::sync::{Arc, Mutex};
 
@@ -237,14 +237,17 @@ mod tests {
         let captured = Arc::new(Mutex::new(Vec::new()));
         let captured_clone = Arc::clone(&captured);
 
-        std::thread::spawn(move || {
+        let server = std::thread::spawn(move || {
             let (mut stream, _) = listener.accept().expect("server should accept one request");
             let mut buf = vec![0_u8; 4096];
-            let n = stream.read(&mut buf).unwrap_or(0);
+            let n = stream.read(&mut buf).expect("socket read failed");
             buf.truncate(n);
             *captured_clone
                 .lock()
                 .expect("captured request lock should not be poisoned") = buf;
+            stream
+                .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n")
+                .expect("server response should write");
         });
 
         let client = Client::builder()
@@ -278,7 +281,7 @@ mod tests {
                 .await,
         );
 
-        std::thread::sleep(Duration::from_millis(200));
+        server.join().expect("server thread should not panic");
 
         let raw = captured
             .lock()
@@ -316,9 +319,9 @@ mod tests {
                 let base = "https://example.invalid/v1";
                 let url = chat_completions_url(base, &query).expect("URL must build");
                 if query.is_empty() {
-                    prop_assert!(!url.as_str().contains('?'));
+                    prop_assert!(url.query().is_none());
                 } else {
-                    prop_assert!(url.as_str().contains(&query));
+                    prop_assert_eq!(url.query(), Some(query.as_str()));
                 }
             }
         }
