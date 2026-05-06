@@ -50,6 +50,14 @@ verify record-mode persistence under concurrent requests.
 Do not remove these runtime features without checking the server startup path,
 record-mode task spawning, and the concurrent record-mode tests.
 
+### `tracing` request events
+
+The `tracing` dependency is used at the HTTP adapter boundary for structured
+record-mode request events. `record_chat_completions_handler` calls
+`log_chat_request`, which records the HTTP method and `uri.path()` only. Query
+strings are intentionally excluded so credentials passed in query parameters do
+not enter request logs.
+
 ## Dev-dependencies
 
 ### `insta` — snapshot testing
@@ -78,6 +86,14 @@ cassette JSON with `insta::assert_json_snapshot!`, notably the
 `tests/record_mode_proxying/helpers.rs`. Without this feature, only string
 snapshot assertions are available. Do not remove it without replacing or
 reworking the JSON cassette snapshot tests.
+
+### `tracing-test` — captured tracing assertions
+
+`tracing-test` is used for unit tests that assert emitted tracing events. The
+`log_chat_request_uses_path_not_full_uri` test uses
+`#[tracing_test::traced_test]` and `logs_contain` to verify that request logging
+contains `/v1/chat/completions` but not sensitive query strings such as
+`api_key=secret`.
 
 ### `proptest` — property-based testing
 

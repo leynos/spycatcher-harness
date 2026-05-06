@@ -6,9 +6,12 @@
 
 use axum::body::Bytes;
 use axum::extract::{OriginalUri, State};
-use axum::http::{HeaderMap, HeaderName, HeaderValue, Response, StatusCode, header::CONTENT_TYPE};
+use axum::http::{
+    HeaderMap, HeaderName, HeaderValue, Method, Response, StatusCode, Uri, header::CONTENT_TYPE,
+};
 use log::warn;
 use serde_json::json;
+use tracing::info;
 
 use crate::http_exchange::{
     ObservedRequest, ProxyResponse, parse_json_bytes, selected_forward_headers,
@@ -25,6 +28,7 @@ pub(crate) async fn record_chat_completions_handler(
     headers: HeaderMap,
     body: Bytes,
 ) -> Response<axum::body::Body> {
+    log_chat_request(&axum::http::Method::POST, &uri);
     let body_bytes = body.to_vec();
     let request = ObservedRequest {
         method: "POST".to_owned(),
@@ -39,6 +43,15 @@ pub(crate) async fn record_chat_completions_handler(
         Ok(proxied) => build_proxy_response(proxied),
         Err(error) => build_error_response(&error),
     }
+}
+
+pub(super) fn log_chat_request(method: &Method, uri: &Uri) {
+    info!(
+        method = %method,
+        path = uri.path(),
+        "chat completions request received method={method} path={path}",
+        path = uri.path(),
+    );
 }
 
 fn build_error_response(error: &RecordError) -> Response<axum::body::Body> {
