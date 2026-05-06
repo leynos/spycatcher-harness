@@ -246,10 +246,8 @@ fn service_fixture(
     upstream: FakeUpstream,
     env_provider: FakeEnvProvider,
 ) -> RecordService<FakeUpstream, FakeEnvProvider, FakeMetadataFactory> {
-    let cassette_store = match FilesystemCassetteStore::open_or_create_for_record(cassette_path) {
-        Ok(store) => store,
-        Err(error) => panic!("cassette should open: {error}"),
-    };
+    let cassette_store = FilesystemCassetteStore::open_or_create_for_record(cassette_path)
+        .expect("cassette should open");
 
     RecordService {
         cassette_store: Arc::new(Mutex::new(cassette_store)),
@@ -340,15 +338,9 @@ fn sample_response(body: &[u8]) -> ObservedResponse {
     }
 }
 fn load_cassette(cassette_path: &Utf8Path) -> Cassette {
-    let store = match FilesystemCassetteStore::open_for_replay(cassette_path) {
-        Ok(store) => store,
-        Err(error) => panic!("cassette should reopen: {error}"),
-    };
-
-    match store.load() {
-        Ok(cassette) => cassette,
-        Err(error) => panic!("cassette should decode: {error}"),
-    }
+    let store =
+        FilesystemCassetteStore::open_for_replay(cassette_path).expect("cassette should reopen");
+    store.load().expect("cassette should decode")
 }
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn concurrent_requests_are_recorded_without_data_loss() {
