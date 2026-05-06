@@ -350,10 +350,8 @@ mod tests {
                 let (_, value) = result
                     .first()
                     .expect("selected headers should contain x-custom");
-                prop_assert!(
-                    value.starts_with('%'),
-                    "non-UTF-8 value must be percent-encoded"
-                );
+                let expected = percent_encode(&suffix, NON_ALPHANUMERIC).to_string();
+                prop_assert_eq!(value, &expected);
             }
         }
     }

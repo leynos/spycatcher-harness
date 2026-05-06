@@ -196,10 +196,19 @@ returns a hard-coded `ObservedResponse` or an error.
 | `selected_response_headers`       | `Vec<(String, String)>`  | Response headers for cassette persistence; encodes non-UTF-8 |
 | `selected_response_proxy_headers` | `Vec<(String, Vec<u8>)>` | Response headers forwarded downstream as raw bytes           |
 
-Hop-by-hop headers, `Connection`-token-listed headers, and context-specific
-exclusions (`host`, `content-length`, `accept-encoding`) are removed by all
-four helpers. Percent-encoding of non-UTF-8 values occurs only in the
-string-returning helpers, preserving raw bytes throughout the proxy path.
+Record request headers are selected in two forms. Forwarded record request
+headers drop hop-by-hop and framing headers before proxying to upstream.
+Persisted request headers additionally exclude `host`, `content-length`, and
+`accept-encoding` before cassette storage.
+
+Persist response headers and downstream response proxy headers both exclude
+hop-by-hop headers and `content-length` only. Percent-encoding of non-UTF-8
+values occurs only in the string-returning helpers, preserving raw bytes
+throughout the proxy path.
+
+`redaction.drop_headers` is applied case-insensitively immediately before
+persistence to remove any configured header names from persisted request and
+persist response headers.
 
 ## Test structure
 

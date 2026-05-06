@@ -94,6 +94,12 @@ pub(crate) enum RecordError {
     Internal,
 }
 
+#[derive(Debug, Clone, Copy)]
+struct RecordTiming {
+    upstream_latency_ms: u128,
+    interaction_start: Instant,
+}
+
 impl RecordError {
     const fn status_code(&self) -> StatusCode {
         match self {
@@ -172,6 +178,7 @@ where
             seq = self.interaction_seq.fetch_add(1, Ordering::Relaxed),
         );
         let upstream_start = Instant::now();
+        let interaction_start = upstream_start;
 
         let upstream_result = self
             .upstream_client
@@ -202,7 +209,10 @@ where
         self.record_response(
             (request, &upstream_response),
             &interaction_id,
-            upstream_latency,
+            RecordTiming {
+                upstream_latency_ms: upstream_latency,
+                interaction_start,
+            },
         )
         .await?;
 
@@ -217,9 +227,9 @@ where
         &self,
         (request, upstream_response): (ObservedRequest, &crate::http_exchange::ObservedResponse),
         interaction_id: &str,
-        upstream_latency: u128,
+        timing: RecordTiming,
     ) -> Result<(), RecordError> {
-        match self.build_interaction(request, upstream_response) {
+        match self.build_interaction(request, upstream_response, timing.interaction_start) {
             Ok(interaction) => {
                 self.append_interaction(interaction).await.map_err(|e| {
                     self.failure_count.fetch_add(1, Ordering::Relaxed);
@@ -229,6 +239,7 @@ where
                          mode=record protocol={protocol} upstream_latency_ms={upstream_latency} \
                          outcome=write_failed cassette={cassette} error={e:?}",
                         protocol = CHAT_COMPLETIONS_PROTOCOL_ID,
+                        upstream_latency = timing.upstream_latency_ms,
                         cassette = upstream_id(self.upstream.kind),
                     );
                     e
@@ -240,6 +251,7 @@ where
                      mode=record protocol={protocol} upstream_latency_ms={upstream_latency} \
                      outcome=recorded cassette={cassette}",
                     protocol = CHAT_COMPLETIONS_PROTOCOL_ID,
+                    upstream_latency = timing.upstream_latency_ms,
                     cassette = upstream_id(self.upstream.kind),
                 );
                 Ok(())
@@ -252,6 +264,7 @@ where
                      mode=record protocol={protocol} upstream_latency_ms={upstream_latency} \
                      outcome=build_failed cassette={cassette} error={e:?}",
                     protocol = CHAT_COMPLETIONS_PROTOCOL_ID,
+                    upstream_latency = timing.upstream_latency_ms,
                     cassette = upstream_id(self.upstream.kind),
                 );
                 Err(e)
@@ -263,6 +276,7 @@ where
         &self,
         request: ObservedRequest,
         response: &crate::http_exchange::ObservedResponse,
+        interaction_start: Instant,
     ) -> Result<Interaction, RecordError> {
         let mut recorded_request = RecordedRequest {
             method: request.method,
@@ -284,7 +298,7 @@ where
                 RecordError::Internal
             })?;
 
-        let metadata = self.metadata.create().map_err(|e| {
+        let metadata = self.metadata.create_at(interaction_start).map_err(|e| {
             error!(
                 target: "spycatcher.harness.record",
                 "failed to create interaction metadata: {e}"

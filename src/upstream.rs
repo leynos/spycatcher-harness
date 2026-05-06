@@ -119,6 +119,9 @@ impl ChatCompletionsUpstream for ReqwestUpstreamClient {
         }
 
         for (name, value) in &request.config.extra_headers {
+            if name.eq_ignore_ascii_case("authorization") {
+                continue;
+            }
             outbound = outbound.header(name, value);
         }
 
@@ -252,6 +255,7 @@ mod tests {
 
         let config = UpstreamConfig {
             base_url: format!("http://{addr}"),
+            extra_headers: [("Authorization".to_owned(), "Bearer extra-secret".to_owned())].into(),
             ..UpstreamConfig::default()
         };
         let headers = vec![
@@ -289,6 +293,10 @@ mod tests {
         assert!(
             !raw_str.contains("downstream-secret"),
             "downstream Authorization must not be forwarded; got:\n{raw_str}",
+        );
+        assert!(
+            !raw_str.contains("extra-secret"),
+            "extra Authorization must not be forwarded; got:\n{raw_str}",
         );
         assert!(
             raw_str.contains("x-custom: keep-me"),

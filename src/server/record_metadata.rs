@@ -5,7 +5,7 @@
 
 use std::fmt::Debug;
 use std::sync::Arc;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
@@ -19,6 +19,11 @@ use crate::{HarnessError, HarnessResult};
 pub(crate) trait MetadataFactory: Clone + Send + Sync + 'static {
     /// Creates one metadata payload for a newly observed interaction.
     fn create(&self) -> HarnessResult<InteractionMetadata>;
+
+    /// Creates metadata using an interaction start instant.
+    fn create_at(&self, _interaction_start: Instant) -> HarnessResult<InteractionMetadata> {
+        self.create()
+    }
 }
 
 /// Clock abstraction used by record-mode metadata.
@@ -80,8 +85,21 @@ impl SessionMetadata {
 
 impl MetadataFactory for SessionMetadata {
     fn create(&self) -> HarnessResult<InteractionMetadata> {
+        self.create_with_offset(self.session_start.elapsed())
+    }
+
+    fn create_at(&self, interaction_start: Instant) -> HarnessResult<InteractionMetadata> {
+        let offset = interaction_start
+            .checked_duration_since(self.session_start)
+            .unwrap_or_default();
+        self.create_with_offset(offset)
+    }
+}
+
+impl SessionMetadata {
+    fn create_with_offset(&self, offset: Duration) -> HarnessResult<InteractionMetadata> {
         let recorded_at = self.clock.now_rfc3339()?;
-        let elapsed = self.session_start.elapsed().as_millis();
+        let elapsed = offset.as_millis();
         let relative_offset_ms =
             u64::try_from(elapsed).map_err(|_| HarnessError::InvalidConfig {
                 message: "relative offset exceeded u64 range".to_owned(),
