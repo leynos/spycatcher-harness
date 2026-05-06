@@ -354,5 +354,19 @@ mod tests {
                 prop_assert_eq!(value, &expected);
             }
         }
+
+        proptest! {
+            #[test]
+            fn percent_round_trip_is_identity(
+                bytes in proptest::collection::vec(0x80u8..=0xFFu8, 1..32),
+            ) {
+                use percent_encoding::percent_decode_str;
+
+                let encoded = percent_encode(&bytes, NON_ALPHANUMERIC).to_string();
+                let decoded = percent_decode_str(&encoded).collect::<Vec<_>>();
+
+                prop_assert_eq!(decoded, bytes);
+            }
+        }
     }
 }

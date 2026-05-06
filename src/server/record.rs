@@ -132,6 +132,13 @@ where
             })
     }
 
+    pub(crate) fn counters(&self) -> (u64, u64) {
+        (
+            self.recorded_count.load(Ordering::Relaxed),
+            self.failure_count.load(Ordering::Relaxed),
+        )
+    }
+
     /// Proxies one non-stream chat completions request and records it.
     pub(crate) async fn handle_chat_completions(
         &self,
@@ -225,11 +232,13 @@ where
                     e
                 })?;
                 self.recorded_count.fetch_add(1, Ordering::Relaxed);
+                let (recorded_count, failure_count) = self.counters();
                 info!(
                     target: "spycatcher.harness.record",
                     "interaction recorded interaction_id={interaction_id} \
                      mode=record protocol={protocol} upstream_latency_ms={upstream_latency} \
-                     outcome=recorded cassette={cassette}",
+                     outcome=recorded cassette={cassette} recorded_count={recorded_count} \
+                     failure_count={failure_count}",
                     protocol = CHAT_COMPLETIONS_PROTOCOL_ID,
                     upstream_latency = timing.upstream_latency_ms,
                     cassette = upstream_id(self.upstream.kind),

@@ -393,8 +393,8 @@ async fn concurrent_requests_are_recorded_without_data_loss() {
 
     let persisted = load_cassette(&cassette.path);
     assert_eq!(
-        persisted.interactions.len(),
-        8,
-        "all eight concurrent interactions must be persisted"
+        (persisted.interactions.len(), service.counters()),
+        (8, (8, 0)),
+        "all eight concurrent interactions must be persisted and counted"
     );
 }

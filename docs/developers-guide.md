@@ -91,8 +91,8 @@ reworking the JSON cassette snapshot tests.
 
 `tracing-test` is used for unit tests that assert emitted tracing events. The
 `log_chat_request_uses_path_not_full_uri` test uses
-`#[tracing_test::traced_test]` and `logs_contain` to verify that request logging
-contains `/v1/chat/completions` but not sensitive query strings such as
+`#[tracing_test::traced_test]` and `logs_contain` to verify that request
+logging contains `/v1/chat/completions` but not sensitive query strings such as
 `api_key=secret`.
 
 ### `proptest` — property-based testing
@@ -217,6 +217,56 @@ use `ReqwestUpstreamClient::with_client(client)` in tests to inject a client
 with custom timeout or intercept behaviour. Tests inject `FakeUpstream`, which
 returns a hard-coded `ObservedResponse` or an error.
 
+`UPSTREAM_TIMEOUT` is 30 seconds. `ReqwestUpstreamClient::new()` applies it via
+`reqwest::Client::builder().timeout(UPSTREAM_TIMEOUT)`, bounding all non-stream
+requests sent by the record-mode upstream adapter. Do not remove or weaken this
+timeout without checking `send_chat_completions`, the record-mode BDD tests,
+and the upstream capture unit tests that inject shorter client timeouts.
+
+### Record metadata plumbing (`src/server/record_metadata.rs`)
+
+`MetadataFactory` is the narrow record-service port for producing
+`InteractionMetadata` values:
+
+```rust
+pub(crate) trait MetadataFactory: Clone + Send + Sync + 'static {
+    fn create(&self) -> HarnessResult<InteractionMetadata>;
+    fn create_at(&self, interaction_start: Instant) -> HarnessResult<InteractionMetadata>;
+}
+```
+
+`SessionMetadata::new(upstream_kind)` is the production constructor. It uses
+`SystemClock` and captures the session start time with `Instant::now()`.
+`SessionMetadata::with_clock(upstream_kind, clock)` is for tests that need a
+deterministic wall-clock timestamp but can still use the current instant as the
+session start.
+`SessionMetadata::with_clock_and_start(upstream_kind, clock, session_start)`
+injects both the clock and session start, which is the preferred choice for
+tests that assert `relative_offset_ms`.
+
+### Request/response capture types
+
+`ChatCompletionsRequest` (`src/upstream.rs`) carries the upstream
+`config.base_url`, resolved `api_key: &str`, selected forwarded
+`headers: &[(String, Vec<u8>)]`, exact `body: &[u8]`, and raw `query: &str`.
+Header values stay as raw bytes until the adapter writes them to Reqwest.
+
+`ObservedRequest` (`src/http_exchange.rs`) represents what the inbound adapter
+observed. Its `forward_headers: Vec<(String, Vec<u8>)>` preserves raw header
+bytes for upstream forwarding, while `headers: Vec<(String, String)>` is the
+string form used for cassette persistence after redaction.
+
+`ObservedResponse` (`src/http_exchange.rs`) carries
+`proxy_headers: Vec<(String, Vec<u8>)>` for downstream proxying,
+`headers: Vec<(String, String)>` for cassette persistence, `body: Vec<u8>` as
+exact response bytes, and parsed JSON when valid. Percent-encoding is applied
+only when a string-returning selector prepares cassette-safe header values; the
+proxy path retains raw bytes.
+
+The selection and encoding rules for these capture types live in
+`src/http_exchange.rs`. Cross-check that file before changing any header
+forwarding, proxying, or persistence semantics.
+
 ### Header selection helpers (`src/http_exchange.rs`)
 
 | Helper                            | Output type              | Use                                                          |
@@ -245,8 +295,8 @@ persist response headers.
 Current record-mode review residuals are tracked as deliberate follow-ups:
 
 - Observability: request logging uses bounded paths only. Metrics, alerting,
-  Prometheus export, and distributed tracing remain tracked by issues `#31`
-  and `#33`.
+  Prometheus export, and distributed tracing remain tracked by issues `#31` and
+  `#33`.
 - Performance: header-selection duplication has been removed through
   `select_headers_unified` and `build_disallowed_set`.
 - Concurrency: functional concurrent recording coverage exists in

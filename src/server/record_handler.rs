@@ -11,7 +11,7 @@ use axum::http::{
 };
 use log::warn;
 use serde_json::json;
-use tracing::info;
+use tracing::{debug, info};
 
 use crate::http_exchange::{
     ObservedRequest, ProxyResponse, parse_json_bytes, selected_forward_headers,
@@ -46,6 +46,12 @@ pub(crate) async fn record_chat_completions_handler(
 }
 
 pub(super) fn log_chat_request(method: &Method, uri: &Uri) {
+    debug!(
+        target: "spycatcher.harness.record",
+        method = %method,
+        path = uri.path(),
+        "record-mode request received",
+    );
     info!(
         method = %method,
         path = uri.path(),

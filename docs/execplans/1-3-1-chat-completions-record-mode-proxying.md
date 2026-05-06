@@ -174,6 +174,9 @@ Skills to apply during implementation:
       cardinality checks, and safe proxy-header warning logs.
 - [x] Address post-review simplification of request-forwarding header
       selection and raw `Connection` token normalization.
+- [x] Address review follow-ups for upstream authorisation filtering tests,
+      capture-property coverage, record-mode request-entry logging, and
+      developer-guide documentation of internal record-mode seams.
 
 ## Surprises & Discoveries
 
@@ -204,6 +207,13 @@ Skills to apply during implementation:
 - Post-review comments referred to pre-rebase files such as `src/server.rs`,
   but the equivalent implementation now lives in focused modules under
   `src/server/` and `src/http_exchange.rs`.
+- Two upstream header-filtering unit tests were only asserting that helper
+  calls succeeded. They now use the local capture server to assert that
+  `Authorization` is actually absent while non-sensitive headers still forward.
+- The domain-decoupling concern around `axum::http` in header selection and
+  `UpstreamConfig` in `ChatCompletionsRequest` is valid but larger than a
+  minimal review fix. It is tracked in issue `#36` rather than folded
+  into the record-mode proxying PR.
 
 ## Decision Log
 

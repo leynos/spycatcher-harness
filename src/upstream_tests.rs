@@ -54,23 +54,74 @@ fn to_outbound_header_accepts_non_utf8_bytes() {
 }
 
 #[rstest]
-fn apply_forwarded_headers_skips_authorization() {
-    let builder = Client::new().post("http://example.invalid/");
+#[tokio::test]
+async fn apply_forwarded_headers_skips_authorization() {
+    let (addr, captured, server) = spawn_capturing_server();
+    let base_builder = Client::builder()
+        .timeout(Duration::from_millis(500))
+        .build()
+        .expect("custom reqwest client should build")
+        .post(format!("http://{addr}"));
     let headers = vec![
-        ("authorization".to_owned(), b"Bearer secret".to_vec()),
+        (
+            "authorization".to_owned(),
+            b"Bearer should-not-forward".to_vec(),
+        ),
         ("x-custom".to_owned(), b"keep-me".to_vec()),
     ];
-    assert!(apply_forwarded_headers(builder, &headers).is_ok());
+    let forwarded_builder =
+        apply_forwarded_headers(base_builder, &headers).expect("forwarded headers should apply");
+
+    drop(forwarded_builder.body("{}".to_owned()).send().await);
+
+    server
+        .join()
+        .expect("server thread should not panic")
+        .expect("server should capture one request");
+    let raw_str = wait_and_collect(&captured).expect("captured request should be readable");
+    let raw_lower = raw_str.to_ascii_lowercase();
+    assert!(
+        !raw_lower.contains("authorization:"),
+        "must drop inbound Authorization; got:\n{raw_str}",
+    );
+    assert!(
+        raw_str.contains("x-custom: keep-me"),
+        "must forward non-auth headers; got:\n{raw_str}",
+    );
 }
 
 #[rstest]
-fn apply_extra_headers_skips_authorization() {
-    let builder = Client::new().post("http://example.invalid/");
+#[tokio::test]
+async fn apply_extra_headers_skips_authorization() {
+    let (addr, captured, server) = spawn_capturing_server();
+    let base_builder = Client::builder()
+        .timeout(Duration::from_millis(500))
+        .build()
+        .expect("custom reqwest client should build")
+        .post(format!("http://{addr}"));
     let mut extra = std::collections::BTreeMap::new();
     extra.insert("Authorization".to_owned(), "Bearer extra-secret".to_owned());
     extra.insert("x-provider-id".to_owned(), "acme".to_owned());
 
-    assert!(apply_extra_headers(builder, &extra).is_ok());
+    let extra_builder =
+        apply_extra_headers(base_builder, &extra).expect("extra headers should apply");
+
+    drop(extra_builder.body("{}".to_owned()).send().await);
+
+    server
+        .join()
+        .expect("server thread should not panic")
+        .expect("server should capture one request");
+    let raw_str = wait_and_collect(&captured).expect("captured request should be readable");
+    let raw_lower = raw_str.to_ascii_lowercase();
+    assert!(
+        !raw_lower.contains("authorization:"),
+        "must drop extra Authorization; got:\n{raw_str}",
+    );
+    assert!(
+        raw_str.contains("x-provider-id: acme"),
+        "must forward non-auth extra header; got:\n{raw_str}",
+    );
 }
 
 #[rstest]
@@ -89,7 +140,7 @@ type CapturedRequest = std::sync::Arc<std::sync::Mutex<Vec<u8>>>;
 type CaptureThread = std::thread::JoinHandle<Result<(), String>>;
 
 fn spawn_capturing_server() -> (std::net::SocketAddr, CapturedRequest, CaptureThread) {
-    use std::io::Read;
+    use std::io::{Read, Write};
     use std::net::TcpListener;
     use std::sync::{Arc, Mutex};
 
@@ -113,6 +164,9 @@ fn spawn_capturing_server() -> (std::net::SocketAddr, CapturedRequest, CaptureTh
             .read(&mut buf)
             .map_err(|error| format!("server should read one request: {error}"))?;
         buf.truncate(n);
+        stream
+            .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n")
+            .map_err(|error| format!("server should write response: {error}"))?;
         let mut captured_guard = captured_clone
             .lock()
             .map_err(|error| format!("captured request lock should not be poisoned: {error}"))?;
