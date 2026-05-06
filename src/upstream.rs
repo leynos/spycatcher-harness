@@ -105,12 +105,17 @@ fn to_outbound_header(name: &str, value: &[u8]) -> HarnessResult<(HeaderName, He
     Ok((header_name, header_value))
 }
 
+#[inline]
+fn should_forward_header(name: &str) -> bool {
+    !name.eq_ignore_ascii_case("authorization")
+}
+
 fn apply_forwarded_headers(
     mut builder: reqwest::RequestBuilder,
     headers: &[(String, Vec<u8>)],
 ) -> HarnessResult<reqwest::RequestBuilder> {
     for (name, value) in headers {
-        if name.eq_ignore_ascii_case("authorization") {
+        if !should_forward_header(name) {
             continue;
         }
         let (header_name, header_value) = to_outbound_header(name, value)?;
@@ -124,7 +129,7 @@ fn apply_extra_headers(
     extra_headers: &std::collections::BTreeMap<String, String>,
 ) -> HarnessResult<reqwest::RequestBuilder> {
     for (name, value) in extra_headers {
-        if name.eq_ignore_ascii_case("authorization") {
+        if !should_forward_header(name) {
             continue;
         }
         let (header_name, header_value) = to_outbound_header(name, value.as_bytes())?;
