@@ -250,7 +250,6 @@ where
         match self.build_interaction(request, upstream_response, timing.interaction_start) {
             Ok(interaction) => {
                 self.append_interaction(interaction).await.map_err(|e| {
-                    self.failure_count.fetch_add(1, Ordering::Relaxed);
                     error!(
                         target: "spycatcher.harness.record",
                         "cassette write failed interaction_id={interaction_id} \
@@ -275,7 +274,6 @@ where
                 Ok(())
             }
             Err(e) => {
-                self.failure_count.fetch_add(1, Ordering::Relaxed);
                 error!(
                     target: "spycatcher.harness.record",
                     "cassette build failed interaction_id={interaction_id} \

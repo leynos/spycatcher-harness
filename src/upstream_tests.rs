@@ -85,10 +85,10 @@ fn apply_extra_headers_rejects_invalid_header_name() {
     ));
 }
 
-fn spawn_capturing_server() -> (
-    std::net::SocketAddr,
-    std::sync::Arc<std::sync::Mutex<Vec<u8>>>,
-) {
+type CapturedRequest = std::sync::Arc<std::sync::Mutex<Vec<u8>>>;
+type CaptureThread = std::thread::JoinHandle<Result<(), String>>;
+
+fn spawn_capturing_server() -> (std::net::SocketAddr, CapturedRequest, CaptureThread) {
     use std::io::Read;
     use std::net::TcpListener;
     use std::sync::{Arc, Mutex};
@@ -104,22 +104,23 @@ fn spawn_capturing_server() -> (
     let captured: Arc<Mutex<Vec<u8>>> = Arc::new(Mutex::new(Vec::new()));
     let captured_clone = Arc::clone(&captured);
 
-    std::thread::spawn(move || {
-        let (mut stream, _) = match listener.accept() {
-            Ok(accepted) => accepted,
-            Err(error) => panic!("server should accept one request: {error}"),
-        };
+    let handle = std::thread::spawn(move || {
+        let (mut stream, _) = listener
+            .accept()
+            .map_err(|error| format!("server should accept one request: {error}"))?;
         let mut buf = vec![0_u8; 4096];
-        let n = stream.read(&mut buf).unwrap_or(0);
+        let n = stream
+            .read(&mut buf)
+            .map_err(|error| format!("server should read one request: {error}"))?;
         buf.truncate(n);
-        let mut captured_guard = match captured_clone.lock() {
-            Ok(guard) => guard,
-            Err(error) => panic!("captured request lock should not be poisoned: {error}"),
-        };
+        let mut captured_guard = captured_clone
+            .lock()
+            .map_err(|error| format!("captured request lock should not be poisoned: {error}"))?;
         *captured_guard = buf;
+        Ok(())
     });
 
-    (addr, captured)
+    (addr, captured, handle)
 }
 
 fn auth_test_config(addr: std::net::SocketAddr) -> UpstreamConfig {
@@ -140,19 +141,18 @@ fn inbound_auth_test_headers() -> Vec<(String, Vec<u8>)> {
     ]
 }
 
-fn wait_and_collect(captured: &std::sync::Arc<std::sync::Mutex<Vec<u8>>>) -> String {
+fn wait_and_collect(captured: &CapturedRequest) -> Result<String, String> {
     std::thread::sleep(Duration::from_millis(200));
-    let raw = match captured.lock() {
-        Ok(guard) => guard,
-        Err(error) => panic!("captured request lock should not be poisoned: {error}"),
-    };
-    String::from_utf8_lossy(&raw).into_owned()
+    let raw = captured
+        .lock()
+        .map_err(|error| format!("captured request lock should not be poisoned: {error}"))?;
+    Ok(String::from_utf8_lossy(&raw).into_owned())
 }
 
 #[rstest]
 #[tokio::test]
 async fn send_chat_completions_uses_bearer_auth_and_skips_inbound_authorization() {
-    let (addr, captured) = spawn_capturing_server();
+    let (addr, captured, server) = spawn_capturing_server();
 
     let client = Client::builder()
         .timeout(Duration::from_millis(500))
@@ -174,7 +174,11 @@ async fn send_chat_completions_uses_bearer_auth_and_skips_inbound_authorization(
             .await,
     );
 
-    let raw_str = wait_and_collect(&captured);
+    server
+        .join()
+        .expect("server thread should not panic")
+        .expect("server should capture one request");
+    let raw_str = wait_and_collect(&captured).expect("captured request should be readable");
     let raw_lower = raw_str.to_ascii_lowercase();
 
     assert!(

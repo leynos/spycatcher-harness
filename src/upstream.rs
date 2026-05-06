@@ -124,10 +124,10 @@ fn apply_extra_headers(
     extra_headers: &std::collections::BTreeMap<String, String>,
 ) -> HarnessResult<reqwest::RequestBuilder> {
     for (name, value) in extra_headers {
-        let (header_name, header_value) = to_outbound_header(name, value.as_bytes())?;
         if name.eq_ignore_ascii_case("authorization") {
             continue;
         }
+        let (header_name, header_value) = to_outbound_header(name, value.as_bytes())?;
         builder = builder.header(header_name, header_value);
     }
     Ok(builder)

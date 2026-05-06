@@ -48,10 +48,8 @@ impl MetadataFactory for FailingMetadataFactory {
 #[tokio::test]
 async fn recording_failure_still_returns_upstream_response() {
     let cassette_path = unique_cassette_path("record-fail");
-    let cassette_store = match FilesystemCassetteStore::open_or_create_for_record(&cassette_path) {
-        Ok(store) => store,
-        Err(error) => panic!("cassette should open: {error}"),
-    };
+    let cassette_store = FilesystemCassetteStore::open_or_create_for_record(&cassette_path)
+        .expect("cassette should open");
     let failure_count = Arc::new(AtomicU64::new(0));
     let service = RecordService {
         cassette_store: Arc::new(Mutex::new(cassette_store)),
