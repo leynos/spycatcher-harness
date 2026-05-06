@@ -1,5 +1,4 @@
 //! Unit tests for record-mode orchestration.
-
 use super::*;
 use camino::Utf8PathBuf;
 use rstest::rstest;
@@ -14,7 +13,6 @@ use crate::config::UpstreamKind;
 use crate::http_exchange::{ObservedResponse, parse_json_bytes};
 use crate::protocol::CHAT_COMPLETIONS_PATH;
 use crate::server::record_metadata::{Clock, MetadataFactory, SessionMetadata, SystemClock};
-
 #[derive(Debug, Clone)]
 struct FakeEnvProvider(Option<String>);
 
@@ -23,7 +21,6 @@ impl EnvProvider for FakeEnvProvider {
         self.0.clone()
     }
 }
-
 #[derive(Debug, Clone)]
 struct FakeMetadataFactory;
 
@@ -37,7 +34,6 @@ impl MetadataFactory for FakeMetadataFactory {
         })
     }
 }
-
 #[derive(Debug)]
 struct FixedClock;
 
@@ -232,7 +228,12 @@ fn session_metadata_uses_injected_session_start() {
     .create()
     .expect("session metadata should be created with fixed start");
 
-    assert!(u128::from(metadata.relative_offset_ms) >= injected_offset.as_millis());
+    assert!(
+        u128::from(metadata.relative_offset_ms) >= injected_offset.as_millis(),
+        "expected relative offset to be at least {} ms, got {} ms",
+        injected_offset.as_millis(),
+        u128::from(metadata.relative_offset_ms)
+    );
 }
 
 #[rstest]
