@@ -53,60 +53,46 @@ fn to_outbound_header_accepts_non_utf8_bytes() {
     assert_eq!(value.as_bytes(), b"\xff\xfe");
 }
 
-#[rstest]
-#[tokio::test]
-async fn apply_forwarded_headers_skips_authorization() {
-    let (addr, captured, server) = spawn_capturing_server();
-    let base_builder = Client::builder()
-        .timeout(Duration::from_millis(500))
-        .build()
-        .expect("custom reqwest client should build")
-        .post(format!("http://{addr}"));
-    let headers = vec![
-        (
-            "authorization".to_owned(),
-            b"Bearer should-not-forward".to_vec(),
-        ),
-        ("x-custom".to_owned(), b"keep-me".to_vec()),
-    ];
-    let forwarded_builder =
-        apply_forwarded_headers(base_builder, &headers).expect("forwarded headers should apply");
-
-    drop(forwarded_builder.body("{}".to_owned()).send().await);
-
-    server
-        .join()
-        .expect("server thread should not panic")
-        .expect("server should capture one request");
-    let raw_str = wait_and_collect(&captured).expect("captured request should be readable");
-    let raw_lower = raw_str.to_ascii_lowercase();
-    assert!(
-        !raw_lower.contains("authorization:"),
-        "must drop inbound Authorization; got:\n{raw_str}",
-    );
-    assert!(
-        raw_str.contains("x-custom: keep-me"),
-        "must forward non-auth headers; got:\n{raw_str}",
-    );
+#[derive(Clone, Copy)]
+enum InjectCase {
+    Forwarded,
+    Extra,
 }
 
 #[rstest]
+#[case(InjectCase::Forwarded, "x-custom: keep-me")]
+#[case(InjectCase::Extra, "x-provider-id: acme")]
 #[tokio::test]
-async fn apply_extra_headers_skips_authorization() {
+async fn headers_skip_authorization_and_forward_expected(
+    #[case] case: InjectCase,
+    #[case] expected_header: &str,
+) {
     let (addr, captured, server) = spawn_capturing_server();
     let base_builder = Client::builder()
         .timeout(Duration::from_millis(500))
         .build()
         .expect("custom reqwest client should build")
         .post(format!("http://{addr}"));
-    let mut extra = std::collections::BTreeMap::new();
-    extra.insert("Authorization".to_owned(), "Bearer extra-secret".to_owned());
-    extra.insert("x-provider-id".to_owned(), "acme".to_owned());
+    let request_builder = match case {
+        InjectCase::Forwarded => {
+            let headers = vec![
+                (
+                    "authorization".to_owned(),
+                    b"Bearer should-not-forward".to_vec(),
+                ),
+                ("x-custom".to_owned(), b"keep-me".to_vec()),
+            ];
+            apply_forwarded_headers(base_builder, &headers).expect("forwarded headers should apply")
+        }
+        InjectCase::Extra => {
+            let mut extra = std::collections::BTreeMap::new();
+            extra.insert("Authorization".to_owned(), "Bearer extra-secret".to_owned());
+            extra.insert("x-provider-id".to_owned(), "acme".to_owned());
+            apply_extra_headers(base_builder, &extra).expect("extra headers should apply")
+        }
+    };
 
-    let extra_builder =
-        apply_extra_headers(base_builder, &extra).expect("extra headers should apply");
-
-    drop(extra_builder.body("{}".to_owned()).send().await);
+    drop(request_builder.body("{}".to_owned()).send().await);
 
     server
         .join()
@@ -116,11 +102,11 @@ async fn apply_extra_headers_skips_authorization() {
     let raw_lower = raw_str.to_ascii_lowercase();
     assert!(
         !raw_lower.contains("authorization:"),
-        "must drop extra Authorization; got:\n{raw_str}",
+        "must drop Authorization; got:\n{raw_str}",
     );
     assert!(
-        raw_str.contains("x-provider-id: acme"),
-        "must forward non-auth extra header; got:\n{raw_str}",
+        raw_str.contains(expected_header),
+        "must forward expected non-auth header {expected_header:?}; got:\n{raw_str}",
     );
 }
 
