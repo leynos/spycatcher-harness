@@ -218,64 +218,91 @@ use `ReqwestUpstreamClient::with_client(client)` in tests to inject a client
 with custom timeout or intercept behaviour. Tests inject `FakeUpstream`, which
 returns a hard-coded `ObservedResponse` or an error.
 
-`UPSTREAM_TIMEOUT` is 30 seconds. `ReqwestUpstreamClient::new()` applies it via
-`reqwest::Client::builder().timeout(UPSTREAM_TIMEOUT)`, bounding all non-stream
-requests sent by the record-mode upstream adapter. Do not remove or weaken this
-timeout without checking `send_chat_completions`, the record-mode BDD tests,
-and the upstream capture unit tests that inject shorter client timeouts.
+#### Request timeout
+
+The outbound upstream adapter in [`src/upstream.rs`](../src/upstream.rs) uses a
+fixed request timeout:
+
+```rust
+pub(crate) const UPSTREAM_TIMEOUT: Duration = Duration::from_secs(30);
+```
+
+`ReqwestUpstreamClient::new()` applies that constant via
+`reqwest::Client::builder().timeout(UPSTREAM_TIMEOUT)`. It bounds all
+non-stream `/v1/chat/completions` requests so stalled upstreams do not block
+graceful shutdown indefinitely.
 
 ### Record metadata plumbing (`src/server/record_metadata.rs`)
 
-`MetadataFactory` is the narrow record-service port for producing
-`InteractionMetadata` values:
+#### MetadataFactory and SessionMetadata
+
+[`src/server/record_metadata.rs`](../src/server/record_metadata.rs) contains
+the metadata construction seam. `MetadataFactory` is the narrow record-service
+port responsible for producing `InteractionMetadata` values used for cassette
+persistence:
 
 ```rust
 pub(crate) trait MetadataFactory: Clone + Send + Sync + 'static {
     fn create(&self) -> HarnessResult<InteractionMetadata>;
-    fn create_at(&self, interaction_start: Instant) -> HarnessResult<InteractionMetadata>;
+    fn create_at(&self, start: Instant) -> HarnessResult<InteractionMetadata>;
 }
 ```
 
-`SessionMetadata::new(upstream_kind)` is the production constructor. It uses
-`SystemClock` and captures the session start time with `Instant::now()`.
-`SessionMetadata::with_clock(upstream_kind, clock)` is for tests that need a
-deterministic wall-clock timestamp but can still use the current instant as the
-session start.
-`SessionMetadata::with_clock_and_start(upstream_kind, clock, session_start)`
-injects both the clock and session start, which is the preferred choice for
-tests that assert `relative_offset_ms`.
+`SessionMetadata` has three constructors:
+
+- `new(kind: UpstreamKind)` is the production default. It uses `SystemClock`
+  and captures the session start with `Instant::now()`.
+- `with_clock(kind, Arc<dyn Clock>)` injects a clock while still capturing the
+  session start with `Instant::now()`.
+- `with_clock_and_start(kind, Arc<dyn Clock>, Instant)` injects both the clock
+  and a captured session start for deterministic `relative_offset_ms` tests.
+
+`relative_offset_ms` measures from the session start to the interaction start,
+captured at record-service handler entry, not the end of the upstream
+round-trip.
 
 ### Request/response capture types
 
-`ChatCompletionsRequest` (`src/upstream.rs`) carries the upstream
-`config.base_url`, resolved `api_key: &str`, selected forwarded
-`headers: &[(String, Vec<u8>)]`, exact `body: &[u8]`, and raw `query: &str`.
-Header values stay as raw bytes until the adapter writes them to Reqwest.
+`ChatCompletionsRequest<'a>` ([`src/upstream.rs`](../src/upstream.rs)) carries:
 
-`ObservedRequest` (`src/http_exchange.rs`) represents what the inbound adapter
-observed. Its `forward_headers: Vec<(String, Vec<u8>)>` preserves raw header
-bytes for upstream forwarding, while `headers: Vec<(String, String)>` is the
-string form used for cassette persistence after redaction.
+- `api_key: &'a str`
+- `headers: &'a [(String, Vec<u8>)]`, preserving raw header bytes
+- `body: &'a [u8]`
+- `query: &'a str`
+- `config.base_url`, used to build `{base_url}/v1/chat/completions` while
+  preserving queries
 
-`ObservedResponse` (`src/http_exchange.rs`) carries
-`proxy_headers: Vec<(String, Vec<u8>)>` for downstream proxying,
-`headers: Vec<(String, String)>` for cassette persistence, `body: Vec<u8>` as
-exact response bytes, and parsed JSON when valid. Percent-encoding is applied
-only when a string-returning selector prepares cassette-safe header values; the
-proxy path retains raw bytes.
+`ObservedRequest` ([`src/http_exchange.rs`](../src/http_exchange.rs))
+represents what the inbound adapter observed. Its `forward_headers:
+Vec<(String, Vec<u8>)>` field holds inbound headers selected for forwarding in
+a binary-safe form.
 
-The selection and encoding rules for these capture types live in
-`src/http_exchange.rs`. Cross-check that file before changing any header
-forwarding, proxying, or persistence semantics.
+`ObservedResponse` ([`src/http_exchange.rs`](../src/http_exchange.rs))
+carries:
+
+- `proxy_headers: Vec<(String, Vec<u8>)>`, raw header bytes forwarded
+  downstream
+- `headers: Vec<(String, String)>`, cassette-persistence headers with
+  non-UTF-8 values percent-encoded losslessly
+- `body: Vec<u8>`, exact response bytes
+
+Hop-by-hop headers and `Connection` tokens are removed in all selectors.
+Redaction is applied immediately before persistence; the default redaction
+configuration drops `authorization`.
 
 ### Header selection helpers (`src/http_exchange.rs`)
 
-| Helper                            | Output type              | Use                                                          |
-| --------------------------------- | ------------------------ | ------------------------------------------------------------ |
-| `selected_request_headers`        | `Vec<(String, String)>`  | Inbound headers for cassette persistence                     |
-| `selected_forward_headers`        | `Vec<(String, Vec<u8>)>` | Inbound headers forwarded to upstream as raw bytes           |
-| `selected_response_headers`       | `Vec<(String, String)>`  | Response headers for cassette persistence; encodes non-UTF-8 |
-| `selected_response_proxy_headers` | `Vec<(String, Vec<u8>)>` | Response headers forwarded downstream as raw bytes           |
+The header helpers in [`src/http_exchange.rs`](../src/http_exchange.rs) define
+the byte/string boundary:
+
+- `selected_request_headers(&HeaderMap) -> Vec<(String, String)>`
+  percent-encodes values for cassette persistence.
+- `selected_forward_headers(&HeaderMap) -> Vec<(String, Vec<u8>)>` preserves
+  raw bytes for upstream forwarding.
+- `selected_response_headers(&HeaderMap) -> Vec<(String, String)>`
+  percent-encodes values for cassette persistence.
+- `selected_response_proxy_headers(&HeaderMap) -> Vec<(String, Vec<u8>)>`
+  preserves raw bytes for downstream proxying.
 
 Record request headers are selected in two forms. Forwarded record request
 headers drop hop-by-hop and framing headers before proxying to upstream.
@@ -290,6 +317,13 @@ throughout the proxy path.
 `redaction.drop_headers` is applied case-insensitively immediately before
 persistence to remove any configured header names from persisted request and
 persist response headers.
+
+### Observability
+
+Record-mode request and decision logs are emitted through `tracing`. Metrics,
+alerts, distributed tracing spans, and correlation identifiers remain tracked
+in issues `#31` and `#33` and are intentionally out of scope for the public API
+at this stage.
 
 ## Review residuals
 
