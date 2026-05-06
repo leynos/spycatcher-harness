@@ -212,15 +212,27 @@ where
             RecordError::Internal
         })?;
 
-        self.record_response(
-            (request, &upstream_response),
-            &interaction_id,
-            RecordTiming {
-                upstream_latency_ms: upstream_latency,
-                interaction_start,
-            },
-        )
-        .await?;
+        let record_result = self
+            .record_response(
+                (request, &upstream_response),
+                &interaction_id,
+                RecordTiming {
+                    upstream_latency_ms: upstream_latency,
+                    interaction_start,
+                },
+            )
+            .await;
+
+        if let Err(error) = record_result {
+            self.failure_count.fetch_add(1, Ordering::Relaxed);
+            error!(
+                target: "spycatcher.harness.record",
+                "recording failed interaction_id={interaction_id} mode=record \
+                 protocol={protocol} outcome=record_failed cassette={cassette} error={error:?}",
+                protocol = CHAT_COMPLETIONS_PROTOCOL_ID,
+                cassette = upstream_id(self.upstream.kind),
+            );
+        }
 
         Ok(ProxyResponse {
             status: upstream_response.status,
@@ -352,6 +364,10 @@ where
         })?
     }
 }
+
+#[cfg(test)]
+#[path = "record_failure_tests.rs"]
+mod failure_tests;
 
 #[cfg(test)]
 #[path = "record_tests.rs"]
