@@ -92,7 +92,11 @@ async fn headers_skip_authorization_and_forward_expected(
         }
     };
 
-    drop(request_builder.body("{}".to_owned()).send().await);
+    request_builder
+        .body("{}".to_owned())
+        .send()
+        .await
+        .expect("outbound request should succeed");
 
     server
         .join()
@@ -115,6 +119,18 @@ fn apply_extra_headers_rejects_invalid_header_name() {
     let builder = Client::new().post("http://example.invalid/");
     let mut extra = std::collections::BTreeMap::new();
     extra.insert("not a header".to_owned(), "value".to_owned());
+
+    assert!(matches!(
+        apply_extra_headers(builder, &extra),
+        Err(HarnessError::InvalidConfig { .. })
+    ));
+}
+
+#[rstest]
+fn apply_extra_headers_rejects_forbidden_header_name() {
+    let builder = Client::new().post("http://example.invalid/");
+    let mut extra = std::collections::BTreeMap::new();
+    extra.insert("connection".to_owned(), "keep-alive".to_owned());
 
     assert!(matches!(
         apply_extra_headers(builder, &extra),
@@ -202,17 +218,16 @@ async fn send_chat_completions_uses_bearer_auth_and_skips_inbound_authorization(
     let config = auth_test_config(addr);
     let headers = inbound_auth_test_headers();
 
-    drop(
-        upstream
-            .send_chat_completions(ChatCompletionsRequest {
-                config: &config,
-                api_key: "upstream-key",
-                headers: &headers,
-                body: br#"{"model":"test"}"#,
-                query: "",
-            })
-            .await,
-    );
+    upstream
+        .send_chat_completions(ChatCompletionsRequest {
+            config: &config,
+            api_key: "upstream-key",
+            headers: &headers,
+            body: br#"{"model":"test"}"#,
+            query: "",
+        })
+        .await
+        .expect("outbound request should succeed");
 
     server
         .join()

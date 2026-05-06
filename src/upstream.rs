@@ -20,6 +20,20 @@ use std::time::Duration;
 /// indefinite upstream hangs.
 pub(crate) const UPSTREAM_TIMEOUT: Duration = Duration::from_secs(30);
 
+const FORBIDDEN_EXTRA_HEADERS: &[&str] = &[
+    "host",
+    "connection",
+    "keep-alive",
+    "proxy-authenticate",
+    "proxy-authorization",
+    "te",
+    "trailer",
+    "transfer-encoding",
+    "upgrade",
+    "content-length",
+    "accept-encoding",
+];
+
 /// Narrow environment lookup port used by record-mode request handling.
 pub(crate) trait EnvProvider {
     /// Returns the value of an environment variable when it is present.
@@ -110,6 +124,12 @@ fn should_forward_header(name: &str) -> bool {
     !name.eq_ignore_ascii_case("authorization")
 }
 
+fn is_forbidden_extra_header(name: &str) -> bool {
+    FORBIDDEN_EXTRA_HEADERS
+        .iter()
+        .any(|forbidden| forbidden.eq_ignore_ascii_case(name))
+}
+
 fn apply_forwarded_headers(
     mut builder: reqwest::RequestBuilder,
     headers: &[(String, Vec<u8>)],
@@ -131,6 +151,11 @@ fn apply_extra_headers(
     for (name, value) in extra_headers {
         if !should_forward_header(name) {
             continue;
+        }
+        if is_forbidden_extra_header(name) {
+            return Err(HarnessError::InvalidConfig {
+                message: format!("extra header {name:?} is not allowed"),
+            });
         }
         let (header_name, header_value) = to_outbound_header(name, value.as_bytes())?;
         builder = builder.header(header_name, header_value);

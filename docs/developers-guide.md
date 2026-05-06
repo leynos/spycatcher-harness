@@ -159,9 +159,10 @@ The library crate (`src/lib.rs`) exposes the following public modules:
 
 _Table 1: Top-level library modules._
 
-The crate root re-exports the public entry points `start_harness`,
-`RunningHarness`, and `shutdown` (from `RunningHarness`) as well as
-`HarnessConfig`, `HarnessError`, and `HarnessResult`.
+The crate root re-exports the public entry point `start_harness`, the
+`RunningHarness` type, and the types `HarnessConfig`, `HarnessError`, and
+`HarnessResult`. Shutdown is exposed as the `RunningHarness::shutdown` method,
+not as a standalone crate-root function.
 
 The upstream adapter returns `ObservedResponse` values carrying the HTTP status
 code, raw header byte pairs for proxying as `Vec<(String, Vec<u8>)>`, and exact

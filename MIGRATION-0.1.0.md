@@ -6,8 +6,9 @@ This guide covers breaking changes introduced by record-mode proxying.
 
 Header values that travel through the proxy path now preserve raw bytes:
 
-- `UpstreamRequest.forward_headers` is `Vec<(String, Vec<u8>)>`.
-- `UpstreamResponse.proxy_headers` is `Vec<(String, Vec<u8>)>`.
+- `ObservedRequest.forward_headers` is `Vec<(String, Vec<u8>)>`.
+- `ChatCompletionsRequest.headers` is `&[(String, Vec<u8>)]`.
+- `ObservedResponse.proxy_headers` is `Vec<(String, Vec<u8>)>`.
 
 Tests that previously asserted string header values should compare byte slices
 on the proxy path. Cassette assertions should keep using strings because

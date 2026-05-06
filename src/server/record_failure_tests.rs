@@ -74,7 +74,7 @@ async fn recording_failure_still_returns_upstream_response() {
 
     assert_eq!(proxied.status, 200);
     assert_eq!(proxied.body, br#"{"id":"ok"}"#.to_vec());
-    assert!(failure_count.load(Ordering::Relaxed) >= 1);
+    assert_eq!(failure_count.load(Ordering::Relaxed), 1);
 }
 
 fn sample_request() -> ObservedRequest {
