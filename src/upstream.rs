@@ -220,6 +220,82 @@ mod tests {
         drop(ReqwestUpstreamClient::with_client(client));
     }
 
+    #[rstest]
+    #[tokio::test]
+    async fn send_chat_completions_uses_bearer_auth_and_skips_inbound_authorization() {
+        use std::io::Read;
+        use std::net::TcpListener;
+        use std::sync::{Arc, Mutex};
+
+        let listener = TcpListener::bind("127.0.0.1:0").expect("listener should bind");
+        let addr = listener
+            .local_addr()
+            .expect("listener address should be available");
+        let captured = Arc::new(Mutex::new(Vec::new()));
+        let captured_clone = Arc::clone(&captured);
+
+        std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().expect("server should accept one request");
+            let mut buf = vec![0_u8; 4096];
+            let n = stream.read(&mut buf).unwrap_or(0);
+            buf.truncate(n);
+            *captured_clone
+                .lock()
+                .expect("captured request lock should not be poisoned") = buf;
+        });
+
+        let client = Client::builder()
+            .timeout(Duration::from_millis(500))
+            .build()
+            .expect("custom reqwest client should build");
+        let upstream = ReqwestUpstreamClient::with_client(client);
+
+        let config = UpstreamConfig {
+            base_url: format!("http://{addr}"),
+            ..UpstreamConfig::default()
+        };
+        let headers = vec![
+            (
+                "authorization".to_owned(),
+                b"Bearer downstream-secret".to_vec(),
+            ),
+            ("x-custom".to_owned(), b"keep-me".to_vec()),
+        ];
+
+        drop(
+            upstream
+                .send_chat_completions(ChatCompletionsRequest {
+                    config: &config,
+                    api_key: "upstream-key",
+                    headers: &headers,
+                    body: br#"{"model":"test"}"#,
+                    query: "",
+                })
+                .await,
+        );
+
+        std::thread::sleep(Duration::from_millis(200));
+
+        let raw = captured
+            .lock()
+            .expect("captured request lock should not be poisoned");
+        let raw_str = String::from_utf8_lossy(&raw);
+        let raw_lower = raw_str.to_ascii_lowercase();
+
+        assert!(
+            raw_lower.contains("authorization: bearer upstream-key"),
+            "upstream request must carry configured Bearer token; got:\n{raw_str}",
+        );
+        assert!(
+            !raw_str.contains("downstream-secret"),
+            "downstream Authorization must not be forwarded; got:\n{raw_str}",
+        );
+        assert!(
+            raw_str.contains("x-custom: keep-me"),
+            "non-Authorization header must be forwarded; got:\n{raw_str}",
+        );
+    }
+
     mod prop_tests {
         //! Property tests for upstream URL construction.
 
