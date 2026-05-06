@@ -174,7 +174,7 @@ Skills to apply during implementation:
       cardinality checks, and safe proxy-header warning logs.
 - [x] Address post-review simplification of request-forwarding header
       selection and raw `Connection` token normalization.
-- [x] Address review follow-ups for upstream authorisation filtering tests,
+- [x] Address review follow-ups for upstream authorization filtering tests,
       capture-property coverage, record-mode request-entry logging, and
       developer-guide documentation of internal record-mode seams.
 
