@@ -90,7 +90,7 @@ pub(crate) struct RecordService<U, E, M> {
 #[derive(Debug, PartialEq)]
 pub(crate) enum RecordError {
     UnsupportedStream,
-    MissingApiKeyEnv { env_var: String },
+    MissingApiKeyEnv,
     Internal,
 }
 
@@ -104,7 +104,7 @@ impl RecordError {
     const fn status_code(&self) -> StatusCode {
         match self {
             Self::UnsupportedStream => StatusCode::NOT_IMPLEMENTED,
-            Self::MissingApiKeyEnv { .. } | Self::Internal => StatusCode::BAD_GATEWAY,
+            Self::MissingApiKeyEnv | Self::Internal => StatusCode::BAD_GATEWAY,
         }
     }
 
@@ -113,9 +113,7 @@ impl RecordError {
             Self::UnsupportedStream => {
                 "streaming chat completions are not implemented yet".to_owned()
             }
-            Self::MissingApiKeyEnv { env_var } => {
-                format!("upstream API key environment variable {env_var:?} is not set")
-            }
+            Self::MissingApiKeyEnv => "upstream credentials are not configured".to_owned(),
             Self::Internal => "upstream request failed".to_owned(),
         }
     }
@@ -167,9 +165,7 @@ where
                     env_var = self.upstream.api_key_env,
                     protocol = CHAT_COMPLETIONS_PROTOCOL_ID,
                 );
-                RecordError::MissingApiKeyEnv {
-                    env_var: self.upstream.api_key_env.clone(),
-                }
+                RecordError::MissingApiKeyEnv
             })
     }
 

@@ -114,7 +114,7 @@ async fn missing_api_key_does_not_append() {
         "missing-key",
         FakeEnvProvider(None),
         sample_request(None),
-        |error| assert!(matches!(error, RecordError::MissingApiKeyEnv { .. })),
+        |error| assert_eq!(error, RecordError::MissingApiKeyEnv),
     )
     .await;
 }
@@ -159,8 +159,22 @@ fn resolve_api_key_errors_when_absent() {
 
     assert!(matches!(
         service.resolve_api_key(),
-        Err(RecordError::MissingApiKeyEnv { .. })
+        Err(RecordError::MissingApiKeyEnv)
     ));
+}
+
+#[rstest]
+#[tokio::test]
+async fn missing_api_key_response_hides_env_var_name() {
+    let response = RecordError::MissingApiKeyEnv.into_response();
+    let body_bytes = axum::body::to_bytes(response.into_body(), 1024)
+        .await
+        .expect("error response body should be readable");
+    let body_text = String::from_utf8(body_bytes.to_vec()).expect("error response should be UTF-8");
+
+    assert!(body_text.contains("upstream credentials are not configured"));
+    assert!(!body_text.contains("SPYCATCHER"));
+    assert!(!body_text.contains("API_KEY"));
 }
 
 #[rstest]
