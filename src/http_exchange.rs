@@ -6,7 +6,7 @@
 
 use std::collections::HashSet;
 
-use axum::http::{HeaderMap, HeaderName};
+use axum::http::HeaderMap;
 use percent_encoding::{NON_ALPHANUMERIC, percent_encode};
 use serde_json::Value;
 
@@ -102,20 +102,23 @@ pub(crate) fn selected_response_proxy_headers(headers: &HeaderMap) -> Vec<(Strin
 }
 
 fn selected_header_bytes(headers: &HeaderMap, excluded: &[&str]) -> Vec<(String, Vec<u8>)> {
-    let connection_tokens = parse_connection_tokens(headers);
-    headers
-        .iter()
-        .filter(|(name, _)| should_keep_header(name, excluded, &connection_tokens))
-        .map(|(name, value)| (name.as_str().to_owned(), value.as_bytes().to_vec()))
-        .collect()
+    select_headers_unified(headers, excluded, |value| value.as_bytes().to_vec())
 }
 
 fn selected_headers(headers: &HeaderMap, excluded: &[&str]) -> Vec<(String, String)> {
-    let connection_tokens = parse_connection_tokens(headers);
+    select_headers_unified(headers, excluded, header_value_string)
+}
+
+fn select_headers_unified<V>(
+    headers: &HeaderMap,
+    excluded: &[&str],
+    map_value: impl Fn(&axum::http::HeaderValue) -> V,
+) -> Vec<(String, V)> {
+    let disallowed = build_disallowed_set(headers, excluded);
     headers
         .iter()
-        .filter(|(name, _)| should_keep_header(name, excluded, &connection_tokens))
-        .map(|(name, value)| (name.as_str().to_owned(), header_value_string(value)))
+        .filter(|(name, _)| !disallowed.contains(name.as_str()))
+        .map(|(name, value)| (name.as_str().to_owned(), map_value(value)))
         .collect()
 }
 
@@ -126,19 +129,6 @@ fn header_value_string(value: &axum::http::HeaderValue) -> String {
     )
 }
 
-fn should_keep_header(
-    name: &HeaderName,
-    excluded: &[&str],
-    connection_tokens: &HashSet<String>,
-) -> bool {
-    let name_text = name.as_str();
-    !connection_tokens.contains(&name_text.to_ascii_lowercase())
-        && !HOP_BY_HOP_HEADERS
-            .iter()
-            .chain(excluded.iter())
-            .any(|candidate| name_text.eq_ignore_ascii_case(candidate))
-}
-
 fn parse_connection_tokens(headers: &HeaderMap) -> HashSet<String> {
     headers
         .get_all(axum::http::header::CONNECTION)
@@ -147,6 +137,14 @@ fn parse_connection_tokens(headers: &HeaderMap) -> HashSet<String> {
         .map(lowercase_trimmed_ascii_token)
         .filter(|token| !token.is_empty())
         .collect()
+}
+
+fn build_disallowed_set(headers: &HeaderMap, excluded: &[&str]) -> HashSet<String> {
+    let mut set = parse_connection_tokens(headers);
+    for name in HOP_BY_HOP_HEADERS.iter().chain(excluded.iter()) {
+        set.insert(name.to_ascii_lowercase());
+    }
+    set
 }
 
 fn lowercase_trimmed_ascii_token(token: &[u8]) -> String {
