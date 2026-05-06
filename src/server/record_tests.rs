@@ -120,7 +120,7 @@ fn check_not_streaming_rejects_streaming_request() {
     let request = sample_request(parse_json_bytes(
         br#"{"model":"gpt-test","messages":[],"stream":true}"#,
     ));
-    let service = service_fixture_default(FakeEnvProvider(Some("token".to_owned())));
+    let service = service_fixture_shared_temp(FakeEnvProvider(Some("token".to_owned())));
 
     let result = service.check_not_streaming(&request);
 
@@ -132,14 +132,14 @@ fn check_not_streaming_allows_non_streaming_request() {
     let request = sample_request(parse_json_bytes(
         br#"{"model":"gpt-test","messages":[],"stream":false}"#,
     ));
-    let service = service_fixture_default(FakeEnvProvider(Some("token".to_owned())));
+    let service = service_fixture_shared_temp(FakeEnvProvider(Some("token".to_owned())));
 
     assert!(service.check_not_streaming(&request).is_ok());
 }
 
 #[rstest]
 fn resolve_api_key_returns_key_when_present() {
-    let service = service_fixture_default(FakeEnvProvider(Some("my-secret".to_owned())));
+    let service = service_fixture_shared_temp(FakeEnvProvider(Some("my-secret".to_owned())));
 
     assert_eq!(
         service
@@ -151,7 +151,7 @@ fn resolve_api_key_returns_key_when_present() {
 
 #[rstest]
 fn resolve_api_key_errors_when_absent() {
-    let service = service_fixture_default(FakeEnvProvider(None));
+    let service = service_fixture_shared_temp(FakeEnvProvider(None));
 
     assert!(matches!(
         service.resolve_api_key(),
@@ -294,12 +294,11 @@ fn service_fixture(
     }
 }
 
-fn service_fixture_default(
+fn service_fixture_shared_temp(
     env_provider: FakeEnvProvider,
 ) -> RecordService<FakeUpstream, FakeEnvProvider, FakeMetadataFactory> {
-    let cassette_path = unique_cassette_path("default");
     service_fixture(
-        &cassette_path,
+        camino::Utf8Path::new("target/test-record-service/default-shared.json"),
         FakeUpstream {
             response: Ok(sample_response(br#"{"id":"ok"}"#)),
         },
