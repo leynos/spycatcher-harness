@@ -246,10 +246,10 @@ fn service_fixture(
     upstream: FakeUpstream,
     env_provider: FakeEnvProvider,
 ) -> RecordService<FakeUpstream, FakeEnvProvider, FakeMetadataFactory> {
-    let cassette_store = match FilesystemCassetteStore::open_or_create_for_record(cassette_path) {
-        Ok(store) => store,
-        Err(error) => panic!("cassette should open: {error}"),
-    };
+    let cassette_store = TestResult(FilesystemCassetteStore::open_or_create_for_record(
+        cassette_path,
+    ))
+    .expect("cassette should open");
 
     RecordService {
         cassette_store: Arc::new(Mutex::new(cassette_store)),
@@ -340,14 +340,18 @@ fn sample_response(body: &[u8]) -> ObservedResponse {
     }
 }
 fn load_cassette(cassette_path: &Utf8Path) -> Cassette {
-    let store = match FilesystemCassetteStore::open_for_replay(cassette_path) {
-        Ok(store) => store,
-        Err(error) => panic!("cassette should reopen: {error}"),
-    };
+    let store = TestResult(FilesystemCassetteStore::open_for_replay(cassette_path))
+        .expect("cassette should reopen");
+    TestResult(store.load()).expect("cassette should decode")
+}
 
-    match store.load() {
-        Ok(cassette) => cassette,
-        Err(error) => panic!("cassette should decode: {error}"),
+struct TestResult<T, E>(Result<T, E>);
+impl<T, E: std::fmt::Display> TestResult<T, E> {
+    fn expect(self, message: &str) -> T {
+        match self.0 {
+            Ok(value) => value,
+            Err(error) => panic!("{message}: {error}"),
+        }
     }
 }
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
