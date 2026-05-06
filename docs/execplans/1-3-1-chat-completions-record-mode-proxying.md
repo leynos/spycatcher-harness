@@ -212,7 +212,7 @@ Skills to apply during implementation:
   `Authorization` is actually absent while non-sensitive headers still forward.
 - The domain-decoupling concern around `axum::http` in header selection and
   `UpstreamConfig` in `ChatCompletionsRequest` is valid but larger than a
-  minimal review fix. It is tracked in issue `#36` rather than folded
+  minimal review fix. It is tracked in issue `#35` rather than folded
   into the record-mode proxying PR.
 
 ## Decision Log
