@@ -78,8 +78,10 @@ Skills to apply during implementation:
   They need an explicit unsupported-path response and zero cassette writes
   until streaming work lands in task `2.1.1`.
 - Maintain hexagonal boundaries:
-  - HTTP extraction, header filtering, response rendering, and socket
-    lifecycle belong in adapter code under `src/server.rs` and submodules.
+  - HTTP extraction, response rendering, and socket lifecycle belong in
+    adapter code under `src/server/` and related server adapters.
+  - Header filtering and byte-safe exchange capture belong in adapter code in
+    `src/http_exchange.rs`.
   - Upstream HTTP client code belongs in `src/upstream.rs` and submodules.
   - Domain-owned cassette types stay in `src/cassette/`.
   - The orchestration that turns an observed HTTP exchange into an
@@ -168,6 +170,15 @@ Skills to apply during implementation:
 - [x] Add unit and behavioural tests.
 - [x] Update the design document, user's guide, and roadmap.
 - [x] Run all required validation gates and record outcomes here.
+- [x] Address post-review fixes for deterministic metadata timestamps and raw
+      `Connection` header token parsing.
+- [x] Address post-review fixes for configurable tool paths, BDD helper
+      cardinality checks, and safe proxy-header warning logs.
+- [x] Address post-review simplification of request-forwarding header
+      selection and raw `Connection` token normalization.
+- [x] Address review follow-ups for upstream authorization filtering tests,
+      capture-property coverage, record-mode request-entry logging, and
+      developer-guide documentation of internal record-mode seams.
 
 ## Surprises & Discoveries
 
@@ -195,6 +206,16 @@ Skills to apply during implementation:
   runtimes were sufficient for the placeholder harness, but they dropped the
   real server task between steps. The scenario worlds now retain a shared
   runtime for the full scenario lifetime.
+- Post-review comments referred to pre-rebase files such as `src/server.rs`,
+  but the equivalent implementation now lives in focused modules under
+  `src/server/` and `src/http_exchange.rs`.
+- Two upstream header-filtering unit tests were only asserting that helper
+  calls succeeded. They now use the local capture server to assert that
+  `Authorization` is actually absent while non-sensitive headers still forward.
+- The domain-decoupling concern around `axum::http` in header selection and
+  `UpstreamConfig` in `ChatCompletionsRequest` is valid but larger than a
+  minimal review fix. It is tracked in issue `#35` rather than folded
+  into the record-mode proxying PR.
 
 ## Decision Log
 
@@ -229,6 +250,12 @@ Skills to apply during implementation:
 - Confirmed decision: disable Reqwest content decoding in the upstream adapter
   for this slice so the recorded response body remains the exact byte payload
   read from the upstream transport.
+- Confirmed decision: parse `Connection` header tokens from raw header bytes so
+  one non-UTF-8 token does not suppress valid hop-by-hop tokens in the same
+  header value.
+- Confirmed decision: proxy response header parse failures may log header names
+  and byte lengths, but not raw header values, because response headers can
+  carry sensitive data.
 
 ## Outcomes & Retrospective
 
@@ -491,6 +518,29 @@ During implementation, add concise evidence here:
 - which new unit tests fail before the change and pass after it;
 - which BDD scenarios prove proxying, redaction, and failure handling;
 - any manual smoke test transcript if one is needed beyond automated coverage.
+
+Additional review-follow-up evidence:
+
+- Non-persistence unit tests for `check_not_streaming` and `resolve_api_key`
+  now use a `TempDir`-backed cassette path instead of a fixed
+  `target/test-record-service/default-shared.json` file. The temporary
+  directory is created under the project root and converted back to a relative
+  path so `FilesystemCassetteStore` still works through its rooted filesystem
+  adapter; the directory is removed when the fixture drops.
+- `RecordError::MissingApiKeyEnv` was renamed to
+  `MissingApiKeyNotConfigured`, and HTTP response mapping moved from
+  `src/server/record.rs` into `src/server/record_handler.rs`. The domain error
+  no longer implements `IntoResponse`.
+- README signposting and `MIGRATION-0.1.0.md` now document record-mode usage,
+  redaction defaults, raw header bytes, and cassette assertion changes.
+- Residual observability, performance, and concurrency notes are recorded in
+  `docs/developers-guide.md`. Metrics/alerting and distributed tracing remain
+  tracked by issues `#31` and `#33`.
+- Validation after these follow-ups:
+  - `make check-fmt`
+  - `make lint`
+  - `make test` (`166` nextest tests passed, `3` skipped; doctests passed)
+  - `make markdownlint`
 
 Expected completion signal:
 

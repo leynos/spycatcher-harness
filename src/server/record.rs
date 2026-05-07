@@ -8,23 +8,19 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
-use axum::http::{HeaderValue, Response, StatusCode};
-use axum::response::IntoResponse;
-use log::{error, info};
-use serde_json::json;
-use time::OffsetDateTime;
-use time::format_description::well_known::Rfc3339;
+use log::{error, info, warn};
 use tokio::task::spawn_blocking;
 
 use crate::cassette::{
-    CassetteAppender, IgnorePathConfig, Interaction, InteractionMetadata, RecordedRequest,
-    RecordedResponse, filesystem::FilesystemCassetteStore,
+    CassetteAppender, IgnorePathConfig, Interaction, RecordedRequest, RecordedResponse,
+    filesystem::FilesystemCassetteStore,
 };
 use crate::config::{HarnessConfig, RedactionConfig, UpstreamConfig};
 use crate::http_exchange::{ObservedRequest, ProxyResponse, redact_headers};
 use crate::protocol::{
     CHAT_COMPLETIONS_PROTOCOL_ID, is_streaming_chat_completions_request, upstream_id,
 };
+use crate::server::record_metadata::{MetadataFactory, SessionMetadata};
 use crate::upstream::{
     ChatCompletionsRequest, ChatCompletionsUpstream, EnvProvider, ProcessEnvProvider,
     ReqwestUpstreamClient,
@@ -87,93 +83,18 @@ pub(crate) struct RecordService<U, E, M> {
     interaction_seq: Arc<AtomicU64>,
 }
 
-/// Timestamp and relative-offset factory for recorded interactions.
-pub(crate) trait MetadataFactory: Clone + Send + Sync + 'static {
-    /// Creates one metadata payload for a newly observed interaction.
-    fn create(&self) -> HarnessResult<InteractionMetadata>;
-}
-
-/// Metadata factory backed by the current UTC clock and session start time.
-#[derive(Debug, Clone)]
-pub(crate) struct SessionMetadata {
-    session_start: Instant,
-    upstream_kind: crate::config::UpstreamKind,
-}
-
-impl SessionMetadata {
-    #[must_use]
-    pub(crate) fn new(upstream_kind: crate::config::UpstreamKind) -> Self {
-        Self {
-            session_start: Instant::now(),
-            upstream_kind,
-        }
-    }
-}
-
-impl MetadataFactory for SessionMetadata {
-    fn create(&self) -> HarnessResult<InteractionMetadata> {
-        let recorded_at = OffsetDateTime::now_utc()
-            .format(&Rfc3339)
-            .map_err(|error| HarnessError::InvalidConfig {
-                message: format!("failed to format recording timestamp: {error}"),
-            })?;
-        let elapsed = self.session_start.elapsed().as_millis();
-        let relative_offset_ms =
-            u64::try_from(elapsed).map_err(|_| HarnessError::InvalidConfig {
-                message: "relative offset exceeded u64 range".to_owned(),
-            })?;
-
-        Ok(InteractionMetadata {
-            protocol_id: CHAT_COMPLETIONS_PROTOCOL_ID.to_owned(),
-            upstream_id: upstream_id(self.upstream_kind).to_owned(),
-            recorded_at,
-            relative_offset_ms,
-        })
-    }
-}
-
-/// Request-level record-mode failures mapped to concrete HTTP responses.
+/// Request-level record-mode failures reported to the HTTP adapter.
 #[derive(Debug, PartialEq)]
 pub(crate) enum RecordError {
     UnsupportedStream,
-    MissingApiKeyEnv { env_var: String },
+    MissingApiKeyNotConfigured,
     Internal,
 }
 
-impl RecordError {
-    const fn status_code(&self) -> StatusCode {
-        match self {
-            Self::UnsupportedStream => StatusCode::NOT_IMPLEMENTED,
-            Self::MissingApiKeyEnv { .. } | Self::Internal => StatusCode::BAD_GATEWAY,
-        }
-    }
-
-    fn message(&self) -> String {
-        match self {
-            Self::UnsupportedStream => {
-                "streaming chat completions are not implemented yet".to_owned()
-            }
-            Self::MissingApiKeyEnv { env_var } => {
-                format!("upstream API key environment variable {env_var:?} is not set")
-            }
-            Self::Internal => "upstream request failed".to_owned(),
-        }
-    }
-}
-
-impl IntoResponse for RecordError {
-    fn into_response(self) -> Response<axum::body::Body> {
-        let message = self.message();
-        let body_bytes = format!(r#"{{"error":{{"message":{}}}}}"#, json!(message));
-        let body = axum::body::Body::from(body_bytes.into_bytes());
-        let mut response = Response::new(body);
-        *response.status_mut() = self.status_code();
-        response.headers_mut().insert(
-            axum::http::header::CONTENT_TYPE,
-            HeaderValue::from_static("application/json"),
-        );
-        response
-    }
+#[derive(Debug, Clone, Copy)]
+struct RecordTiming {
+    upstream_latency_ms: u128,
+    interaction_start: Instant,
 }
 
 impl<U, E, M> RecordService<U, E, M>
@@ -182,21 +103,51 @@ where
     E: EnvProvider + Clone + Send + Sync + 'static,
     M: MetadataFactory,
 {
+    fn check_not_streaming(&self, request: &ObservedRequest) -> Result<(), RecordError> {
+        if is_streaming_chat_completions_request(request.parsed_json.as_ref()) {
+            warn!(
+                target: "spycatcher.harness.record",
+                "streaming request rejected path={path} mode=record \
+                 protocol={protocol} cassette={cassette}",
+                path = request.path,
+                protocol = CHAT_COMPLETIONS_PROTOCOL_ID,
+                cassette = upstream_id(self.upstream.kind),
+            );
+            return Err(RecordError::UnsupportedStream);
+        }
+        Ok(())
+    }
+
+    fn resolve_api_key(&self) -> Result<String, RecordError> {
+        self.env_provider
+            .read(&self.upstream.api_key_env)
+            .ok_or_else(|| {
+                warn!(
+                    target: "spycatcher.harness.record",
+                    "upstream API key not found env_var={env_var} mode=record protocol={protocol}",
+                    env_var = self.upstream.api_key_env,
+                    protocol = CHAT_COMPLETIONS_PROTOCOL_ID,
+                );
+                RecordError::MissingApiKeyNotConfigured
+            })
+    }
+
+    pub(crate) fn counters(&self) -> (u64, u64) {
+        (
+            self.recorded_count.load(Ordering::Relaxed),
+            self.failure_count.load(Ordering::Relaxed),
+        )
+    }
+
     /// Proxies one non-stream chat completions request and records it.
     pub(crate) async fn handle_chat_completions(
         &self,
         request: ObservedRequest,
     ) -> Result<ProxyResponse, RecordError> {
-        if is_streaming_chat_completions_request(request.parsed_json.as_ref()) {
-            return Err(RecordError::UnsupportedStream);
-        }
+        let interaction_start = Instant::now();
 
-        let api_key = self
-            .env_provider
-            .read(&self.upstream.api_key_env)
-            .ok_or_else(|| RecordError::MissingApiKeyEnv {
-                env_var: self.upstream.api_key_env.clone(),
-            })?;
+        self.check_not_streaming(&request)?;
+        let api_key = self.resolve_api_key()?;
 
         let interaction_id = format!(
             "{proto}-{seq}",
@@ -210,7 +161,7 @@ where
             .send_chat_completions(ChatCompletionsRequest {
                 config: &self.upstream,
                 api_key: &api_key,
-                headers: &request.headers,
+                headers: &request.forward_headers,
                 body: &request.body,
                 query: &request.query,
             })
@@ -231,16 +182,31 @@ where
             RecordError::Internal
         })?;
 
-        self.record_response(
-            (request, &upstream_response),
-            &interaction_id,
-            upstream_latency,
-        )
-        .await;
+        let record_result = self
+            .record_response(
+                (request, &upstream_response),
+                &interaction_id,
+                RecordTiming {
+                    upstream_latency_ms: upstream_latency,
+                    interaction_start,
+                },
+            )
+            .await;
+
+        if let Err(error) = record_result {
+            self.failure_count.fetch_add(1, Ordering::Relaxed);
+            error!(
+                target: "spycatcher.harness.record",
+                "recording failed interaction_id={interaction_id} mode=record \
+                 protocol={protocol} outcome=record_failed cassette={cassette} error={error:?}",
+                protocol = CHAT_COMPLETIONS_PROTOCOL_ID,
+                cassette = upstream_id(self.upstream.kind),
+            );
+        }
 
         Ok(ProxyResponse {
             status: upstream_response.status,
-            headers: upstream_response.headers,
+            headers: upstream_response.proxy_headers,
             body: upstream_response.body,
         })
     }
@@ -249,42 +215,47 @@ where
         &self,
         (request, upstream_response): (ObservedRequest, &crate::http_exchange::ObservedResponse),
         interaction_id: &str,
-        upstream_latency: u128,
-    ) {
-        match self.build_interaction(request, upstream_response) {
+        timing: RecordTiming,
+    ) -> Result<(), RecordError> {
+        match self.build_interaction(request, upstream_response, timing.interaction_start) {
             Ok(interaction) => {
-                if let Err(e) = self.append_interaction(interaction).await {
-                    self.failure_count.fetch_add(1, Ordering::Relaxed);
+                self.append_interaction(interaction).await.map_err(|e| {
                     error!(
                         target: "spycatcher.harness.record",
                         "cassette write failed interaction_id={interaction_id} \
                          mode=record protocol={protocol} upstream_latency_ms={upstream_latency} \
                          outcome=write_failed cassette={cassette} error={e:?}",
                         protocol = CHAT_COMPLETIONS_PROTOCOL_ID,
+                        upstream_latency = timing.upstream_latency_ms,
                         cassette = upstream_id(self.upstream.kind),
                     );
-                } else {
-                    self.recorded_count.fetch_add(1, Ordering::Relaxed);
-                    info!(
-                        target: "spycatcher.harness.record",
-                        "interaction recorded interaction_id={interaction_id} \
-                         mode=record protocol={protocol} upstream_latency_ms={upstream_latency} \
-                         outcome=recorded cassette={cassette}",
-                        protocol = CHAT_COMPLETIONS_PROTOCOL_ID,
-                        cassette = upstream_id(self.upstream.kind),
-                    );
-                }
+                    e
+                })?;
+                self.recorded_count.fetch_add(1, Ordering::Relaxed);
+                let (recorded_count, failure_count) = self.counters();
+                info!(
+                    target: "spycatcher.harness.record",
+                    "interaction recorded interaction_id={interaction_id} \
+                     mode=record protocol={protocol} upstream_latency_ms={upstream_latency} \
+                     outcome=recorded cassette={cassette} recorded_count={recorded_count} \
+                     failure_count={failure_count}",
+                    protocol = CHAT_COMPLETIONS_PROTOCOL_ID,
+                    upstream_latency = timing.upstream_latency_ms,
+                    cassette = upstream_id(self.upstream.kind),
+                );
+                Ok(())
             }
             Err(e) => {
-                self.failure_count.fetch_add(1, Ordering::Relaxed);
                 error!(
                     target: "spycatcher.harness.record",
                     "cassette build failed interaction_id={interaction_id} \
                      mode=record protocol={protocol} upstream_latency_ms={upstream_latency} \
                      outcome=build_failed cassette={cassette} error={e:?}",
                     protocol = CHAT_COMPLETIONS_PROTOCOL_ID,
+                    upstream_latency = timing.upstream_latency_ms,
                     cassette = upstream_id(self.upstream.kind),
                 );
+                Err(e)
             }
         }
     }
@@ -293,6 +264,7 @@ where
         &self,
         request: ObservedRequest,
         response: &crate::http_exchange::ObservedResponse,
+        interaction_start: Instant,
     ) -> Result<Interaction, RecordError> {
         let mut recorded_request = RecordedRequest {
             method: request.method,
@@ -314,7 +286,7 @@ where
                 RecordError::Internal
             })?;
 
-        let metadata = self.metadata.create().map_err(|e| {
+        let metadata = self.metadata.create_at(interaction_start).map_err(|e| {
             error!(
                 target: "spycatcher.harness.record",
                 "failed to create interaction metadata: {e}"
@@ -362,6 +334,10 @@ where
         })?
     }
 }
+
+#[cfg(test)]
+#[path = "record_failure_tests.rs"]
+mod failure_tests;
 
 #[cfg(test)]
 #[path = "record_tests.rs"]

@@ -8,8 +8,31 @@ use axum::http::{HeaderName, HeaderValue};
 use reqwest::{Client, Url};
 
 use crate::config::UpstreamConfig;
-use crate::http_exchange::{ObservedResponse, parse_json_bytes, selected_response_headers};
+use crate::http_exchange::{
+    ObservedResponse, parse_json_bytes, selected_response_headers, selected_response_proxy_headers,
+};
 use crate::{HarnessError, HarnessResult};
+use std::time::Duration;
+
+/// Request timeout applied to the Reqwest client.
+///
+/// Thirty seconds bounds non-stream LLM completions without allowing
+/// indefinite upstream hangs.
+pub(crate) const UPSTREAM_TIMEOUT: Duration = Duration::from_secs(30);
+
+const FORBIDDEN_EXTRA_HEADERS: &[&str] = &[
+    "host",
+    "connection",
+    "keep-alive",
+    "proxy-authenticate",
+    "proxy-authorization",
+    "te",
+    "trailer",
+    "transfer-encoding",
+    "upgrade",
+    "content-length",
+    "accept-encoding",
+];
 
 /// Narrow environment lookup port used by record-mode request handling.
 pub(crate) trait EnvProvider {
@@ -43,8 +66,8 @@ pub(crate) struct ChatCompletionsRequest<'a> {
     pub config: &'a UpstreamConfig,
     /// Bearer token resolved from the configured environment variable.
     pub api_key: &'a str,
-    /// Selected inbound request headers to forward upstream.
-    pub headers: &'a [(String, String)],
+    /// Selected inbound request headers to forward upstream as raw bytes.
+    pub headers: &'a [(String, Vec<u8>)],
     /// Exact inbound request body bytes.
     pub body: &'a [u8],
     /// Raw query string from the inbound request.
@@ -70,12 +93,74 @@ impl ReqwestUpstreamClient {
             .no_brotli()
             .no_deflate()
             .no_zstd()
+            .timeout(UPSTREAM_TIMEOUT)
             .build()
             .map_err(|error| HarnessError::InvalidConfig {
                 message: format!("failed to construct upstream client: {error}"),
             })?;
-        Ok(Self { client })
+        Ok(Self::with_client(client))
     }
+
+    /// Creates an upstream client with a custom pre-built reqwest client.
+    /// Intended for tests that need to control timeout or TLS behaviour.
+    pub(crate) const fn with_client(client: Client) -> Self {
+        Self { client }
+    }
+}
+
+fn to_outbound_header(name: &str, value: &[u8]) -> HarnessResult<(HeaderName, HeaderValue)> {
+    let header_name = HeaderName::try_from(name).map_err(|error| HarnessError::InvalidConfig {
+        message: format!("invalid outbound header name {name:?}: {error}"),
+    })?;
+    let header_value =
+        HeaderValue::from_bytes(value).map_err(|error| HarnessError::InvalidConfig {
+            message: format!("invalid outbound header value for {name:?}: {error}"),
+        })?;
+    Ok((header_name, header_value))
+}
+
+#[inline]
+fn should_forward_header(name: &str) -> bool {
+    !name.eq_ignore_ascii_case("authorization")
+}
+
+fn is_forbidden_extra_header(name: &str) -> bool {
+    FORBIDDEN_EXTRA_HEADERS
+        .iter()
+        .any(|forbidden| forbidden.eq_ignore_ascii_case(name))
+}
+
+fn apply_forwarded_headers(
+    mut builder: reqwest::RequestBuilder,
+    headers: &[(String, Vec<u8>)],
+) -> HarnessResult<reqwest::RequestBuilder> {
+    for (name, value) in headers {
+        if !should_forward_header(name) {
+            continue;
+        }
+        let (header_name, header_value) = to_outbound_header(name, value)?;
+        builder = builder.header(header_name, header_value);
+    }
+    Ok(builder)
+}
+
+fn apply_extra_headers(
+    mut builder: reqwest::RequestBuilder,
+    extra_headers: &std::collections::BTreeMap<String, String>,
+) -> HarnessResult<reqwest::RequestBuilder> {
+    for (name, value) in extra_headers {
+        if !should_forward_header(name) {
+            continue;
+        }
+        if is_forbidden_extra_header(name) {
+            return Err(HarnessError::InvalidConfig {
+                message: format!("extra header {name:?} is not allowed"),
+            });
+        }
+        let (header_name, header_value) = to_outbound_header(name, value.as_bytes())?;
+        builder = builder.header(header_name, header_value);
+    }
+    Ok(builder)
 }
 
 impl ChatCompletionsUpstream for ReqwestUpstreamClient {
@@ -84,29 +169,11 @@ impl ChatCompletionsUpstream for ReqwestUpstreamClient {
         request: ChatCompletionsRequest<'_>,
     ) -> HarnessResult<ObservedResponse> {
         let url = chat_completions_url(&request.config.base_url, request.query)?;
-        let mut outbound = self.client.post(url).bearer_auth(request.api_key);
+        let authed_builder = self.client.post(url).bearer_auth(request.api_key);
+        let forwarded_builder = apply_forwarded_headers(authed_builder, request.headers)?;
+        let extra_builder = apply_extra_headers(forwarded_builder, &request.config.extra_headers)?;
 
-        for (name, value) in request.headers {
-            if name.eq_ignore_ascii_case("authorization") {
-                continue;
-            }
-            let header_name = HeaderName::try_from(name.as_str()).map_err(|error| {
-                HarnessError::InvalidConfig {
-                    message: format!("invalid outbound header name {name:?}: {error}"),
-                }
-            })?;
-            let header_value =
-                HeaderValue::from_str(value).map_err(|error| HarnessError::InvalidConfig {
-                    message: format!("invalid outbound header value for {name:?}: {error}"),
-                })?;
-            outbound = outbound.header(header_name, header_value);
-        }
-
-        for (name, value) in &request.config.extra_headers {
-            outbound = outbound.header(name, value);
-        }
-
-        let response = outbound
+        let response = extra_builder
             .body(request.body.to_vec())
             .send()
             .await
@@ -115,6 +182,7 @@ impl ChatCompletionsUpstream for ReqwestUpstreamClient {
             })?;
         let status = response.status().as_u16();
         let selected_headers = selected_response_headers(response.headers());
+        let proxy_headers = selected_response_proxy_headers(response.headers());
         let response_body = response
             .bytes()
             .await
@@ -126,6 +194,7 @@ impl ChatCompletionsUpstream for ReqwestUpstreamClient {
         Ok(ObservedResponse {
             status,
             headers: selected_headers,
+            proxy_headers,
             parsed_json: parse_json_bytes(&response_body),
             body: response_body,
         })
@@ -154,41 +223,17 @@ pub(crate) fn chat_completions_url(base_url: &str, query: &str) -> HarnessResult
         segments.push("completions");
     }
     if !query.is_empty() {
-        url.set_query(Some(query));
+        match url.query() {
+            Some(existing) => {
+                let merged_query = format!("{existing}&{query}");
+                url.set_query(Some(&merged_query));
+            }
+            None => url.set_query(Some(query)),
+        }
     }
     Ok(url)
 }
 
 #[cfg(test)]
-mod tests {
-    //! Unit tests for upstream URL construction.
-
-    use rstest::rstest;
-
-    use super::*;
-
-    #[rstest]
-    #[case(
-        "https://openrouter.ai/api/v1",
-        "",
-        "https://openrouter.ai/api/v1/chat/completions"
-    )]
-    #[case(
-        "https://openrouter.ai/api/v1/",
-        "",
-        "https://openrouter.ai/api/v1/chat/completions"
-    )]
-    #[case(
-        "https://openrouter.ai/api/v1",
-        "foo=bar&baz=1",
-        "https://openrouter.ai/api/v1/chat/completions?foo=bar&baz=1"
-    )]
-    fn chat_completions_url_appends_endpoint_path(
-        #[case] base_url: &str,
-        #[case] query: &str,
-        #[case] expected: &str,
-    ) {
-        let actual = chat_completions_url(base_url, query).expect("base URL should parse");
-        assert_eq!(actual.as_str(), expected);
-    }
-}
+#[path = "upstream_tests.rs"]
+mod tests;

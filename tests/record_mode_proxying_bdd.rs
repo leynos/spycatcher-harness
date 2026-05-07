@@ -30,6 +30,14 @@ fn redacted_headers_are_not_persisted(proxy_world: ProxyWorld) {
 
 #[scenario(
     path = "tests/features/record_mode_proxying.feature",
+    name = "Authorization is redacted by default"
+)]
+fn authorization_is_redacted_by_default(proxy_world: ProxyWorld) {
+    let _ = proxy_world;
+}
+
+#[scenario(
+    path = "tests/features/record_mode_proxying.feature",
     name = "Streaming requests are rejected until streaming support lands"
 )]
 fn streaming_requests_are_rejected_until_streaming_support_lands(proxy_world: ProxyWorld) {

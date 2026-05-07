@@ -4,6 +4,11 @@ This guide documents the public API surface and usage patterns for the
 Spycatcher harness. The harness records and replays LLM API interactions for
 deterministic regression testing.
 
+> **Breaking changes:** record-mode proxying changed raw header handling and
+> redaction defaults before the 0.1.0 release. See
+> [MIGRATION-0.1.0.md](../MIGRATION-0.1.0.md) before updating cassette
+> assertions or proxy-path tests.
+
 ## Library API
 
 The `spycatcher_harness` crate exposes two primary entry points for harness
@@ -61,7 +66,16 @@ Configuration fields:
   `fixtures/llm`).
 - `cassette_name` — name of the cassette file (default: `default`).
 - `upstream` — upstream provider config (required for record mode).
-- `redaction` — header redaction rules.
+- `redaction` — header redaction rules (default: drops `authorization`).
+  Supply `RedactionConfig { drop_headers: vec![] }` to disable all redaction,
+  or extend the default with:
+
+  ```rust
+  RedactionConfig {
+      drop_headers: vec!["authorization".to_owned(), "x-my-secret".to_owned()],
+  }
+  ```
+
 - `replay` — timing controls for replay mode.
 - `localization` — locale settings.
 
@@ -106,6 +120,10 @@ Header capture and redaction:
 - `redaction.drop_headers` removes matching header names
   case-insensitively immediately before persistence, preserving the observed
   order and duplicates of the retained headers.
+
+`RedactionConfig` is secure by default: `authorization` is in `drop_headers`
+unless an explicit `RedactionConfig` is provided. To retain `authorization` in
+the cassette, supply `RedactionConfig { drop_headers: vec![] }`.
 
 Persisted response contract:
 

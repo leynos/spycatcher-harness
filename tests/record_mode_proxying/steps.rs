@@ -10,8 +10,9 @@ use spycatcher_harness::config::{ListenAddr, Mode, RedactionConfig, UpstreamConf
 use spycatcher_harness::{HarnessConfig, start_harness};
 
 use crate::record_mode_proxying::helpers::{
-    StubUpstream, load_cassette, present_env_name, sample_success_body, send_request,
-    unique_cassette_path,
+    CapturedRequest, StubUpstream, assert_cassette_matches_success_snapshot,
+    assert_upstream_bearer_token, load_cassette, present_env_name, sample_success_body,
+    send_request, unique_cassette_path,
 };
 use crate::record_mode_proxying::world::ProxyWorld;
 
@@ -103,6 +104,17 @@ fn a_non_stream_chat_completions_request_with_header_is_sent_to_the_harness(
     )
 }
 
+#[when("a non-stream chat completions request with header Authorization is sent to the harness")]
+fn a_non_stream_chat_completions_request_with_authorization_is_sent_to_the_harness(
+    proxy_world: &ProxyWorld,
+) -> Result<(), Box<dyn Error>> {
+    send_request_to_harness(
+        proxy_world,
+        NON_STREAM_REQUEST,
+        &[("authorization", "Bearer downstream-secret")],
+    )
+}
+
 #[when("a streaming chat completions request is sent to the harness")]
 fn a_streaming_chat_completions_request_is_sent_to_the_harness(
     proxy_world: &ProxyWorld,
@@ -135,15 +147,24 @@ fn the_cassette_contains_one_recorded_interaction(
     Ok(())
 }
 
+#[then("the cassette matches the expected snapshot")]
+fn the_cassette_matches_expected_snapshot(proxy_world: &ProxyWorld) -> Result<(), Box<dyn Error>> {
+    let cassette = cassette_from_world(proxy_world)?;
+    assert_cassette_matches_success_snapshot(&cassette)
+}
+
+#[then("the upstream receives the request body unchanged")]
+fn the_upstream_receives_the_request_body_unchanged(
+    proxy_world: &ProxyWorld,
+) -> Result<(), Box<dyn Error>> {
+    let request = first_upstream_request(proxy_world)?;
+    assert_eq!(request.body, NON_STREAM_REQUEST);
+    Ok(())
+}
+
 #[then("the upstream receives the header x-session-secret")]
 fn the_upstream_receives_the_header(proxy_world: &ProxyWorld) -> Result<(), Box<dyn Error>> {
-    let requests = proxy_world
-        .upstream
-        .with_ref(StubUpstream::captured_requests)
-        .ok_or_else(|| std::io::Error::other("stub upstream must be available"))??;
-    let request = requests
-        .first()
-        .ok_or_else(|| std::io::Error::other("expected one proxied request"))?;
+    let request = first_upstream_request(proxy_world)?;
     assert!(
         request
             .headers
@@ -154,23 +175,65 @@ fn the_upstream_receives_the_header(proxy_world: &ProxyWorld) -> Result<(), Box<
     Ok(())
 }
 
+#[then("the upstream does not receive the downstream Authorization header")]
+fn the_upstream_does_not_receive_downstream_authorization(
+    proxy_world: &ProxyWorld,
+) -> Result<(), Box<dyn Error>> {
+    let request = first_upstream_request(proxy_world)?;
+    assert!(
+        request.headers.iter().all(|(name, value)| {
+            !name.eq_ignore_ascii_case("authorization") || value != "Bearer downstream-secret"
+        }),
+        "expected downstream Authorization to be replaced by configured upstream auth",
+    );
+    assert_upstream_bearer_token(&request)
+}
+
+#[then("the upstream receives the configured upstream Bearer token")]
+fn the_upstream_receives_configured_upstream_bearer_token(
+    proxy_world: &ProxyWorld,
+) -> Result<(), Box<dyn Error>> {
+    let request = first_upstream_request(proxy_world)?;
+    assert_upstream_bearer_token(&request)
+}
+
 #[then("the cassette request headers omit x-session-secret")]
 fn the_cassette_request_headers_omit_secret(
     proxy_world: &ProxyWorld,
 ) -> Result<(), Box<dyn Error>> {
+    assert_cassette_request_omits_header(proxy_world, "x-session-secret")
+}
+
+#[then("the cassette request headers omit Authorization")]
+fn the_cassette_request_headers_omit_authorization(
+    proxy_world: &ProxyWorld,
+) -> Result<(), Box<dyn Error>> {
+    assert_cassette_request_omits_header(proxy_world, "authorization")
+}
+
+fn assert_cassette_request_omits_header(
+    proxy_world: &ProxyWorld,
+    header_name: &str,
+) -> Result<(), Box<dyn Error>> {
     let cassette = cassette_from_world(proxy_world)?;
-    let interaction = cassette
-        .interactions
-        .first()
-        .ok_or_else(|| std::io::Error::other("expected one recorded interaction"))?;
-    assert!(
-        interaction
-            .request
-            .headers
-            .iter()
-            .all(|(name, _)| name != "x-session-secret"),
-        "expected redacted header to be absent from cassette",
-    );
+    let [interaction] = cassette.interactions.as_slice() else {
+        return Err(std::io::Error::other(format!(
+            "expected exactly one recorded interaction, got {}",
+            cassette.interactions.len()
+        ))
+        .into());
+    };
+    if interaction
+        .request
+        .headers
+        .iter()
+        .any(|(name, _)| name.eq_ignore_ascii_case(header_name))
+    {
+        return Err(std::io::Error::other(format!(
+            "expected {header_name} to be absent from cassette",
+        ))
+        .into());
+    }
     Ok(())
 }
 
@@ -301,6 +364,21 @@ fn cassette_from_world(
         .with_ref(Clone::clone)
         .ok_or_else(|| std::io::Error::other("cassette path should be recorded"))?;
     load_cassette(&cassette_path)
+}
+
+fn first_upstream_request(proxy_world: &ProxyWorld) -> Result<CapturedRequest, Box<dyn Error>> {
+    let requests = proxy_world
+        .upstream
+        .with_ref(StubUpstream::captured_requests)
+        .ok_or_else(|| std::io::Error::other("stub upstream must be available"))??;
+    let [request] = requests.as_slice() else {
+        return Err(std::io::Error::other(format!(
+            "expected exactly one proxied request, got {}",
+            requests.len()
+        ))
+        .into());
+    };
+    Ok(request.clone())
 }
 
 #[expect(

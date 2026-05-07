@@ -31,6 +31,33 @@ This feature causes `serde_json::Map` to use an insertion-ordered map
 Removing this feature flag would break both the hashing invariant and the diff
 determinism property tests.
 
+### `tokio` runtime features
+
+The `tokio` dependency enables `rt`, `rt-multi-thread`, `macros`, `net`,
+`sync`, and `time`:
+
+```toml
+tokio = { version = "1.52.1", features = ["rt", "rt-multi-thread", "macros", "net", "sync", "time"] }
+```
+
+The server uses Tokio tasks and networking for the Axum runtime, graceful
+shutdown, and blocking cassette writes (`src/server/record.rs`). The
+`rt-multi-thread` feature is also required by the concurrency regression test
+`concurrent_requests_are_recorded_without_data_loss`, which runs
+`RecordService::handle_chat_completions` on a multi-threaded test runtime to
+verify record-mode persistence under concurrent requests.
+
+Do not remove these runtime features without checking the server startup path,
+record-mode task spawning, and the concurrent record-mode tests.
+
+### `tracing` request events
+
+The `tracing` dependency is used at the HTTP adapter boundary for structured
+record-mode request events. `record_chat_completions_handler` calls
+`log_chat_request`, which records the HTTP method and `uri.path()` only. Query
+strings are intentionally excluded, so credentials passed in query parameters do
+not enter request logs.
+
 ## Dev-dependencies
 
 ### `insta` — snapshot testing
@@ -52,6 +79,21 @@ cargo insta review
 
 This prevents accidental regressions in human-readable diagnostic output
 without requiring handwritten expected strings for every format variation.
+
+The `json` feature is enabled because the record-mode BDD suite also snapshots
+cassette JSON with `insta::assert_json_snapshot!`, notably the
+`cassette_successful_proxying` snapshot in
+`tests/record_mode_proxying/helpers.rs`. Without this feature, only string
+snapshot assertions are available. Do not remove it without replacing or
+reworking the JSON cassette snapshot tests.
+
+### `tracing-test` — captured tracing assertions
+
+`tracing-test` is used for unit tests that assert emitted tracing events. The
+`log_chat_request_uses_path_not_full_uri` test uses
+`#[tracing_test::traced_test]` and `logs_contain` to verify that request
+logging contains `/v1/chat/completions` but not sensitive query strings such as
+`api_key=secret`.
 
 ### `proptest` — property-based testing
 
@@ -85,23 +127,51 @@ definitions (`#[given]`, `#[when]`, `#[then]`) driven by `.feature` files.
 The `uuid` crate (with the `v4` feature) generates unique cassette filenames in
 integration tests, preventing collisions when tests run in parallel.
 
+### `tempfile` — self-cleaning unit-test cassette paths
+
+`tempfile` provides `TempDir` for record-mode unit tests that instantiate
+`FilesystemCassetteStore` only because the current `RecordService` store field
+is filesystem-backed. Tests that exercise request-shape guards or API-key
+resolution use a `TempDir` cassette path so no files are orphaned under
+`target/test-record-service/`. The temporary directory is created under the
+project root and converted back to a relative path before it reaches
+`FilesystemCassetteStore`, matching the adapter's capability-rooted path model.
+
+Do not replace those fixtures with fixed paths. A future in-memory cassette
+store can remove this temporary filesystem dependency once `RecordService`
+accepts cassette reader/appender traits generically.
+
 ## Internal module layout
 
 The library crate (`src/lib.rs`) exposes the following public modules:
 
-| Module     | Purpose                                                                       |
-| ---------- | ----------------------------------------------------------------------------- |
-| `cassette` | Schema, canonicalization, hashing, matching, diff, and filesystem persistence |
-| `cli`      | CLI argument parsing via `clap`                                               |
-| `config`   | `HarnessConfig` and related structures                                        |
-| `error`    | `HarnessError` enum and `HarnessResult` alias                                 |
-| `i18n`     | Internationalization via Fluent                                               |
-| `protocol` | Protocol identifier definitions                                               |
-| `replay`   | Replay mode logic (placeholder)                                               |
-| `server`   | HTTP server logic (placeholder)                                               |
-| `upstream` | Upstream target configuration                                                 |
+| Module     | Purpose                                                                    |
+| ---------- | -------------------------------------------------------------------------- |
+| `cassette` | Schema, canonicalization, hashing, matching, diff, filesystem persistence  |
+| `cli`      | CLI argument parsing via `clap`                                            |
+| `config`   | `HarnessConfig`, `UpstreamConfig`, `RedactionConfig`, and related types    |
+| `error`    | `HarnessError` enum and `HarnessResult` alias                              |
+| `i18n`     | Internationalization via Fluent                                            |
+| `protocol` | Protocol identifiers and request-shape helpers                             |
+| `replay`   | Replay mode logic                                                          |
+| `server`   | Axum record-mode HTTP server: routing, handler, graceful shutdown          |
+| `upstream` | Outbound HTTP adapter: URL construction, secret resolution, reqwest client |
 
 _Table 1: Top-level library modules._
+
+The crate root re-exports the public entry point `start_harness`, the
+`RunningHarness` type, and the types `HarnessConfig`, `HarnessError`, and
+`HarnessResult`. Shutdown is exposed as the `RunningHarness::shutdown` method,
+not as a standalone crate-root function.
+
+The upstream adapter returns `ObservedResponse` values carrying the HTTP status
+code, raw header byte pairs for proxying as `Vec<(String, Vec<u8>)>`, and exact
+response body bytes. Header value percent-encoding happens only at the
+persistence boundary when cassette-safe string headers are derived.
+
+Header selection and hop-by-hop filtering live in `src/http_exchange.rs`, not
+`src/protocol.rs`. Use that module when changing which headers are forwarded,
+proxied downstream, or persisted in cassettes.
 
 The `cassette` module contains several submodules:
 
@@ -116,6 +186,164 @@ _Table 2: Cassette submodules._
 
 The binary crate (`src/bin/spycatcher_harness.rs`) delegates all behaviour to
 the library entry points.
+
+## Internal abstractions
+
+The record-mode server is built around several narrow traits and helpers that
+allow unit tests to inject fakes without spawning real HTTP servers or reading
+process state.
+
+### `Clock` and `SystemClock` (`src/server/record_metadata.rs`)
+
+`Clock` is a single-method trait returning the current time as an RFC 3339
+string. `SystemClock` is the production implementation backed by
+`time::OffsetDateTime::now_utc()`. Tests inject `FixedClock`, which returns a
+hard-coded timestamp, to make `recorded_at` deterministic. Use
+`SessionMetadata::with_clock_and_start` to inject both the clock and a
+pre-captured `Instant` session start.
+
+### `EnvProvider` and `ProcessEnvProvider` (`src/upstream.rs`)
+
+`EnvProvider` provides one method, `read(&self, name: &str) -> Option<String>`,
+wrapping environment variable lookup. `ProcessEnvProvider` delegates to
+`std::env::var`. Tests inject `FakeEnvProvider` to simulate absent or preset
+API keys without mutating process state.
+
+### `ChatCompletionsUpstream` and `ReqwestUpstreamClient` (`src/upstream.rs`)
+
+`ChatCompletionsUpstream` is a one-method async trait that forwards a
+`ChatCompletionsRequest` to an upstream provider and returns an
+`ObservedResponse`. `ReqwestUpstreamClient` is the production implementation;
+use `ReqwestUpstreamClient::with_client(client)` in tests to inject a client
+with custom timeout or intercept behaviour. Tests inject `FakeUpstream`, which
+returns a hard-coded `ObservedResponse` or an error.
+
+#### Request timeout
+
+The outbound upstream adapter in [`src/upstream.rs`](../src/upstream.rs) uses a
+fixed request timeout:
+
+```rust
+pub(crate) const UPSTREAM_TIMEOUT: Duration = Duration::from_secs(30);
+```
+
+`ReqwestUpstreamClient::new()` applies that constant via
+`reqwest::Client::builder().timeout(UPSTREAM_TIMEOUT)`. It bounds non-stream
+chat completion requests sent to the adapter's chat/completions endpoint, which
+is built from `config.base_url` plus `chat/completions`, so stalled upstreams do
+not block graceful shutdown indefinitely.
+
+### Record metadata plumbing (`src/server/record_metadata.rs`)
+
+#### MetadataFactory and SessionMetadata
+
+[`src/server/record_metadata.rs`](../src/server/record_metadata.rs) contains
+the metadata construction seam. `MetadataFactory` is the narrow record-service
+port responsible for producing `InteractionMetadata` values used for cassette
+persistence:
+
+```rust
+pub(crate) trait MetadataFactory: Clone + Send + Sync + 'static {
+    fn create(&self) -> HarnessResult<InteractionMetadata>;
+    fn create_at(&self, start: Instant) -> HarnessResult<InteractionMetadata>;
+}
+```
+
+`SessionMetadata` has three constructors:
+
+- `new(kind: UpstreamKind)` is the production default. It uses `SystemClock`
+  and captures the session start with `Instant::now()`.
+- `with_clock(kind, Arc<dyn Clock>)` injects a clock while still capturing the
+  session start with `Instant::now()`.
+- `with_clock_and_start(kind, Arc<dyn Clock>, Instant)` injects both the clock
+  and a captured session start for deterministic `relative_offset_ms` tests.
+
+`relative_offset_ms` measures from the session start to the interaction start,
+captured at record-service handler entry, not the end of the upstream
+round-trip.
+
+### Request/response capture types
+
+`ChatCompletionsRequest<'a>` ([`src/upstream.rs`](../src/upstream.rs)) carries:
+
+- `api_key: &'a str`
+- `headers: &'a [(String, Vec<u8>)]`, preserving raw header bytes
+- `body: &'a [u8]`
+- `query: &'a str`
+- `config.base_url`, passed to `chat_completions_url()` as-is before appending
+  the `chat/completions` path segments to the configured base path. Existing
+  trailing slashes are collapsed with `pop_if_empty()`, so a provider base such
+  as `/api/v1` or `/api/v1/` becomes `/api/v1/chat/completions`. Existing base
+  query parameters are preserved, and inbound query parameters are appended.
+
+`ObservedRequest` ([`src/http_exchange.rs`](../src/http_exchange.rs))
+represents what the inbound adapter observed. Its `forward_headers:
+Vec<(String, Vec<u8>)>` field holds inbound headers selected for forwarding in
+a binary-safe form.
+
+`ObservedResponse` ([`src/http_exchange.rs`](../src/http_exchange.rs))
+carries:
+
+- `proxy_headers: Vec<(String, Vec<u8>)>`, raw header bytes forwarded
+  downstream
+- `headers: Vec<(String, String)>`, cassette-persistence headers with
+  non-UTF-8 values percent-encoded losslessly
+- `body: Vec<u8>`, exact response bytes
+
+Hop-by-hop headers and `Connection` tokens are removed in all selectors.
+Redaction is applied immediately before persistence; the default redaction
+configuration drops `authorization`.
+
+### Header selection helpers (`src/http_exchange.rs`)
+
+The header helpers in [`src/http_exchange.rs`](../src/http_exchange.rs) define
+the byte/string boundary:
+
+- `selected_request_headers(&HeaderMap) -> Vec<(String, String)>`
+  percent-encodes values for cassette persistence.
+- `selected_forward_headers(&HeaderMap) -> Vec<(String, Vec<u8>)>` preserves
+  raw bytes for upstream forwarding.
+- `selected_response_headers(&HeaderMap) -> Vec<(String, String)>`
+  percent-encodes values for cassette persistence.
+- `selected_response_proxy_headers(&HeaderMap) -> Vec<(String, Vec<u8>)>`
+  preserves raw bytes for downstream proxying.
+
+Record request headers are selected in two forms. Forwarded record request
+headers drop hop-by-hop and framing headers before proxying to upstream.
+Persisted request headers additionally exclude `host`, `content-length`, and
+`accept-encoding` before cassette storage.
+
+Persist response headers and downstream response proxy headers both exclude
+hop-by-hop headers and `content-length` only. Percent-encoding of non-UTF-8
+values occurs only in the string-returning helpers, preserving raw bytes
+throughout the proxy path.
+
+`redaction.drop_headers` is applied case-insensitively immediately before
+persistence to remove any configured header names from persisted request and
+persisted response headers.
+
+### Observability
+
+Record-mode request and decision logs are emitted through `tracing`. Metrics,
+alerts, distributed tracing spans, and correlation identifiers remain tracked
+in issues `#31` and `#33` and are intentionally out of scope for the public API
+at this stage.
+
+## Review residuals
+
+Current record-mode review residuals are tracked as deliberate follow-ups:
+
+- Observability: request logging uses bounded paths only. Metrics, alerting,
+  Prometheus export, and distributed tracing remain tracked by issues `#31` and
+  `#33`.
+- Performance: header-selection duplication has been removed through
+  `select_headers_unified` and `build_disallowed_set`.
+- Concurrency: functional concurrent recording coverage exists in
+  `concurrent_requests_are_recorded_without_data_loss`; remaining resource-use
+  concerns are fixture hygiene, not request-state correctness.
+- Test storage: record-service unit tests use `TempDir` cassette paths,
+  including tests that reload persisted cassette contents. A post-test
+  verification checks that `target/test-record-service/` remains empty.
 
 ## Test structure
 

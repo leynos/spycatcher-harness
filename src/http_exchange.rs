@@ -4,7 +4,10 @@
 //! server and upstream adapters agree on what gets forwarded, returned, and
 //! persisted.
 
-use axum::http::{HeaderMap, HeaderName};
+use std::collections::HashSet;
+
+use axum::http::HeaderMap;
+use percent_encoding::{NON_ALPHANUMERIC, percent_encode};
 use serde_json::Value;
 
 use crate::config::RedactionConfig;
@@ -34,6 +37,8 @@ pub(crate) struct ObservedRequest {
     pub query: String,
     /// Selected headers in observed order.
     pub headers: Vec<(String, String)>,
+    /// Selected inbound headers as raw bytes for upstream forwarding.
+    pub forward_headers: Vec<(String, Vec<u8>)>,
     /// Raw request body bytes.
     pub body: Vec<u8>,
     /// Parsed JSON body when the bytes form valid JSON.
@@ -45,8 +50,10 @@ pub(crate) struct ObservedRequest {
 pub(crate) struct ObservedResponse {
     /// HTTP status code.
     pub status: u16,
-    /// Selected headers in observed order.
+    /// Selected headers in observed order for cassette persistence.
     pub headers: Vec<(String, String)>,
+    /// Selected headers as raw bytes for downstream proxying.
+    pub proxy_headers: Vec<(String, Vec<u8>)>,
     /// Raw body bytes.
     pub body: Vec<u8>,
     /// Parsed JSON body when the bytes form valid JSON.
@@ -58,8 +65,8 @@ pub(crate) struct ObservedResponse {
 pub(crate) struct ProxyResponse {
     /// HTTP status code.
     pub status: u16,
-    /// Selected headers in observed order.
-    pub headers: Vec<(String, String)>,
+    /// Selected headers as raw bytes in observed order.
+    pub headers: Vec<(String, Vec<u8>)>,
     /// Raw body bytes.
     pub body: Vec<u8>,
 }
@@ -76,30 +83,86 @@ pub(crate) fn selected_request_headers(headers: &HeaderMap) -> Vec<(String, Stri
     selected_headers(headers, REQUEST_ONLY_EXCLUDED_HEADERS)
 }
 
+/// Selects request headers for upstream forwarding without re-encoding values.
+#[must_use]
+pub(crate) fn selected_forward_headers(headers: &HeaderMap) -> Vec<(String, Vec<u8>)> {
+    selected_header_bytes(headers, REQUEST_ONLY_EXCLUDED_HEADERS)
+}
+
 /// Selects response headers that are meaningful for proxying and persistence.
 #[must_use]
 pub(crate) fn selected_response_headers(headers: &HeaderMap) -> Vec<(String, String)> {
     selected_headers(headers, RESPONSE_ONLY_EXCLUDED_HEADERS)
 }
 
+/// Selects response headers for downstream proxying without re-encoding values.
+#[must_use]
+pub(crate) fn selected_response_proxy_headers(headers: &HeaderMap) -> Vec<(String, Vec<u8>)> {
+    selected_header_bytes(headers, RESPONSE_ONLY_EXCLUDED_HEADERS)
+}
+
+fn selected_header_bytes(headers: &HeaderMap, excluded: &[&str]) -> Vec<(String, Vec<u8>)> {
+    select_headers_unified(headers, excluded, |value| value.as_bytes().to_vec())
+}
+
 fn selected_headers(headers: &HeaderMap, excluded: &[&str]) -> Vec<(String, String)> {
+    select_headers_unified(headers, excluded, header_value_string)
+}
+
+fn select_headers_unified<V>(
+    headers: &HeaderMap,
+    excluded: &[&str],
+    map_value: impl Fn(&axum::http::HeaderValue) -> V,
+) -> Vec<(String, V)> {
+    let disallowed = build_disallowed_set(headers, excluded);
     headers
         .iter()
-        .filter(|(name, _)| should_keep_header(name, excluded))
-        .filter_map(|(name, value)| {
-            value
-                .to_str()
-                .ok()
-                .map(|header_value| (name.as_str().to_owned(), header_value.to_owned()))
-        })
+        .filter(|(name, _)| !disallowed.contains(name.as_str()))
+        .map(|(name, value)| (name.as_str().to_owned(), map_value(value)))
         .collect()
 }
 
-fn should_keep_header(name: &HeaderName, excluded: &[&str]) -> bool {
-    !HOP_BY_HOP_HEADERS
+fn header_value_string(value: &axum::http::HeaderValue) -> String {
+    value.to_str().map_or_else(
+        |_| percent_encode(value.as_bytes(), NON_ALPHANUMERIC).to_string(),
+        ToOwned::to_owned,
+    )
+}
+
+fn parse_connection_tokens(headers: &HeaderMap) -> HashSet<String> {
+    headers
+        .get_all(axum::http::header::CONNECTION)
         .iter()
-        .chain(excluded.iter())
-        .any(|candidate| name.as_str().eq_ignore_ascii_case(candidate))
+        .flat_map(|value| value.as_bytes().split(|byte| *byte == b','))
+        .map(lowercase_trimmed_ascii_token)
+        .filter(|token| !token.is_empty())
+        .collect()
+}
+
+fn build_disallowed_set(headers: &HeaderMap, excluded: &[&str]) -> HashSet<String> {
+    let mut set = parse_connection_tokens(headers);
+    for name in HOP_BY_HOP_HEADERS.iter().chain(excluded.iter()) {
+        set.insert(name.to_ascii_lowercase());
+    }
+    set
+}
+
+fn lowercase_trimmed_ascii_token(token: &[u8]) -> String {
+    let start = token
+        .iter()
+        .position(|byte| !byte.is_ascii_whitespace())
+        .unwrap_or(token.len());
+    let end = token
+        .iter()
+        .rposition(|byte| !byte.is_ascii_whitespace())
+        .map_or(start, |position| position + 1);
+    let normalized = token
+        .get(start..end)
+        .unwrap_or_default()
+        .iter()
+        .map(u8::to_ascii_lowercase)
+        .collect::<Vec<_>>();
+    String::from_utf8_lossy(&normalized).into_owned()
 }
 
 /// Applies case-insensitive configured header redaction before persistence.
@@ -131,19 +194,31 @@ mod tests {
 
     use crate::config::RedactionConfig;
 
+    /// Build a `HeaderMap` from raw byte pairs.
+    fn make_header_map(entries: &[(&str, &[u8])]) -> HeaderMap {
+        let mut map = HeaderMap::new();
+        for (name, value) in entries {
+            let header_name = match axum::http::HeaderName::from_bytes(name.as_bytes()) {
+                Ok(header_name) => header_name,
+                Err(error) => panic!("valid header name: {error}"),
+            };
+            let header_value = match axum::http::HeaderValue::from_bytes(value) {
+                Ok(header_value) => header_value,
+                Err(error) => panic!("valid header value bytes: {error}"),
+            };
+            map.insert(header_name, header_value);
+        }
+        map
+    }
+
     #[rstest]
     fn selected_request_headers_drop_hop_by_hop_and_framing_headers() {
-        let mut headers = HeaderMap::new();
-        headers.insert(
-            "content-type",
-            "application/json".parse().expect("valid header"),
-        );
-        headers.insert("host", "example.invalid".parse().expect("valid header"));
-        headers.insert("connection", "keep-alive".parse().expect("valid header"));
-        headers.insert(
-            "authorization",
-            "Bearer keep-me".parse().expect("valid header"),
-        );
+        let headers = make_header_map(&[
+            ("content-type", b"application/json"),
+            ("host", b"example.invalid"),
+            ("connection", b"keep-alive"),
+            ("authorization", b"Bearer keep-me"),
+        ]);
 
         assert_eq!(
             selected_request_headers(&headers),
@@ -174,5 +249,124 @@ mod tests {
     #[rstest]
     fn parse_json_bytes_returns_none_for_invalid_json() {
         assert_eq!(parse_json_bytes(br#"{"unterminated": true"#), None);
+    }
+
+    #[rstest]
+    fn selected_response_headers_preserve_non_utf8_values() {
+        let headers = make_header_map(&[("x-raw", b"\xff\xfe")]);
+
+        assert_eq!(
+            selected_response_headers(&headers),
+            vec![("x-raw".to_owned(), "%FF%FE".to_owned())],
+        );
+    }
+
+    #[rstest]
+    fn selected_response_proxy_headers_preserve_raw_values() {
+        let headers = make_header_map(&[("x-raw", b"\xff\xfe")]);
+
+        assert_eq!(
+            selected_response_proxy_headers(&headers),
+            vec![("x-raw".to_owned(), b"\xff\xfe".to_vec())],
+        );
+    }
+
+    #[rstest]
+    #[case(
+        b"keep-alive, x-hop" as &[u8],
+        "UTF-8 connection tokens are parsed and applied"
+    )]
+    #[case(
+        b" x-hop , \xff" as &[u8],
+        "non-UTF-8 bytes in Connection header do not suppress valid tokens"
+    )]
+    fn selected_headers_drop_connection_token_headers(
+        #[case] connection_value: &[u8],
+        #[case] description: &str,
+    ) {
+        let headers = make_header_map(&[
+            ("connection", connection_value),
+            ("x-hop", b"drop-me"),
+            ("content-type", b"application/json"),
+        ]);
+
+        assert_eq!(
+            selected_request_headers(&headers),
+            vec![("content-type".to_owned(), "application/json".to_owned())],
+            "{description}",
+        );
+    }
+
+    #[rstest]
+    fn selected_forward_headers_preserve_raw_values() {
+        let headers = make_header_map(&[("x-raw", b"\xff\xfe")]);
+
+        assert_eq!(
+            selected_forward_headers(&headers),
+            vec![("x-raw".to_owned(), b"\xff\xfe".to_vec())],
+        );
+    }
+
+    mod prop_tests {
+        //! Property tests for header selection invariants.
+
+        use super::*;
+        use proptest::prelude::*;
+
+        proptest! {
+            #[test]
+            fn hop_by_hop_headers_are_always_dropped(value in "[a-zA-Z0-9]{1,16}") {
+                for name in HOP_BY_HOP_HEADERS {
+                    let mut map = axum::http::HeaderMap::new();
+                    map.insert(
+                        axum::http::HeaderName::from_bytes(name.as_bytes())
+                            .expect("hop-by-hop header name should be valid"),
+                        axum::http::HeaderValue::from_str(&value)
+                            .expect("generated header value should be valid"),
+                    );
+                    let result = selected_request_headers(&map);
+                    prop_assert!(
+                        result.iter().all(|(n, _)| !n.eq_ignore_ascii_case(name)),
+                        "hop-by-hop header {name:?} must be dropped"
+                    );
+                }
+            }
+        }
+
+        proptest! {
+            #[test]
+            fn non_utf8_bytes_are_percent_encoded_not_dropped(
+                suffix in proptest::collection::vec(0x80u8..=0xFFu8, 1..8),
+            ) {
+                let mut map = axum::http::HeaderMap::new();
+                map.insert(
+                    axum::http::HeaderName::from_bytes(b"x-custom")
+                        .expect("custom header name should be valid"),
+                    axum::http::HeaderValue::from_bytes(&suffix)
+                        .expect("generated non-UTF-8 header value should be valid"),
+                );
+                let result = selected_request_headers(&map);
+                prop_assert!(!result.is_empty(), "non-UTF-8 header must not be dropped");
+                let (_, value) = result
+                    .first()
+                    .expect("selected headers should contain x-custom");
+                let expected = percent_encode(&suffix, NON_ALPHANUMERIC).to_string();
+                prop_assert_eq!(value, &expected);
+            }
+        }
+
+        proptest! {
+            #[test]
+            fn percent_round_trip_is_identity(
+                bytes in proptest::collection::vec(0x80u8..=0xFFu8, 1..32),
+            ) {
+                use percent_encoding::percent_decode_str;
+
+                let encoded = percent_encode(&bytes, NON_ALPHANUMERIC).to_string();
+                let decoded = percent_decode_str(&encoded).collect::<Vec<_>>();
+
+                prop_assert_eq!(decoded, bytes);
+            }
+        }
     }
 }

@@ -176,6 +176,68 @@ pub(crate) fn load_cassette(path: &Utf8Path) -> Result<Cassette, Box<dyn Error>>
     Ok(Cassette::from_reader(file)?)
 }
 
+pub(crate) fn assert_cassette_matches_success_snapshot(
+    cassette: &Cassette,
+) -> Result<(), Box<dyn Error>> {
+    let mut value =
+        serde_json::to_value(cassette).map_err(|error| std::io::Error::other(error.to_string()))?;
+    redact_snapshot_metadata(&mut value);
+    redact_snapshot_response_date(&mut value);
+    let mut settings = insta::Settings::clone_current();
+    settings.set_snapshot_path("../snapshots");
+    settings.set_prepend_module_to_snapshot(false);
+    settings.bind(|| {
+        insta::assert_json_snapshot!("cassette_successful_proxying", value);
+    });
+    Ok(())
+}
+
+fn redact_snapshot_metadata(value: &mut serde_json::Value) {
+    let Some(interactions) = value
+        .get_mut("interactions")
+        .and_then(serde_json::Value::as_array_mut)
+    else {
+        return;
+    };
+    for interaction in interactions {
+        if let Some(meta) = interaction.get_mut("metadata") {
+            meta["recorded_at"] = serde_json::Value::String("<redacted>".to_owned());
+            meta["relative_offset_ms"] = serde_json::Value::Number(0.into());
+        }
+    }
+}
+
+fn redact_snapshot_response_date(value: &mut serde_json::Value) {
+    let Some(interactions) = value
+        .get_mut("interactions")
+        .and_then(serde_json::Value::as_array_mut)
+    else {
+        return;
+    };
+    for interaction in interactions {
+        let Some(headers) = interaction
+            .get_mut("response")
+            .and_then(|response| response.get_mut("headers"))
+            .and_then(serde_json::Value::as_array_mut)
+        else {
+            continue;
+        };
+        for header in headers {
+            let Some(pair) = header.as_array_mut() else {
+                continue;
+            };
+            if pair
+                .first()
+                .and_then(serde_json::Value::as_str)
+                .is_some_and(|name| name.eq_ignore_ascii_case("date"))
+                && let Some(header_value) = pair.get_mut(1)
+            {
+                *header_value = serde_json::Value::String("<redacted>".to_owned());
+            }
+        }
+    }
+}
+
 pub(crate) fn unique_cassette_path(prefix: &str) -> Utf8PathBuf {
     Utf8PathBuf::from(format!(
         "target/test-record-proxying/{prefix}-{}.json",
@@ -201,4 +263,41 @@ pub(crate) fn present_env_name() -> Result<&'static str, Box<dyn Error>> {
     Err(Box::new(std::io::Error::other(
         "expected at least one stable environment variable for integration tests",
     )))
+}
+
+/// Returns the value of the present-in-process env var used in record-mode tests.
+pub(crate) fn present_env_value() -> Result<String, Box<dyn std::error::Error>> {
+    let name = present_env_name()?;
+    std::env::var(name).map_err(|error| {
+        std::io::Error::other(format!("env var {name:?} must be set for tests: {error}")).into()
+    })
+}
+
+pub(crate) fn assert_upstream_bearer_token(
+    request: &CapturedRequest,
+) -> Result<(), Box<dyn Error>> {
+    let api_key = present_env_value()?;
+    let expected = format!("Bearer {api_key}");
+    let has_authorization = request
+        .headers
+        .iter()
+        .any(|(name, _)| name.eq_ignore_ascii_case("authorization"));
+    let matches_expected = request
+        .headers
+        .iter()
+        .any(|(name, value)| name.eq_ignore_ascii_case("authorization") && value == &expected);
+    if matches_expected {
+        return Ok(());
+    }
+    let header_names = request
+        .headers
+        .iter()
+        .map(|(name, _)| name.as_str())
+        .collect::<Vec<_>>();
+    Err(std::io::Error::other(format!(
+        "expected upstream Authorization Bearer token to match configured API key; \
+         authorization_present={has_authorization} header_count={} header_names={header_names:?}",
+        request.headers.len()
+    ))
+    .into())
 }

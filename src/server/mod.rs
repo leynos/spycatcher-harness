@@ -5,6 +5,11 @@
 
 mod record;
 mod record_handler;
+pub(crate) mod record_metadata;
 mod runtime;
 
 pub(crate) use runtime::{RecordServerHandle, start_record_server};
+
+#[cfg(test)]
+#[path = "../server_tests.rs"]
+mod tests;

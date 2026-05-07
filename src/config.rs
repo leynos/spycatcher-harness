@@ -185,10 +185,18 @@ impl Default for LocalizationConfig {
 }
 
 /// Header redaction configuration applied before cassette persistence.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct RedactionConfig {
     /// Header names to remove from recorded interactions.
     pub drop_headers: Vec<String>,
+}
+
+impl Default for RedactionConfig {
+    fn default() -> Self {
+        Self {
+            drop_headers: vec!["authorization".to_owned()],
+        }
+    }
 }
 
 /// Replay timing controls for simulating streaming latency.
@@ -267,5 +275,17 @@ mod tests {
         let sock = SocketAddr::from(([192, 168, 1, 1], 9090));
         let listen = ListenAddr::from(sock);
         assert_eq!(listen.as_socket_addr(), sock);
+    }
+
+    #[rstest]
+    fn default_redaction_drops_authorization() {
+        let redaction = RedactionConfig::default();
+        assert!(
+            redaction
+                .drop_headers
+                .iter()
+                .any(|name| name.eq_ignore_ascii_case("authorization")),
+            "default redaction should drop Authorization header"
+        );
     }
 }

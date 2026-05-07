@@ -6,7 +6,9 @@ Feature: Record mode proxying for chat completions
     When the harness is started
     And a non-stream chat completions request is sent to the harness
     Then the client receives the upstream response unchanged
+    And the upstream receives the request body unchanged
     And the cassette contains one recorded interaction
+    And the cassette matches the expected snapshot
     And the background services shut down cleanly
 
   Scenario: Redacted headers are not persisted
@@ -16,6 +18,17 @@ Feature: Record mode proxying for chat completions
     And a non-stream chat completions request with header x-session-secret is sent to the harness
     Then the upstream receives the header x-session-secret
     And the cassette request headers omit x-session-secret
+    And the background services shut down cleanly
+
+  Scenario: Authorization is redacted by default
+    Given a stub upstream that returns a successful chat completion
+    And a record-mode harness configured for that upstream
+    When the harness is started
+    And a non-stream chat completions request with header Authorization is sent to the harness
+    Then the client receives the upstream response unchanged
+    And the upstream does not receive the downstream Authorization header
+    And the upstream receives the configured upstream Bearer token
+    And the cassette request headers omit Authorization
     And the background services shut down cleanly
 
   Scenario: Streaming requests are rejected until streaming support lands
