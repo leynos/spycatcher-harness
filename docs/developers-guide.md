@@ -228,9 +228,10 @@ pub(crate) const UPSTREAM_TIMEOUT: Duration = Duration::from_secs(30);
 ```
 
 `ReqwestUpstreamClient::new()` applies that constant via
-`reqwest::Client::builder().timeout(UPSTREAM_TIMEOUT)`. It bounds all
-non-stream `/v1/chat/completions` requests so stalled upstreams do not block
-graceful shutdown indefinitely.
+`reqwest::Client::builder().timeout(UPSTREAM_TIMEOUT)`. It bounds non-stream
+chat completion requests sent to the adapter's chat/completions endpoint, which
+is built from `config.base_url` plus `chat/completions`, so stalled upstreams do
+not block graceful shutdown indefinitely.
 
 ### Record metadata plumbing (`src/server/record_metadata.rs`)
 
@@ -319,7 +320,7 @@ throughout the proxy path.
 
 `redaction.drop_headers` is applied case-insensitively immediately before
 persistence to remove any configured header names from persisted request and
-persist response headers.
+persisted response headers.
 
 ### Observability
 
