@@ -79,9 +79,9 @@ Skills to apply during implementation:
   until streaming work lands in task `2.1.1`.
 - Maintain hexagonal boundaries:
   - HTTP extraction, response rendering, and socket lifecycle belong in
-    adapter code under `src/server.rs` and submodules.
-  - Header filtering policy lives in `src/http_exchange.rs`, keeping request
-    and response capture semantics shared across adapters.
+    adapter code under `src/server/` and related server adapters.
+  - Header filtering and byte-safe exchange capture belong in adapter code in
+    `src/http_exchange.rs`.
   - Upstream HTTP client code belongs in `src/upstream.rs` and submodules.
   - Domain-owned cassette types stay in `src/cassette/`.
   - The orchestration that turns an observed HTTP exchange into an
