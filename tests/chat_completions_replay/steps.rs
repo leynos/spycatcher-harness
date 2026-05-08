@@ -58,45 +58,30 @@ fn a_record_mode_harness_configured_for_replay_setup(
 
 #[when("the record harness is started")]
 fn the_record_harness_is_started(replay_world: &ReplayWorld) -> Result<(), Box<dyn Error>> {
-    let config = replay_world
-        .record_config
-        .take()
-        .ok_or_else(|| std::io::Error::other("record config must be set"))?;
-    let harness = replay_world
-        .runtime
-        .with_ref(|runtime| runtime.block_on(start_harness(config)))
-        .ok_or_else(|| std::io::Error::other("runtime must be set"))??;
-    replay_world.record_harness.set(harness);
-    Ok(())
+    start_harness_from_slot(
+        replay_world,
+        &replay_world.record_config,
+        &replay_world.record_harness,
+        "record config",
+    )
 }
 
 #[when("the baseline non-stream request is sent to the record harness")]
 fn the_baseline_non_stream_request_is_sent_to_the_record_harness(
     replay_world: &ReplayWorld,
 ) -> Result<(), Box<dyn Error>> {
-    let harness_addr = replay_world
-        .record_harness
-        .with_ref(|harness| harness.addr)
-        .ok_or_else(|| std::io::Error::other("record harness must be running"))?;
-    let response = replay_world
-        .runtime
-        .with_ref(|runtime| send_request(runtime, harness_addr, BASELINE_REQUEST, &[]))
-        .ok_or_else(|| std::io::Error::other("runtime must be set"))??;
-    replay_world.record_response.set(response);
-    Ok(())
+    send_request_to_harness_slot(
+        replay_world,
+        &replay_world.record_harness,
+        &replay_world.record_response,
+        BASELINE_REQUEST,
+        "record harness",
+    )
 }
 
 #[when("the record harness is stopped")]
 fn the_record_harness_is_stopped(replay_world: &ReplayWorld) -> Result<(), Box<dyn Error>> {
-    let harness = replay_world
-        .record_harness
-        .take()
-        .ok_or_else(|| std::io::Error::other("record harness must be running"))?;
-    replay_world
-        .runtime
-        .with_ref(|runtime| runtime.block_on(harness.shutdown()))
-        .ok_or_else(|| std::io::Error::other("runtime must be set"))??;
-    Ok(())
+    stop_harness_from_slot(replay_world, &replay_world.record_harness, "record harness")
 }
 
 #[when("a replay-mode harness is configured from the recorded cassette")]
@@ -117,16 +102,12 @@ fn a_replay_mode_harness_is_configured_from_the_recorded_cassette(
 
 #[when("the replay harness is started")]
 fn the_replay_harness_is_started(replay_world: &ReplayWorld) -> Result<(), Box<dyn Error>> {
-    let config = replay_world
-        .replay_config
-        .take()
-        .ok_or_else(|| std::io::Error::other("replay config must be set"))?;
-    let harness = replay_world
-        .runtime
-        .with_ref(|runtime| runtime.block_on(start_harness(config)))
-        .ok_or_else(|| std::io::Error::other("runtime must be set"))??;
-    replay_world.replay_harness.set(harness);
-    Ok(())
+    start_harness_from_slot(
+        replay_world,
+        &replay_world.replay_config,
+        &replay_world.replay_harness,
+        "replay config",
+    )
 }
 
 #[when("the baseline non-stream request is sent to the replay harness")]
@@ -246,15 +227,7 @@ fn the_replay_client_receives_an_unsupported_streaming_response(
 
 #[then("the replay harness is stopped")]
 fn the_replay_harness_is_stopped(replay_world: &ReplayWorld) -> Result<(), Box<dyn Error>> {
-    let harness = replay_world
-        .replay_harness
-        .take()
-        .ok_or_else(|| std::io::Error::other("replay harness must be running"))?;
-    replay_world
-        .runtime
-        .with_ref(|runtime| runtime.block_on(harness.shutdown()))
-        .ok_or_else(|| std::io::Error::other("runtime must be set"))??;
-    Ok(())
+    stop_harness_from_slot(replay_world, &replay_world.replay_harness, "replay harness")
 }
 
 #[then("the replay stub upstream is stopped")]
@@ -272,15 +245,66 @@ fn the_replay_stub_upstream_is_stopped(replay_world: &ReplayWorld) -> Result<(),
 }
 
 fn send_replay_request(replay_world: &ReplayWorld, body: &[u8]) -> Result<(), Box<dyn Error>> {
-    let harness_addr = replay_world
-        .replay_harness
+    send_request_to_harness_slot(
+        replay_world,
+        &replay_world.replay_harness,
+        &replay_world.replay_response,
+        body,
+        "replay harness",
+    )
+}
+
+fn start_harness_from_slot(
+    world: &ReplayWorld,
+    config_slot: &rstest_bdd::Slot<spycatcher_harness::HarnessConfig>,
+    harness_slot: &rstest_bdd::Slot<spycatcher_harness::RunningHarness>,
+    config_label: &str,
+) -> Result<(), Box<dyn Error>> {
+    let config = config_slot
+        .take()
+        .ok_or_else(|| std::io::Error::other(format!("{config_label} must be set")))?;
+    let harness = world
+        .runtime
+        .with_ref(|runtime| runtime.block_on(start_harness(config)))
+        .ok_or_else(|| std::io::Error::other("runtime must be set"))??;
+    harness_slot.set(harness);
+    Ok(())
+}
+
+fn stop_harness_from_slot(
+    world: &ReplayWorld,
+    harness_slot: &rstest_bdd::Slot<spycatcher_harness::RunningHarness>,
+    harness_label: &str,
+) -> Result<(), Box<dyn Error>> {
+    let harness = harness_slot
+        .take()
+        .ok_or_else(|| std::io::Error::other(format!("{harness_label} must be running")))?;
+    world
+        .runtime
+        .with_ref(|runtime| runtime.block_on(harness.shutdown()))
+        .ok_or_else(|| std::io::Error::other("runtime must be set"))??;
+    Ok(())
+}
+
+#[expect(
+    clippy::too_many_arguments,
+    reason = "helper signature intentionally mirrors the duplicated step dependencies"
+)]
+fn send_request_to_harness_slot(
+    world: &ReplayWorld,
+    harness_slot: &rstest_bdd::Slot<spycatcher_harness::RunningHarness>,
+    response_slot: &rstest_bdd::Slot<crate::record_helpers::ClientResponse>,
+    body: &[u8],
+    harness_label: &str,
+) -> Result<(), Box<dyn Error>> {
+    let harness_addr = harness_slot
         .with_ref(|harness| harness.addr)
-        .ok_or_else(|| std::io::Error::other("replay harness must be running"))?;
-    let response = replay_world
+        .ok_or_else(|| std::io::Error::other(format!("{harness_label} must be running")))?;
+    let response = world
         .runtime
         .with_ref(|runtime| send_request(runtime, harness_addr, body, &[]))
         .ok_or_else(|| std::io::Error::other("runtime must be set"))??;
-    replay_world.replay_response.set(response);
+    response_slot.set(response);
     Ok(())
 }
 
