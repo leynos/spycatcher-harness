@@ -483,10 +483,15 @@ guidance in `docs/ortho-config-users-guide.md`.
 Library responsibilities:
 
 - Embed library-owned Fluent Translation List (FTL) resources under `i18n/`.
+  The initial library asset path is `i18n/en-US/spycatcher-harness.ftl`.
 - Expose localized rendering APIs that accept an application-provided
-  `FluentLanguageLoader` via dependency injection.
+  `FluentLanguageLoader` via dependency injection. The initial public surface
+  is `HarnessLocalizations` plus
+  `localize_harness_error(&FluentLanguageLoader, &HarnessError)`.
 - Keep domain-facing APIs semantic by returning typed errors with stable message
-  IDs, rather than preformatted user-facing strings.
+  IDs, rather than preformatted user-facing strings. Harness error messages use
+  IDs such as `harness-error-invalid-config`,
+  `harness-error-cassette-not-found`, and `harness-error-request-mismatch`.
 - Avoid locale detection and avoid constructing process-global language loaders
   inside the library.
 
@@ -582,12 +587,20 @@ application-provided language loader rather than constructing one internally:
 
 ```rust,no_run
 use i18n_embed::fluent::FluentLanguageLoader;
+use spycatcher_harness::HarnessError;
+
+pub struct HarnessLocalizations;
 
 pub fn localize_harness_error(
     loader: &FluentLanguageLoader,
     error: &HarnessError,
 ) -> String;
 ```
+
+If a caller passes a loader that has not loaded the library's Fluent resources,
+the rendering helper falls back to the stable non-localized `Display` text for
+the typed error. This preserves existing semantic error handling while allowing
+applications to opt into localized rendering.
 
 ### Core type and module relationships
 

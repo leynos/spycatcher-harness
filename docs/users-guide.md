@@ -79,6 +79,38 @@ Configuration fields:
 - `replay` — timing controls for replay mode.
 - `localization` — locale settings.
 
+### Localizing library messages
+
+The library embeds its own Fluent Translation List resources under `i18n/`, but
+does not create a process-wide language loader or detect the process locale.
+Applications own language negotiation and inject their configured loader when
+they need localized library text:
+
+```rust
+use i18n_embed::fluent::FluentLanguageLoader;
+use spycatcher_harness::HarnessError;
+use spycatcher_harness::i18n::{HarnessLocalizations, localize_harness_error};
+
+let fallback = "en-US"
+    .parse::<i18n_embed::unic_langid::LanguageIdentifier>()
+    .unwrap();
+let loader = FluentLanguageLoader::new("spycatcher-harness", fallback);
+i18n_embed::select(&loader, &HarnessLocalizations, &loader.current_languages())
+    .unwrap();
+
+let error = HarnessError::InvalidConfig {
+    message: "missing upstream".to_owned(),
+};
+let rendered = localize_harness_error(&loader, &error);
+
+assert_eq!(rendered, "invalid configuration: missing upstream");
+```
+
+If the supplied loader has not loaded the library resources, rendering falls
+back to the existing non-localized `HarnessError` display text. CLI locale
+selection and localized `clap` help remain separate application-level
+responsibilities.
+
 Replay startup expectations:
 
 - The cassette file must already exist at `cassette_dir/cassette_name`.

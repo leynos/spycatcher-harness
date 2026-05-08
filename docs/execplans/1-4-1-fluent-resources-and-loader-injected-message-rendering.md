@@ -5,7 +5,7 @@ This ExecPlan (execution plan) is a living document. The sections
 `Decision Log`, and `Outcomes & Retrospective` must be kept up to date as work
 proceeds.
 
-Status: DRAFT
+Status: COMPLETE
 
 ## Purpose / big picture
 
@@ -124,14 +124,31 @@ Thresholds that trigger escalation when breached.
 - [x] (2026-05-08 11:25Z) Used a Wyvern agent team to inspect roadmap/design
   intent, source layout, and testing/documentation guidance.
 - [x] (2026-05-08 11:26Z) Drafted this pre-implementation ExecPlan.
-- [ ] Obtain explicit approval for this plan before implementation.
-- [ ] Add Fluent dependencies and embedded library FTL assets.
-- [ ] Implement loader-injected rendering APIs.
-- [ ] Add unit tests, behavioural tests where externally observable, and
-  doctests for public API examples.
-- [ ] Update relevant design, user, and component documentation.
-- [ ] Run all quality gates and commit the implementation.
-- [ ] Mark roadmap item 1.4.1 done after the feature implementation is
+- [x] (2026-05-08 12:18Z) Received explicit user approval to implement this
+  plan and moved it to execution.
+- [x] (2026-05-08 12:31Z) Added direct `i18n-embed` and `rust-embed`
+  dependencies, using versions already present in `Cargo.lock`.
+- [x] (2026-05-08 12:31Z) Added embedded English library FTL assets under
+  `i18n/en-US/spycatcher-harness.ftl`.
+- [x] (2026-05-08 12:32Z) Implemented `HarnessLocalizations` and
+  `localize_harness_error(&FluentLanguageLoader, &HarnessError)` in
+  `src/i18n.rs`.
+- [x] (2026-05-08 12:40Z) Added `rstest` unit cases for every current
+  `HarnessError` variant and an unhappy-path unloaded-loader fallback case.
+- [x] (2026-05-08 12:40Z) Added public API doctest examples for
+  `HarnessLocalizations` and `localize_harness_error`.
+- [x] (2026-05-08 12:40Z) Recorded that `rstest-bdd` is not applicable for
+  this milestone because no externally observable workflow changes.
+- [x] (2026-05-08 12:42Z) Updated `docs/spycatcher-harness-design.md`,
+  `docs/users-guide.md`, and `docs/developers-guide.md` with API, asset path,
+  and loader-injection guidance.
+- [x] (2026-05-08 12:51Z) Ran and passed `make fmt`, `make markdownlint`,
+  `make nixie`, `make check-fmt`, `make lint`, and `make test`.
+- [x] (2026-05-08 12:52Z) Marked roadmap item 1.4.1 and its success criteria
+  done after validation passed.
+- [x] (2026-05-08 12:56Z) Prepared the implementation commit after all gates
+  passed.
+- [x] Mark roadmap item 1.4.1 done after the feature implementation is
   complete.
 
 ## Surprises & discoveries
@@ -151,6 +168,20 @@ Thresholds that trigger escalation when breached.
   `[[bin]]`, not a multi-crate workspace. Evidence: the root `Cargo.toml`
   defines `spycatcher_harness` and `spycatcher-harness`. Impact: embedded
   resources and rendering helpers belong in the existing library crate.
+
+- Observation: `Cargo.lock` already contained `i18n-embed 0.16.0` and
+  `rust-embed 8.11.0` through `rstest-bdd`, so adding them as direct runtime
+  dependencies did not require selecting newer crate versions. Impact: this
+  keeps dependency movement minimal while making the library's runtime
+  localization contract explicit.
+
+- Observation: `FluentLanguageLoader` wraps interpolated variables in Unicode
+  bidirectional isolation marks by default. Evidence: focused
+  `cargo test i18n --all-targets --all-features` failed with strings containing
+  `U+2068` and `U+2069` around dynamic fields. Impact: the rendering helper
+  normalizes those marks out for harness diagnostics so localized output
+  remains suitable for assertions, logs, and command-line surfaces without
+  mutating the caller-owned loader.
 
 ## Decision log
 
@@ -177,11 +208,51 @@ Thresholds that trigger escalation when breached.
   breaches the public API tolerance and must be approved first. Date/Author:
   2026-05-08 / agent
 
+- Decision: begin implementation from the approved plan without changing the
+  public `start_harness(cfg)` signature. Rationale: the user's 2026-05-08
+  approval explicitly asks to proceed with the planned functionality, and the
+  plan's narrow library rendering API remains within tolerance. Date/Author:
+  2026-05-08 / agent
+
+- Decision: use the existing lockfile versions `i18n-embed = "0.16.0"` and
+  `rust-embed = "8.11.0"` rather than the older example versions in the plan.
+  Rationale: both crates are already resolved by the repository through
+  `rstest-bdd`; direct dependencies should expose the runtime contract without
+  unnecessary version churn. Date/Author: 2026-05-08 / agent
+
+- Decision: strip Fluent bidirectional isolation marks from strings returned
+  by `localize_harness_error`. Rationale: disabling isolation would require
+  mutating the application-owned loader, while leaving marks in harness
+  diagnostics would make logs and test assertions surprising. The helper keeps
+  the injected-loader boundary intact and normalizes only its own returned
+  diagnostic string. Date/Author: 2026-05-08 / agent
+
+- Decision: do not add a new `rstest-bdd` scenario for 1.4.1. Rationale: this
+  implementation exposes a public library helper and embedded resources only;
+  it does not change HTTP responses, CLI output, persistence, network
+  contracts, or other system-level behaviour. Unit tests plus doctests cover
+  the observable library contract. Date/Author: 2026-05-08 / agent
+
 ## Outcomes & retrospective
 
-No implementation outcome exists yet. This draft captures the approved route
-for implementing roadmap item 1.4.1 and should be updated during execution as
-tests, code, documentation, and validation evidence land.
+Roadmap item 1.4.1 is implemented. The library now owns embedded Fluent
+resources at `i18n/en-US/spycatcher-harness.ftl`, exposes
+`HarnessLocalizations` for applications to load into their own
+`FluentLanguageLoader`, and exposes
+`localize_harness_error(&FluentLanguageLoader, &HarnessError)` for localized
+diagnostic rendering. The implementation does not create a process-global
+loader, does not perform locale detection, and does not change
+`start_harness(cfg)`.
+
+The implementation is validated by `rstest` unit cases covering every current
+`HarnessError` variant, an unhappy-path unloaded-loader fallback test, public
+API doctests, Markdown linting, diagram validation, Rust formatting checks,
+Clippy/Whitaker linting, and the full test suite.
+
+No `rstest-bdd` scenario was added because this milestone did not change an
+externally observable workflow such as HTTP responses, CLI output, persistence,
+or network contracts. The externally observable contract for this milestone is
+the public library rendering API, covered by unit tests and doctests.
 
 ## Context and orientation
 
