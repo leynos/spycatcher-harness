@@ -83,11 +83,13 @@ compatible API base, and records the full request/response exchange. OpenRouter
 documents its OpenAI-like request/response schema and that streaming is SSE
 with occasional comment payloads. [^1][^2]
 
-Replay-mode HTTP serving remains the next slice (`1.3.2`); replay and verify
-startup still validate cassette state without yet mounting a replay handler.
-VidaiMock can be used as an optional replay backend to simulate
-time-to-first-token (TTFT), jitter, and chaos failure modes that it explicitly
-advertises. [^11]
+Replay-mode HTTP serving for non-stream `POST /v1/chat/completions`
+interactions is native in the harness as of task `1.3.2`. Replay starts a local
+server, loads the configured cassette read-only, matches inbound requests, and
+serves the recorded status, persisted selected headers, and body bytes without
+constructing an upstream client. Verify mode remains a later slice. VidaiMock
+can be used as an optional replay backend to simulate time-to-first-token
+(TTFT), jitter, and chaos failure modes that it explicitly advertises. [^11]
 
 A short diagram description follows. The diagram shows the record/replay data
 flow and the adapter boundary.
@@ -151,8 +153,12 @@ Key architectural points:
     immediately before cassette persistence.
 - **Streaming guardrail**:
   - `stream: true` is rejected with an explicit "not implemented yet"
-    response in task `1.3.1`, and the harness does not append a cassette entry
-    for that request.
+    response in record and replay mode, and the harness does not append a
+    cassette entry for that request.
+- **Replay no-network boundary**:
+  - Replay application state owns a `ReplayMatchEngine` only. It does not hold
+    `UpstreamConfig`, environment-variable readers, `ReqwestUpstreamClient`,
+    or any outbound provider seam.
 - **Replay backend selection**:
   - Native replay: earliest slice, no external dependency.
   - VidaiMock replay: optional enhancement to simulate streaming physics and
@@ -223,12 +229,23 @@ harness does not append an implicit `.json` suffix. Each interaction contains:
   - Upstream identifier (`openrouter`).
   - Timestamps (recorded and relative offsets).
 
-For the shipped `1.3.1` slice, "selected headers" means the inbound
-request-header subset after hop-by-hop and framing removal, with persistence
-redaction applied case-insensitively just before writing the cassette. The
-recorded request intentionally reflects what the client sent to the harness,
-not the enriched outbound upstream request after bearer-token injection and
-configured `extra_headers`.
+For the shipped `1.3.1` and `1.3.2` slices, "selected headers" means the
+inbound request-header subset after hop-by-hop and framing removal, with
+persistence redaction applied case-insensitively just before writing the
+cassette. The recorded request intentionally reflects what the client sent to
+the harness, not the enriched outbound upstream request after bearer-token
+injection and configured `extra_headers`.
+
+Replay of non-stream chat completions reconstructs exactly the HTTP data that
+the cassette persisted: the recorded status when it is a valid HTTP status
+code, the persisted selected response headers in recorded order, and the stored
+body bytes. Replay intentionally does not reconstruct transport framing,
+hop-by-hop headers, or `content-length`, because those are not part of the
+cassette contract. If an inbound replay request mismatches, the HTTP adapter
+returns `409 Conflict` with `request_mismatch` diagnostics derived from
+`MismatchDiagnostic`. If a request asks for `stream: true`, or a manually
+authored cassette contains a stream response for a matched request, replay
+returns `501 Not Implemented`.
 
 ### Matching modes
 
@@ -981,12 +998,12 @@ avoiding time commitments.
   - [x] Redaction rules remove configured secret headers before persistence.
   - [x] Requests with `stream: true` return HTTP 501 Not Implemented and
         produce zero cassette writes (shipped: `stream: true` guardrail).
-- [ ] 1.3.2. Implement non-stream replay for `POST /v1/chat/completions`.
-  - [ ] Replay returns recorded status, headers, and body bytes verbatim for
+- [x] 1.3.2. Implement non-stream replay for `POST /v1/chat/completions`.
+  - [x] Replay returns recorded status, headers, and body bytes verbatim for
         non-stream interactions.
-  - [ ] Replay requires no outbound network access and fails fast if network
+  - [x] Replay requires no outbound network access and fails fast if network
         calls are attempted.
-  - [ ] End-to-end record to replay integration tests pass using a stub
+  - [x] End-to-end record to replay integration tests pass using a stub
         upstream service.
 
 #### 1.4. Localization foundation

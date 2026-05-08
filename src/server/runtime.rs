@@ -1,4 +1,4 @@
-//! Record-mode server startup and shutdown lifecycle.
+//! Server startup and shutdown lifecycle for harness HTTP modes.
 //!
 //! This keeps listener binding and graceful shutdown wiring out of the crate
 //! root while returning a small handle that `RunningHarness` can own.
@@ -15,16 +15,18 @@ use crate::config::HarnessConfig;
 use crate::protocol::CHAT_COMPLETIONS_PATH;
 use crate::server::record::RecordAppState;
 use crate::server::record_handler::record_chat_completions_handler;
+use crate::server::replay::ReplayAppState;
+use crate::server::replay_handler::replay_chat_completions_handler;
 use crate::{HarnessError, HarnessResult};
 
-/// Runtime handle for a bound record-mode HTTP server.
+/// Runtime handle for a bound harness HTTP server.
 #[derive(Debug)]
-pub(crate) struct RecordServerHandle {
+pub(crate) struct ServerHandle {
     shutdown: Option<oneshot::Sender<()>>,
     task: JoinHandle<HarnessResult<()>>,
 }
 
-impl RecordServerHandle {
+impl ServerHandle {
     /// Gracefully stops the server and waits for the task to finish.
     ///
     /// # Errors
@@ -50,7 +52,7 @@ impl RecordServerHandle {
 pub(crate) async fn start_record_server(
     cfg: &HarnessConfig,
     cassette_path: &camino::Utf8Path,
-) -> HarnessResult<(SocketAddr, RecordServerHandle)> {
+) -> HarnessResult<(SocketAddr, ServerHandle)> {
     let listener = TcpListener::bind(cfg.listen.as_socket_addr())
         .await
         .map_err(HarnessError::from)?;
@@ -68,7 +70,41 @@ pub(crate) async fn start_record_server(
 
     Ok((
         bound_addr,
-        RecordServerHandle {
+        ServerHandle {
+            shutdown: Some(shutdown_tx),
+            task,
+        },
+    ))
+}
+
+/// Binds and starts the replay-mode server.
+///
+/// # Errors
+///
+/// Returns a harness error when the listener or runtime state cannot be
+/// created.
+pub(crate) async fn start_replay_server(
+    cfg: &HarnessConfig,
+    cassette_path: &camino::Utf8Path,
+) -> HarnessResult<(SocketAddr, ServerHandle)> {
+    let listener = TcpListener::bind(cfg.listen.as_socket_addr())
+        .await
+        .map_err(HarnessError::from)?;
+    let bound_addr = listener.local_addr().map_err(HarnessError::from)?;
+    let cassette_store = FilesystemCassetteStore::open_for_replay(cassette_path)?;
+    let state = ReplayAppState::from_config(cfg, &cassette_store)?;
+    let router = Router::new()
+        .route(
+            CHAT_COMPLETIONS_PATH,
+            axum::routing::post(replay_chat_completions_handler),
+        )
+        .with_state(state);
+    let (shutdown_tx, shutdown_rx) = oneshot::channel::<()>();
+    let task = spawn_server_task(listener, router, shutdown_rx);
+
+    Ok((
+        bound_addr,
+        ServerHandle {
             shutdown: Some(shutdown_tx),
             task,
         },

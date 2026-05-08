@@ -90,14 +90,14 @@ units with explicit dependencies and completion criteria.
     [Architecture overview](spycatcher-harness-design.md#architecture-overview),
     [Streaming capture and replay](spycatcher-harness-design.md#streaming-capture-and-replay).
 
-- [ ] 1.3.2. Implement non-stream replay for `POST /v1/chat/completions`.
+- [x] 1.3.2. Implement non-stream replay for `POST /v1/chat/completions`.
   - Depends on: 1.2.3, 1.3.1.
   - Success criteria:
-    - [ ] Replay returns recorded status, headers, and body bytes verbatim for
+    - [x] Replay returns recorded status, headers, and body bytes verbatim for
           non-stream interactions.
-    - [ ] Replay requires no outbound network access and fails fast if network
+    - [x] Replay requires no outbound network access and fails fast if network
           calls are attempted.
-    - [ ] End-to-end record to replay integration tests pass using a stub
+    - [x] End-to-end record to replay integration tests pass using a stub
           upstream service.
   - Design references:
     [Goals and non-goals](spycatcher-harness-design.md#goals-and-non-goals),

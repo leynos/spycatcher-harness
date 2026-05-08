@@ -153,8 +153,8 @@ The library crate (`src/lib.rs`) exposes the following public modules:
 | `error`    | `HarnessError` enum and `HarnessResult` alias                              |
 | `i18n`     | Internationalization via Fluent                                            |
 | `protocol` | Protocol identifiers and request-shape helpers                             |
-| `replay`   | Replay mode logic                                                          |
-| `server`   | Axum record-mode HTTP server: routing, handler, graceful shutdown          |
+| `replay`   | Adapter-neutral replay service and replay error types                      |
+| `server`   | Axum HTTP servers: routing, handlers, state, graceful shutdown             |
 | `upstream` | Outbound HTTP adapter: URL construction, secret resolution, reqwest client |
 
 _Table 1: Top-level library modules._
@@ -192,6 +192,24 @@ the library entry points.
 The record-mode server is built around several narrow traits and helpers that
 allow unit tests to inject fakes without spawning real HTTP servers or reading
 process state.
+
+Replay-mode HTTP serving uses the same `server::runtime` lifecycle as record
+mode, but with separate state and handlers:
+
+- `src/server/replay.rs` loads the cassette through
+  `FilesystemCassetteStore::open_for_replay`, constructs a `ReplayMatchEngine`,
+  and wraps it in `ReplayService`.
+- `src/server/replay_handler.rs` owns Axum extraction and response mapping for
+  `POST /v1/chat/completions`.
+- `src/replay.rs` owns the adapter-neutral request canonicalization, matcher
+  advancement, and replay error classification.
+
+Replay state must not hold `UpstreamConfig`, `ReqwestUpstreamClient`, an
+environment provider, or any outbound transport trait. This is the compile-time
+boundary that keeps replay deterministic and no-network. The only mutable
+replay state is the `ReplayMatchEngine`, guarded by a narrow `Mutex` in
+`ReplayService`; the guard is held only while calling `next_match`, and never
+across an `.await`.
 
 ### `Clock` and `SystemClock` (`src/server/record_metadata.rs`)
 

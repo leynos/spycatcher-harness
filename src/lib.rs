@@ -40,7 +40,7 @@ use std::net::SocketAddr;
 use camino::Utf8PathBuf;
 
 use crate::cassette::{filesystem::FilesystemCassetteStore, filesystem::probe_record_write_access};
-use crate::server::RecordServerHandle;
+use crate::server::ServerHandle;
 
 /// A running harness instance.
 ///
@@ -54,7 +54,7 @@ pub struct RunningHarness {
     pub addr: SocketAddr,
     /// The path to the cassette file in use.
     pub cassette_path: Utf8PathBuf,
-    runtime: Option<RecordServerHandle>,
+    runtime: Option<ServerHandle>,
 }
 
 impl RunningHarness {
@@ -74,7 +74,8 @@ impl RunningHarness {
 /// Starts the harness with the given configuration.
 ///
 /// Validates the configuration, prepares cassette access for the selected
-/// mode, and starts the record-mode server when recording is enabled.
+/// mode, and starts the selected HTTP server when recording or replaying is
+/// enabled.
 ///
 /// # Errors
 ///
@@ -111,7 +112,11 @@ pub async fn start_harness(cfg: HarnessConfig) -> HarnessResult<RunningHarness> 
             let (addr, runtime) = server::start_record_server(&cfg, &cassette_path).await?;
             (addr, Some(runtime))
         }
-        config::Mode::Replay | config::Mode::Verify => {
+        config::Mode::Replay => {
+            let (addr, runtime) = server::start_replay_server(&cfg, &cassette_path).await?;
+            (addr, Some(runtime))
+        }
+        config::Mode::Verify => {
             return Err(HarnessError::ModeNotYetImplemented {
                 mode: format!("{:?}", cfg.mode),
             });
@@ -246,8 +251,6 @@ mod tests {
         harness.shutdown().await.expect("shutdown should succeed");
     }
 
-    // TODO: re-enable in task 1.3.2
-    #[ignore = "replay mode not yet implemented, re-enable in task 1.3.2"]
     #[rstest]
     #[tokio::test]
     async fn start_harness_cassette_path_joins_dir_and_name() -> HarnessResult<()> {
@@ -262,6 +265,7 @@ mod tests {
         };
         let harness = start_harness(cfg).await.expect("startup should succeed");
         assert_eq!(harness.cassette_path, cassette_dir.join(cassette_name));
+        harness.shutdown().await.expect("shutdown should succeed");
         Ok(())
     }
 
@@ -287,8 +291,6 @@ mod tests {
         harness.shutdown().await.expect("shutdown should succeed");
     }
 
-    // TODO: re-enable in task 1.3.2
-    #[ignore = "replay mode not yet implemented, re-enable in task 1.3.2"]
     #[rstest]
     #[tokio::test]
     async fn start_harness_with_supported_replay_cassette_succeeds() -> HarnessResult<()> {
@@ -303,6 +305,7 @@ mod tests {
             harness.cassette_path,
             Utf8PathBuf::from("target/test-harness").join(cassette_name),
         );
+        harness.shutdown().await.expect("shutdown should succeed");
         Ok(())
     }
 
@@ -351,11 +354,15 @@ mod tests {
 
     #[rstest]
     #[tokio::test]
-    async fn start_harness_replay_mode_returns_not_yet_implemented() -> HarnessResult<()> {
-        let cassette_name = unique_cassette_name("replay-nyi");
+    async fn start_harness_verify_mode_returns_not_yet_implemented() -> HarnessResult<()> {
+        let cassette_name = unique_cassette_name("verify-nyi");
         seed_replay_cassette(&cassette_name)?;
+        let cfg = HarnessConfig {
+            mode: config::Mode::Verify,
+            ..replay_config(cassette_name)
+        };
 
-        let result = start_harness(replay_config(cassette_name)).await;
+        let result = start_harness(cfg).await;
 
         assert!(
             matches!(result, Err(HarnessError::ModeNotYetImplemented { .. })),
