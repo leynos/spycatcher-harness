@@ -46,13 +46,13 @@ const IO: &str = "harness-error-io";
 #[folder = "i18n/"]
 pub struct HarnessLocalizations;
 
-/// Renders a localized message for a harness error through the caller's
+/// Renders a localised message for a harness error through the caller's
 /// language loader.
 ///
 /// The caller owns locale negotiation, fallback policy, and loader
 /// lifecycle. If the loader has not been populated with this crate's
 /// embedded resources, rendering falls back to the error's existing
-/// non-localized [`std::fmt::Display`] text.
+/// non-localised [`std::fmt::Display`] text.
 ///
 /// # Examples
 ///
@@ -153,104 +153,148 @@ mod tests {
     use rstest::{fixture, rstest};
 
     #[rstest]
-    #[case::invalid_config(
-        HarnessError::InvalidConfig {
-            message: "missing upstream".to_owned(),
-        },
-        "invalid configuration: missing upstream",
-    )]
-    #[case::cassette_not_found(
-        HarnessError::CassetteNotFound {
-            cassette_name: "session.json".to_owned(),
-        },
-        "cassette not found: session.json",
-    )]
-    #[case::request_mismatch(
-        HarnessError::RequestMismatch {
-            interaction_id: 2,
-            expected_hash: "abc".to_owned(),
-            observed_hash: "def".to_owned(),
-            diff_summary: "method differs".to_owned(),
-        },
-        "request mismatch at interaction 2: expected abc, observed def",
-    )]
-    #[case::invalid_cassette(
-        HarnessError::InvalidCassette {
-            message: "missing interactions".to_owned(),
-        },
-        "invalid cassette: missing interactions",
-    )]
-    #[case::unsupported_version(
-        HarnessError::UnsupportedCassetteFormatVersion {
-            found: 1,
-            supported: 2,
-        },
-        "unsupported cassette format version 1; supported version is 2",
-    )]
-    #[case::upstream_failure(
-        HarnessError::UpstreamRequestFailed {
-            source: Box::new(std::io::Error::other("timed out")),
-        },
-        "upstream request failed: timed out",
-    )]
-    #[case::mode_not_yet_implemented(
-        HarnessError::ModeNotYetImplemented {
-            mode: "Verify".to_owned(),
-        },
-        "mode not yet implemented: Verify",
-    )]
-    #[case::io(
-        HarnessError::Io {
-            source: std::io::Error::other("disk full"),
-        },
-        "io failure: disk full",
-    )]
-    fn localize_harness_error_renders_embedded_message(
+    fn localize_harness_error_invalid_config(
         #[from(english_loader)] english_loader_result: Result<
             FluentLanguageLoader,
             Box<dyn std::error::Error>,
         >,
-        #[case] error: HarnessError,
-        #[case] expected_snapshot: &str,
     ) -> Result<(), Box<dyn std::error::Error>> {
         let english_loader = english_loader_result?;
+        let error = HarnessError::InvalidConfig {
+            message: "missing upstream".to_owned(),
+        };
         let actual = localize_harness_error(&english_loader, &error);
 
-        match expected_snapshot {
-            "invalid configuration: missing upstream" => {
-                insta::assert_snapshot!(actual, @"invalid configuration: missing upstream");
-            }
-            "cassette not found: session.json" => {
-                insta::assert_snapshot!(actual, @"cassette not found: session.json");
-            }
-            "request mismatch at interaction 2: expected abc, observed def" => {
-                insta::assert_snapshot!(
-                    actual,
-                    @"request mismatch at interaction 2: expected abc, observed def"
-                );
-            }
-            "invalid cassette: missing interactions" => {
-                insta::assert_snapshot!(actual, @"invalid cassette: missing interactions");
-            }
-            "unsupported cassette format version 1; supported version is 2" => {
-                insta::assert_snapshot!(
-                    actual,
-                    @"unsupported cassette format version 1; supported version is 2"
-                );
-            }
-            "upstream request failed: timed out" => {
-                insta::assert_snapshot!(actual, @"upstream request failed: timed out");
-            }
-            "mode not yet implemented: Verify" => {
-                insta::assert_snapshot!(actual, @"mode not yet implemented: Verify");
-            }
-            "io failure: disk full" => {
-                insta::assert_snapshot!(actual, @"io failure: disk full");
-            }
-            unknown => {
-                return Err(format!("unexpected localization snapshot fixture: {unknown}").into());
-            }
-        }
+        insta::assert_snapshot!(actual, @"invalid configuration: missing upstream");
+        Ok(())
+    }
+
+    #[rstest]
+    fn localize_harness_error_cassette_not_found(
+        #[from(english_loader)] english_loader_result: Result<
+            FluentLanguageLoader,
+            Box<dyn std::error::Error>,
+        >,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let english_loader = english_loader_result?;
+        let error = HarnessError::CassetteNotFound {
+            cassette_name: "session.json".to_owned(),
+        };
+        let actual = localize_harness_error(&english_loader, &error);
+
+        insta::assert_snapshot!(actual, @"cassette not found: session.json");
+        Ok(())
+    }
+
+    #[rstest]
+    fn localize_harness_error_request_mismatch(
+        #[from(english_loader)] english_loader_result: Result<
+            FluentLanguageLoader,
+            Box<dyn std::error::Error>,
+        >,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let english_loader = english_loader_result?;
+        let error = HarnessError::RequestMismatch {
+            interaction_id: 2,
+            expected_hash: "abc".to_owned(),
+            observed_hash: "def".to_owned(),
+            diff_summary: "method differs".to_owned(),
+        };
+        let actual = localize_harness_error(&english_loader, &error);
+
+        insta::assert_snapshot!(
+            actual,
+            @"request mismatch at interaction 2: expected abc, observed def"
+        );
+        Ok(())
+    }
+
+    #[rstest]
+    fn localize_harness_error_invalid_cassette(
+        #[from(english_loader)] english_loader_result: Result<
+            FluentLanguageLoader,
+            Box<dyn std::error::Error>,
+        >,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let english_loader = english_loader_result?;
+        let error = HarnessError::InvalidCassette {
+            message: "missing interactions".to_owned(),
+        };
+        let actual = localize_harness_error(&english_loader, &error);
+
+        insta::assert_snapshot!(actual, @"invalid cassette: missing interactions");
+        Ok(())
+    }
+
+    #[rstest]
+    fn localize_harness_error_unsupported_version(
+        #[from(english_loader)] english_loader_result: Result<
+            FluentLanguageLoader,
+            Box<dyn std::error::Error>,
+        >,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let english_loader = english_loader_result?;
+        let error = HarnessError::UnsupportedCassetteFormatVersion {
+            found: 1,
+            supported: 2,
+        };
+        let actual = localize_harness_error(&english_loader, &error);
+
+        insta::assert_snapshot!(
+            actual,
+            @"unsupported cassette format version 1; supported version is 2"
+        );
+        Ok(())
+    }
+
+    #[rstest]
+    fn localize_harness_error_upstream_failure(
+        #[from(english_loader)] english_loader_result: Result<
+            FluentLanguageLoader,
+            Box<dyn std::error::Error>,
+        >,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let english_loader = english_loader_result?;
+        let error = HarnessError::UpstreamRequestFailed {
+            source: Box::new(std::io::Error::other("timed out")),
+        };
+        let actual = localize_harness_error(&english_loader, &error);
+
+        insta::assert_snapshot!(actual, @"upstream request failed: timed out");
+        Ok(())
+    }
+
+    #[rstest]
+    fn localize_harness_error_mode_not_yet_implemented(
+        #[from(english_loader)] english_loader_result: Result<
+            FluentLanguageLoader,
+            Box<dyn std::error::Error>,
+        >,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let english_loader = english_loader_result?;
+        let error = HarnessError::ModeNotYetImplemented {
+            mode: "Verify".to_owned(),
+        };
+        let actual = localize_harness_error(&english_loader, &error);
+
+        insta::assert_snapshot!(actual, @"mode not yet implemented: Verify");
+        Ok(())
+    }
+
+    #[rstest]
+    fn localize_harness_error_io(
+        #[from(english_loader)] english_loader_result: Result<
+            FluentLanguageLoader,
+            Box<dyn std::error::Error>,
+        >,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let english_loader = english_loader_result?;
+        let error = HarnessError::Io {
+            source: std::io::Error::other("disk full"),
+        };
+        let actual = localize_harness_error(&english_loader, &error);
+
+        insta::assert_snapshot!(actual, @"io failure: disk full");
         Ok(())
     }
 
