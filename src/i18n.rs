@@ -76,23 +76,17 @@ pub struct HarnessLocalizations;
 /// ```
 #[must_use]
 pub fn localize_harness_error(loader: &FluentLanguageLoader, error: &HarnessError) -> String {
-    let message = harness_error_message(error);
-    let rendered = loader.get_args(message.id, message.args);
-    if is_missing_localization(&rendered, message.id) {
-        error.to_string()
+    let (id, args) = harness_error_message(error);
+    if has_loaded_message(loader, id) {
+        let rendered = loader.get_args(id, args.clone());
+        strip_fluent_isolation_marks(&rendered, args.values())
     } else {
-        strip_isolation_marks(&rendered)
+        error.to_string()
     }
 }
 
-struct LocalizedMessage<'a> {
-    id: &'static str,
-    args: HashMap<&'static str, String>,
-    _error: &'a HarnessError,
-}
-
-fn harness_error_message(error: &HarnessError) -> LocalizedMessage<'_> {
-    let (id, args) = match error {
+fn harness_error_message(error: &HarnessError) -> (&'static str, HashMap<&'static str, String>) {
+    match error {
         HarnessError::InvalidConfig { message } => (
             INVALID_CONFIG,
             HashMap::from([("message", message.clone())]),
@@ -133,24 +127,31 @@ fn harness_error_message(error: &HarnessError) -> LocalizedMessage<'_> {
             MODE_NOT_YET_IMPLEMENTED,
             HashMap::from([("mode", mode.clone())]),
         ),
-        HarnessError::Io { .. } => (IO, HashMap::new()),
-    };
-    LocalizedMessage {
-        id,
-        args,
-        _error: error,
+        HarnessError::Io { source } => (IO, HashMap::from([("source", source.to_string())])),
     }
 }
 
-fn is_missing_localization(rendered: &str, message_id: &str) -> bool {
-    rendered == format!("No localization for id: \"{message_id}\"")
+fn has_loaded_message(loader: &FluentLanguageLoader, message_id: &str) -> bool {
+    loader.current_languages().iter().any(|language| {
+        loader.with_message_iter(language, |messages| {
+            let mut found = false;
+            for message in messages {
+                found |= message.id.name == message_id;
+            }
+            found
+        })
+    })
 }
 
-fn strip_isolation_marks(rendered: &str) -> String {
-    rendered
-        .chars()
-        .filter(|character| !matches!(character, '\u{2068}' | '\u{2069}'))
-        .collect()
+fn strip_fluent_isolation_marks<'a>(
+    rendered: &str,
+    arg_values: impl IntoIterator<Item = &'a String>,
+) -> String {
+    arg_values
+        .into_iter()
+        .fold(rendered.to_owned(), |text, value| {
+            text.replace(&format!("\u{2068}{value}\u{2069}"), value)
+        })
 }
 
 #[cfg(test)]
@@ -159,7 +160,8 @@ mod tests {
 
     use super::*;
     use i18n_embed::fluent::FluentLanguageLoader;
-    use rstest::rstest;
+    use i18n_embed::unic_langid::LanguageIdentifier;
+    use rstest::{fixture, rstest};
 
     #[rstest]
     #[case::invalid_config(
@@ -212,23 +214,30 @@ mod tests {
         HarnessError::Io {
             source: std::io::Error::other("disk full"),
         },
-        "io failure",
+        "io failure: disk full",
     )]
     fn localize_harness_error_renders_embedded_message(
+        #[from(english_loader)] english_loader_result: Result<
+            FluentLanguageLoader,
+            Box<dyn std::error::Error>,
+        >,
         #[case] error: HarnessError,
         #[case] expected: &str,
     ) {
-        let loader =
-            english_loader().expect("English harness localization resources should load for tests");
+        let english_loader = english_loader_result
+            .expect("English harness localization resources should load for tests");
 
-        assert_eq!(localize_harness_error(&loader, &error), expected);
+        assert_eq!(localize_harness_error(&english_loader, &error), expected);
     }
 
     #[rstest]
-    fn localize_harness_error_falls_back_when_loader_is_unloaded() {
-        let fallback =
-            fallback_language().expect("English fallback language identifier should parse");
-        let loader = FluentLanguageLoader::new("spycatcher-harness", fallback);
+    fn localize_harness_error_falls_back_when_loader_is_unloaded(
+        fallback_language: Result<LanguageIdentifier, Box<dyn std::error::Error>>,
+    ) {
+        let loader = FluentLanguageLoader::new(
+            "spycatcher-harness",
+            fallback_language.expect("English fallback language identifier should parse"),
+        );
         let error = HarnessError::InvalidConfig {
             message: "missing upstream".to_owned(),
         };
@@ -236,14 +245,36 @@ mod tests {
         assert_eq!(localize_harness_error(&loader, &error), error.to_string());
     }
 
-    fn english_loader() -> Result<FluentLanguageLoader, Box<dyn std::error::Error>> {
-        let loader = FluentLanguageLoader::new("spycatcher-harness", fallback_language()?);
+    #[rstest]
+    fn localize_harness_error_preserves_intentional_isolation_marks(
+        #[from(english_loader)] english_loader_result: Result<
+            FluentLanguageLoader,
+            Box<dyn std::error::Error>,
+        >,
+    ) {
+        let english_loader = english_loader_result
+            .expect("English harness localization resources should load for tests");
+        let error = HarnessError::InvalidConfig {
+            message: "\u{2068}already isolated\u{2069}".to_owned(),
+        };
+
+        assert_eq!(
+            localize_harness_error(&english_loader, &error),
+            "invalid configuration: \u{2068}already isolated\u{2069}",
+        );
+    }
+
+    #[fixture]
+    fn english_loader(
+        fallback_language: Result<LanguageIdentifier, Box<dyn std::error::Error>>,
+    ) -> Result<FluentLanguageLoader, Box<dyn std::error::Error>> {
+        let loader = FluentLanguageLoader::new("spycatcher-harness", fallback_language?);
         i18n_embed::select(&loader, &HarnessLocalizations, &loader.current_languages())?;
         Ok(loader)
     }
 
-    fn fallback_language()
-    -> Result<i18n_embed::unic_langid::LanguageIdentifier, Box<dyn std::error::Error>> {
+    #[fixture]
+    fn fallback_language() -> Result<LanguageIdentifier, Box<dyn std::error::Error>> {
         Ok("en-US".parse()?)
     }
 }

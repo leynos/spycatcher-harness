@@ -150,6 +150,13 @@ Thresholds that trigger escalation when breached.
   passed.
 - [x] Mark roadmap item 1.4.1 done after the feature implementation is
   complete.
+- [x] (2026-05-10 09:12Z) Addressed review follow-ups for structured
+  missing-message detection, I/O source rendering, narrower Fluent isolation
+  normalization, mapping simplification, and `rstest` fixtures.
+- [x] (2026-05-10 09:24Z) Revalidated review follow-ups with
+  `cargo test i18n --all-targets --all-features`, `make fmt`,
+  `make markdownlint`, `make nixie`, `make check-fmt`, `make lint`, and
+  `make test`.
 
 ## Surprises & discoveries
 
@@ -182,6 +189,13 @@ Thresholds that trigger escalation when breached.
   normalizes those marks out for harness diagnostics so localized output
   remains suitable for assertions, logs, and command-line surfaces without
   mutating the caller-owned loader.
+
+- Observation: `FluentLanguageLoader` exposes `with_message_iter`, which can
+  inspect messages loaded for each current language. Evidence: the
+  `i18n-embed 0.16.0` API provides
+  `with_message_iter(&LanguageIdentifier, closure)`. Impact: missing harness
+  messages can be detected structurally before rendering instead of comparing
+  against the loader's English fallback string.
 
 ## Decision log
 
@@ -226,6 +240,22 @@ Thresholds that trigger escalation when breached.
   diagnostics would make logs and test assertions surprising. The helper keeps
   the injected-loader boundary intact and normalizes only its own returned
   diagnostic string. Date/Author: 2026-05-08 / agent
+
+- Decision: replace fallback-string comparison with loaded-message detection.
+  Rationale: comparing against `i18n-embed`'s `"No localization for id: ..."`
+  string couples harness behaviour to upstream wording. Checking loaded Fluent
+  message IDs through `with_message_iter` is a structured signal from the
+  injected loader. Date/Author: 2026-05-10 / agent
+
+- Decision: normalize only Fluent isolation pairs surrounding argument values,
+  not every isolation mark in the rendered string. Rationale: Fluent inserts
+  `U+2068` and `U+2069` around placeables; replacing only
+  `LRI + argument_value + PDI` preserves intentional isolation marks present in
+  localized text or user-provided content. Date/Author: 2026-05-10 / agent
+
+- Decision: include `HarnessError::Io` source details in localized rendering.
+  Rationale: the localized message should not drop diagnostic context that is
+  available in the underlying typed error. Date/Author: 2026-05-10 / agent
 
 - Decision: do not add a new `rstest-bdd` scenario for 1.4.1. Rationale: this
   implementation exposes a public library helper and embedded resources only;

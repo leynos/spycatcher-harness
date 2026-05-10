@@ -5,4 +5,4 @@ harness-error-invalid-cassette = invalid cassette: { $message }
 harness-error-unsupported-cassette-format-version = unsupported cassette format version { $found }; supported version is { $supported }
 harness-error-upstream-request-failed = upstream request failed: { $source }
 harness-error-mode-not-yet-implemented = mode not yet implemented: { $mode }
-harness-error-io = io failure
+harness-error-io = io failure: { $source }
