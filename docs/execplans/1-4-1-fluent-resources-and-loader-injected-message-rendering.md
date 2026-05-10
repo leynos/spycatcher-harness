@@ -423,7 +423,7 @@ implementation commit or a small follow-up commit.
 Run all commands from the repository root:
 
 ```sh
-cd /home/leynos/.lody/repos/github---leynos---spycatcher-harness/worktrees/c0d58edb-8a6a-4ef4-bd39-021494899e77
+cd <repository-root>
 ```
 
 Before implementation, confirm the branch:
