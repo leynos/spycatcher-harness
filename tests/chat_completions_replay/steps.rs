@@ -22,6 +22,12 @@ const DIFFERENT_REQUEST: &[u8] =
 const STREAMING_REQUEST: &[u8] =
     br#"{"model":"gpt-test","stream":true,"messages":[{"role":"user","content":"hi"}]}"#;
 
+struct HarnessTarget<'a> {
+    harness_slot: &'a rstest_bdd::Slot<spycatcher_harness::RunningHarness>,
+    response_slot: &'a rstest_bdd::Slot<crate::record_helpers::ClientResponse>,
+    label: &'a str,
+}
+
 #[given("a stub upstream that returns a successful chat completion for replay")]
 fn a_stub_upstream_that_returns_a_successful_chat_completion_for_replay(
     replay_world: &ReplayWorld,
@@ -72,10 +78,12 @@ fn the_baseline_non_stream_request_is_sent_to_the_record_harness(
 ) -> Result<(), Box<dyn Error>> {
     send_request_to_harness_slot(
         replay_world,
-        &replay_world.record_harness,
-        &replay_world.record_response,
+        &HarnessTarget {
+            harness_slot: &replay_world.record_harness,
+            response_slot: &replay_world.record_response,
+            label: "record harness",
+        },
         BASELINE_REQUEST,
-        "record harness",
     )
 }
 
@@ -247,10 +255,12 @@ fn the_replay_stub_upstream_is_stopped(replay_world: &ReplayWorld) -> Result<(),
 fn send_replay_request(replay_world: &ReplayWorld, body: &[u8]) -> Result<(), Box<dyn Error>> {
     send_request_to_harness_slot(
         replay_world,
-        &replay_world.replay_harness,
-        &replay_world.replay_response,
+        &HarnessTarget {
+            harness_slot: &replay_world.replay_harness,
+            response_slot: &replay_world.replay_response,
+            label: "replay harness",
+        },
         body,
-        "replay harness",
     )
 }
 
@@ -286,25 +296,20 @@ fn stop_harness_from_slot(
     Ok(())
 }
 
-#[expect(
-    clippy::too_many_arguments,
-    reason = "helper signature intentionally mirrors the duplicated step dependencies"
-)]
 fn send_request_to_harness_slot(
     world: &ReplayWorld,
-    harness_slot: &rstest_bdd::Slot<spycatcher_harness::RunningHarness>,
-    response_slot: &rstest_bdd::Slot<crate::record_helpers::ClientResponse>,
+    target: &HarnessTarget<'_>,
     body: &[u8],
-    harness_label: &str,
 ) -> Result<(), Box<dyn Error>> {
-    let harness_addr = harness_slot
+    let harness_addr = target
+        .harness_slot
         .with_ref(|harness| harness.addr)
-        .ok_or_else(|| std::io::Error::other(format!("{harness_label} must be running")))?;
+        .ok_or_else(|| std::io::Error::other(format!("{} must be running", target.label)))?;
     let response = world
         .runtime
         .with_ref(|runtime| send_request(runtime, harness_addr, body, &[]))
         .ok_or_else(|| std::io::Error::other("runtime must be set"))??;
-    response_slot.set(response);
+    target.response_slot.set(response);
     Ok(())
 }
 
