@@ -157,6 +157,10 @@ Thresholds that trigger escalation when breached.
   `cargo test i18n --all-targets --all-features`, `make fmt`,
   `make markdownlint`, `make nixie`, `make check-fmt`, `make lint`, and
   `make test`.
+- [x] (2026-05-10 02:05Z) Addressed follow-up review findings by loading the
+  explicit fallback locale in tests and examples, using
+  `FluentLanguageLoader::has` for missing-message checks, and syncing the
+  dependency snippet with the implemented versions.
 
 ## Surprises & discoveries
 
@@ -190,12 +194,11 @@ Thresholds that trigger escalation when breached.
   remains suitable for assertions, logs, and command-line surfaces without
   mutating the caller-owned loader.
 
-- Observation: `FluentLanguageLoader` exposes `with_message_iter`, which can
-  inspect messages loaded for each current language. Evidence: the
-  `i18n-embed 0.16.0` API provides
-  `with_message_iter(&LanguageIdentifier, closure)`. Impact: missing harness
-  messages can be detected structurally before rendering instead of comparing
-  against the loader's English fallback string.
+- Observation: `FluentLanguageLoader` exposes `has(message_id)`, which checks
+  whether a message is available in any loaded language bundle. Evidence: the
+  `i18n-embed 0.16.0` API provides `FluentLanguageLoader::has`. Impact:
+  missing harness messages can be detected structurally before rendering
+  instead of comparing against the loader's English fallback string.
 
 ## Decision log
 
@@ -244,8 +247,15 @@ Thresholds that trigger escalation when breached.
 - Decision: replace fallback-string comparison with loaded-message detection.
   Rationale: comparing against `i18n-embed`'s `"No localization for id: ..."`
   string couples harness behaviour to upstream wording. Checking loaded Fluent
-  message IDs through `with_message_iter` is a structured signal from the
-  injected loader. Date/Author: 2026-05-10 / agent
+  message IDs through `FluentLanguageLoader::has` is a structured signal from
+  the injected loader. Date/Author: 2026-05-10 / agent
+
+- Decision: examples and tests pass the requested fallback locale explicitly to
+  `i18n_embed::select`. Rationale: using the same explicit locale value for
+  loader construction and resource selection avoids relying on
+  `current_languages()` state before resources have been loaded, and gives
+  callers a copyable setup that reliably loads bundled Fluent messages.
+  Date/Author: 2026-05-10 / agent
 
 - Decision: normalize only Fluent isolation pairs surrounding argument values,
   not every isolation mark in the rendered string. Rationale: Fluent inserts
@@ -426,8 +436,8 @@ leta show start_harness
 Add dependencies in `Cargo.toml`:
 
 ```toml
-i18n-embed = { version = "0.14.1", features = ["fluent-system"] }
-rust-embed = "8.7.2"
+i18n-embed = { version = "0.16.0", features = ["fluent-system"] }
+rust-embed = "8.11.0"
 ```
 
 Use the exact latest compatible versions already acceptable to the project only

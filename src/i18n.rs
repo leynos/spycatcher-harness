@@ -38,8 +38,8 @@ const IO: &str = "harness-error-io";
 ///
 /// let fallback = "en-US"
 ///     .parse::<i18n_embed::unic_langid::LanguageIdentifier>()?;
-/// let loader = FluentLanguageLoader::new("spycatcher-harness", fallback);
-/// i18n_embed::select(&loader, &HarnessLocalizations, &loader.current_languages())?;
+/// let loader = FluentLanguageLoader::new("spycatcher-harness", fallback.clone());
+/// i18n_embed::select(&loader, &HarnessLocalizations, &[fallback])?;
 /// # Ok::<(), Box<dyn std::error::Error>>(())
 /// ```
 #[derive(RustEmbed)]
@@ -63,8 +63,8 @@ pub struct HarnessLocalizations;
 ///
 /// let fallback = "en-US"
 ///     .parse::<i18n_embed::unic_langid::LanguageIdentifier>()?;
-/// let loader = FluentLanguageLoader::new("spycatcher-harness", fallback);
-/// i18n_embed::select(&loader, &HarnessLocalizations, &loader.current_languages())?;
+/// let loader = FluentLanguageLoader::new("spycatcher-harness", fallback.clone());
+/// i18n_embed::select(&loader, &HarnessLocalizations, &[fallback])?;
 ///
 /// let error = HarnessError::InvalidConfig {
 ///     message: "missing upstream".to_owned(),
@@ -77,7 +77,7 @@ pub struct HarnessLocalizations;
 #[must_use]
 pub fn localize_harness_error(loader: &FluentLanguageLoader, error: &HarnessError) -> String {
     let (id, args) = harness_error_message(error);
-    if has_loaded_message(loader, id) {
+    if loader.has(id) {
         let rendered = loader.get_args(id, args.clone());
         strip_fluent_isolation_marks(&rendered, args.values())
     } else {
@@ -129,18 +129,6 @@ fn harness_error_message(error: &HarnessError) -> (&'static str, HashMap<&'stati
         ),
         HarnessError::Io { source } => (IO, HashMap::from([("source", source.to_string())])),
     }
-}
-
-fn has_loaded_message(loader: &FluentLanguageLoader, message_id: &str) -> bool {
-    loader.current_languages().iter().any(|language| {
-        loader.with_message_iter(language, |messages| {
-            let mut found = false;
-            for message in messages {
-                found |= message.id.name == message_id;
-            }
-            found
-        })
-    })
 }
 
 fn strip_fluent_isolation_marks<'a>(
@@ -266,10 +254,14 @@ mod tests {
 
     #[fixture]
     fn english_loader(
-        fallback_language: Result<LanguageIdentifier, Box<dyn std::error::Error>>,
+        #[from(fallback_language)] fallback_language_result: Result<
+            LanguageIdentifier,
+            Box<dyn std::error::Error>,
+        >,
     ) -> Result<FluentLanguageLoader, Box<dyn std::error::Error>> {
-        let loader = FluentLanguageLoader::new("spycatcher-harness", fallback_language?);
-        i18n_embed::select(&loader, &HarnessLocalizations, &loader.current_languages())?;
+        let fallback_language = fallback_language_result?;
+        let loader = FluentLanguageLoader::new("spycatcher-harness", fallback_language.clone());
+        i18n_embed::select(&loader, &HarnessLocalizations, &[fallback_language])?;
         Ok(loader)
     }
 

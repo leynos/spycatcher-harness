@@ -94,9 +94,8 @@ use spycatcher_harness::i18n::{HarnessLocalizations, localize_harness_error};
 let fallback = "en-US"
     .parse::<i18n_embed::unic_langid::LanguageIdentifier>()
     .unwrap();
-let loader = FluentLanguageLoader::new("spycatcher-harness", fallback);
-i18n_embed::select(&loader, &HarnessLocalizations, &loader.current_languages())
-    .unwrap();
+let loader = FluentLanguageLoader::new("spycatcher-harness", fallback.clone());
+i18n_embed::select(&loader, &HarnessLocalizations, &[fallback]).unwrap();
 
 let error = HarnessError::InvalidConfig {
     message: "missing upstream".to_owned(),
