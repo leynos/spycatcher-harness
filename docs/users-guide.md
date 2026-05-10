@@ -149,6 +149,10 @@ Replay behaviour for non-stream chat completions:
 - Mismatched requests return HTTP `409 Conflict` with a JSON
   `request_mismatch` diagnostic containing the position, expected hash,
   observed hash, and diff summary.
+- Replay rejects malformed or non-JSON chat completions request bodies with
+  HTTP `400 Bad Request` and a JSON `malformed_json` error before matching.
+  This prevents different malformed byte sequences from sharing the same
+  body-less replay hash.
 - Requests with `stream: true`, and matched stream interactions in manually
   authored cassettes, return HTTP `501 Not Implemented` until streaming replay
   lands in a later roadmap task.

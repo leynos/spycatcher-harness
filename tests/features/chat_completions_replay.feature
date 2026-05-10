@@ -39,3 +39,16 @@ Feature: Chat completions replay
     Then the replay client receives an unsupported streaming response
     And the replay harness is stopped
     And the replay stub upstream is stopped
+
+  Scenario: Replay rejects malformed JSON requests before matching
+    Given a stub upstream that returns a successful chat completion for replay
+    And a record-mode harness configured for replay setup
+    When the record harness is started
+    And a malformed JSON request is sent to the record harness
+    And the record harness is stopped
+    And a replay-mode harness is configured from the recorded cassette
+    And the replay harness is started
+    And a different malformed JSON request is sent to the replay harness
+    Then the replay client receives a malformed JSON response
+    And the replay harness is stopped
+    And the replay stub upstream is stopped

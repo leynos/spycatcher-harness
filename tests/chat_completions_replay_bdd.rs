@@ -41,3 +41,11 @@ fn replay_mismatch_returns_conflict_diagnostic(replay_world: ReplayWorld) {
 fn replay_rejects_streaming_requests(replay_world: ReplayWorld) {
     let _ = replay_world;
 }
+
+#[scenario(
+    path = "tests/features/chat_completions_replay.feature",
+    name = "Replay rejects malformed JSON requests before matching"
+)]
+fn replay_rejects_malformed_json_requests_before_matching(replay_world: ReplayWorld) {
+    let _ = replay_world;
+}

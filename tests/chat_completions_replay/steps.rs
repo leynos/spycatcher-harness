@@ -7,12 +7,15 @@ use std::sync::Arc;
 use rstest_bdd_macros::{given, then, when};
 
 use spycatcher_harness::config::{ListenAddr, Mode, UpstreamConfig, UpstreamKind};
-use spycatcher_harness::{HarnessConfig, start_harness};
+use spycatcher_harness::{HarnessConfig, RunningHarness, start_harness};
 
+use crate::chat_completions_replay::support::{
+    assert_response_error_kind, replay_response, response_error, response_error_kind,
+};
 use crate::chat_completions_replay::world::ReplayWorld;
 use crate::record_helpers::{
-    StubUpstream, load_cassette, present_env_name, sample_success_body, send_request,
-    unique_cassette_path,
+    ClientResponse, StubUpstream, load_cassette, present_env_name, sample_success_body,
+    send_request, unique_cassette_path,
 };
 
 const BASELINE_REQUEST: &[u8] =
@@ -21,10 +24,12 @@ const DIFFERENT_REQUEST: &[u8] =
     br#"{"model":"gpt-other","messages":[{"role":"user","content":"hi"}]}"#;
 const STREAMING_REQUEST: &[u8] =
     br#"{"model":"gpt-test","stream":true,"messages":[{"role":"user","content":"hi"}]}"#;
+const MALFORMED_REQUEST: &[u8] = br#"{"model":"gpt-test""#;
+const DIFFERENT_MALFORMED_REQUEST: &[u8] = br#"{"model":"gpt-other""#;
 
 struct HarnessTarget<'a> {
-    harness_slot: &'a rstest_bdd::Slot<spycatcher_harness::RunningHarness>,
-    response_slot: &'a rstest_bdd::Slot<crate::record_helpers::ClientResponse>,
+    harness_slot: &'a rstest_bdd::Slot<RunningHarness>,
+    response_slot: &'a rstest_bdd::Slot<ClientResponse>,
     label: &'a str,
 }
 
@@ -87,6 +92,21 @@ fn the_baseline_non_stream_request_is_sent_to_the_record_harness(
     )
 }
 
+#[when("a malformed JSON request is sent to the record harness")]
+fn a_malformed_json_request_is_sent_to_the_record_harness(
+    replay_world: &ReplayWorld,
+) -> Result<(), Box<dyn Error>> {
+    send_request_to_harness_slot(
+        replay_world,
+        &HarnessTarget {
+            harness_slot: &replay_world.record_harness,
+            response_slot: &replay_world.record_response,
+            label: "record harness",
+        },
+        MALFORMED_REQUEST,
+    )
+}
+
 #[when("the record harness is stopped")]
 fn the_record_harness_is_stopped(replay_world: &ReplayWorld) -> Result<(), Box<dyn Error>> {
     stop_harness_from_slot(replay_world, &replay_world.record_harness, "record harness")
@@ -139,6 +159,13 @@ fn a_streaming_request_is_sent_to_the_replay_harness(
     send_replay_request(replay_world, STREAMING_REQUEST)
 }
 
+#[when("a different malformed JSON request is sent to the replay harness")]
+fn a_different_malformed_json_request_is_sent_to_the_replay_harness(
+    replay_world: &ReplayWorld,
+) -> Result<(), Box<dyn Error>> {
+    send_replay_request(replay_world, DIFFERENT_MALFORMED_REQUEST)
+}
+
 #[then("the replay client receives the recorded response unchanged")]
 fn the_replay_client_receives_the_recorded_response_unchanged(
     replay_world: &ReplayWorld,
@@ -147,10 +174,7 @@ fn the_replay_client_receives_the_recorded_response_unchanged(
         .record_response
         .with_ref(Clone::clone)
         .ok_or_else(|| std::io::Error::other("record response must be stored"))?;
-    let replay = replay_world
-        .replay_response
-        .with_ref(Clone::clone)
-        .ok_or_else(|| std::io::Error::other("replay response must be stored"))?;
+    let replay = replay_response(replay_world)?;
     assert_eq!(replay.status, record.status);
     assert_eq!(replay.body, record.body);
     assert!(
@@ -179,19 +203,11 @@ fn the_stub_upstream_saw_no_replay_request(
 fn the_replay_client_receives_a_request_mismatch_diagnostic(
     replay_world: &ReplayWorld,
 ) -> Result<(), Box<dyn Error>> {
-    let response = replay_world
-        .replay_response
-        .with_ref(Clone::clone)
-        .ok_or_else(|| std::io::Error::other("replay response must be stored"))?;
+    let response = replay_response(replay_world)?;
     assert_eq!(response.status, 409);
     let body: serde_json::Value = serde_json::from_slice(&response.body)?;
-    let error = body
-        .get("error")
-        .ok_or_else(|| std::io::Error::other("error field should be present"))?;
-    assert_eq!(
-        error.get("kind").and_then(serde_json::Value::as_str),
-        Some("request_mismatch"),
-    );
+    let error = response_error(&body)?;
+    assert_eq!(response_error_kind(error), Some("request_mismatch"));
     assert!(
         error
             .get("expected_hash")
@@ -217,19 +233,21 @@ fn the_replay_client_receives_a_request_mismatch_diagnostic(
 fn the_replay_client_receives_an_unsupported_streaming_response(
     replay_world: &ReplayWorld,
 ) -> Result<(), Box<dyn Error>> {
-    let response = replay_world
-        .replay_response
-        .with_ref(Clone::clone)
-        .ok_or_else(|| std::io::Error::other("replay response must be stored"))?;
+    let response = replay_response(replay_world)?;
     assert_eq!(response.status, 501);
     let body: serde_json::Value = serde_json::from_slice(&response.body)?;
-    let error = body
-        .get("error")
-        .ok_or_else(|| std::io::Error::other("error field should be present"))?;
-    assert_eq!(
-        error.get("kind").and_then(serde_json::Value::as_str),
-        Some("unsupported_stream"),
-    );
+    assert_response_error_kind(&body, "unsupported_stream")?;
+    Ok(())
+}
+
+#[then("the replay client receives a malformed JSON response")]
+fn the_replay_client_receives_a_malformed_json_response(
+    replay_world: &ReplayWorld,
+) -> Result<(), Box<dyn Error>> {
+    let response = replay_response(replay_world)?;
+    assert_eq!(response.status, 400);
+    let body: serde_json::Value = serde_json::from_slice(&response.body)?;
+    assert_response_error_kind(&body, "malformed_json")?;
     Ok(())
 }
 
@@ -266,8 +284,8 @@ fn send_replay_request(replay_world: &ReplayWorld, body: &[u8]) -> Result<(), Bo
 
 fn start_harness_from_slot(
     world: &ReplayWorld,
-    config_slot: &rstest_bdd::Slot<spycatcher_harness::HarnessConfig>,
-    harness_slot: &rstest_bdd::Slot<spycatcher_harness::RunningHarness>,
+    config_slot: &rstest_bdd::Slot<HarnessConfig>,
+    harness_slot: &rstest_bdd::Slot<RunningHarness>,
     config_label: &str,
 ) -> Result<(), Box<dyn Error>> {
     let config = config_slot
@@ -283,7 +301,7 @@ fn start_harness_from_slot(
 
 fn stop_harness_from_slot(
     world: &ReplayWorld,
-    harness_slot: &rstest_bdd::Slot<spycatcher_harness::RunningHarness>,
+    harness_slot: &rstest_bdd::Slot<RunningHarness>,
     harness_label: &str,
 ) -> Result<(), Box<dyn Error>> {
     let harness = harness_slot

@@ -38,6 +38,9 @@ impl ReplayService {
         if is_streaming_chat_completions_request(request.parsed_json.as_ref()) {
             return Err(ReplayError::UnsupportedStream);
         }
+        if request.parsed_json.is_none() {
+            return Err(ReplayError::MalformedJson);
+        }
 
         let mut recorded_request = observed_to_recorded_request(request);
         recorded_request
@@ -121,6 +124,8 @@ pub(crate) enum ReplayError {
     Mismatch(MismatchDiagnostic),
     /// Streaming replay is outside this task's scope.
     UnsupportedStream,
+    /// Chat completions replay requires a valid JSON request body.
+    MalformedJson,
     /// An internal replay invariant or lock failed.
     Internal,
 }
@@ -243,6 +248,32 @@ mod tests {
             .expect_err("stream response should fail");
 
         assert_eq!(error, ReplayError::UnsupportedStream);
+    }
+
+    #[rstest]
+    fn malformed_json_request_is_rejected_before_matching() {
+        let recorded = sample_observed_request(br#"{"model":"test","messages":[]}"#);
+        let cassette = cassette_for_request(
+            recorded,
+            RecordedResponse::NonStream {
+                status: 200,
+                headers: vec![],
+                body: b"would hide the malformed body".to_vec(),
+                parsed_json: None,
+            },
+        )
+        .expect("request should canonicalize");
+        let service = ReplayService::new(
+            ReplayMatchEngine::new(cassette, MatchMode::SequentialStrict)
+                .expect("cassette should build replay engine"),
+        );
+        let malformed = sample_observed_request(br#"{"model":"test""#);
+
+        let error = service
+            .handle_chat_completions(malformed)
+            .expect_err("malformed JSON replay request should fail before matching");
+
+        assert_eq!(error, ReplayError::MalformedJson);
     }
 
     fn sample_observed_request(body: &[u8]) -> ObservedRequest {

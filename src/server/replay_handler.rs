@@ -104,6 +104,14 @@ fn build_replay_error_response(error: &ReplayError) -> Response<axum::body::Body
             )
             .into_bytes(),
         ),
+        ReplayError::MalformedJson => (
+            StatusCode::BAD_REQUEST,
+            json_error_body(
+                "malformed_json",
+                "chat completions replay requires a valid JSON request body",
+            )
+            .into_bytes(),
+        ),
         ReplayError::Internal => (
             StatusCode::BAD_GATEWAY,
             json_error_body("internal", "replay request failed").into_bytes(),

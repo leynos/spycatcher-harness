@@ -232,6 +232,17 @@ Skills to apply during implementation:
       nixie` passed. `make fmt` ran Rust formatting but failed in the
       repository-wide Markdown formatting phase on existing MD013 line-length
       findings; unrelated formatter churn was inspected and restored.
+- [x] 2026-05-11 14:38 CEST - Added malformed JSON replay handling after
+      review feedback. Replay now rejects non-JSON chat completions request
+      bodies before matching so malformed byte sequences cannot share a
+      body-less replay hash.
+- [x] 2026-05-11 14:45 CEST - Added unit and BDD coverage for malformed replay
+      requests, documented the user-facing `400 malformed_json` response, and
+      moved repeated BDD assertion helpers out of `steps.rs` to satisfy the
+      module-size lint.
+- [x] 2026-05-11 14:50 CEST - Re-ran `cargo test --test
+      chat_completions_replay_bdd --all-features`, `make check-fmt`, `make
+      lint`, `make markdownlint`, `make test`, and `make nixie`; all passed.
 - [ ] Commit the implemented feature after gates pass.
 
 ## Surprises & Discoveries
@@ -263,6 +274,14 @@ Skills to apply during implementation:
   unused helper functions in that specific test crate. The replay test
   entrypoint uses a tightly scoped `#[expect(dead_code)]` with a reason instead
   of duplicating the stub upstream implementation.
+- Recorded malformed or non-JSON chat completions requests have
+  `parsed_json: None`; canonicalization omits body content in that case. Without
+  a replay-side guard, two different malformed request bodies can therefore
+  produce the same replay key.
+- Adding the malformed replay scenario pushed
+  `tests/chat_completions_replay/steps.rs` over Whitaker's 400-line module
+  limit. A small `tests/chat_completions_replay/support.rs` module now owns
+  repeated response assertion helpers, leaving the step file below the limit.
 
 ## Decision Log
 
@@ -308,6 +327,12 @@ Skills to apply during implementation:
   the new replay response builder preserves valid duplicate headers with
   example-based `rstest` coverage, and no new broad input invariant was
   introduced beyond existing header-selection and matching properties.
+
+- Decision: reject malformed or non-JSON chat completions replay requests
+  before matching rather than adding raw malformed bytes to the replay key.
+  Rationale: this preserves existing cassette hash semantics, avoids adding a
+  special-case body hashing mode for invalid JSON, and fails visibly with
+  `400 malformed_json` instead of hiding client request bugs.
 
 ## Outcomes & Retrospective
 
