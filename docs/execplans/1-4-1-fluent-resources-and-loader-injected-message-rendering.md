@@ -22,8 +22,8 @@ obtain localized diagnostics. The library must not create a process-global
 language loader, read the process locale, or make the CLI responsible for
 library-owned message IDs.
 
-This is a pre-implementation plan. It must be reviewed and explicitly approved
-before implementation begins.
+This plan records the completed implementation, review follow-ups, validation
+results, and remaining context needed to understand roadmap item 1.4.1.
 
 ## Constraints
 
@@ -161,6 +161,15 @@ Thresholds that trigger escalation when breached.
   explicit fallback locale in tests and examples, using
   `FluentLanguageLoader::has` for missing-message checks, and syncing the
   dependency snippet with the implemented versions.
+- [x] (2026-05-10 02:36Z) Addressed CI review findings by replacing fallible
+  fixture `expect` calls with `Result`/`?`, snapshotting localized text output
+  with `insta`, adding `proptest` coverage for Fluent isolation mark stripping,
+  and correcting the completed ExecPlan opening text.
+- [x] (2026-05-10 02:49Z) Revalidated the CI follow-up with focused i18n
+  tests, `make check-fmt`, `make markdownlint`, `make nixie`, `make lint`, and
+  `make test`. `make fmt` still reports unrelated repository-wide MD013
+  findings during its markdown fix step, so unrelated formatter churn was
+  restored and the explicit formatting and Markdown gates were used.
 
 ## Surprises & discoveries
 
@@ -196,9 +205,9 @@ Thresholds that trigger escalation when breached.
 
 - Observation: `FluentLanguageLoader` exposes `has(message_id)`, which checks
   whether a message is available in any loaded language bundle. Evidence: the
-  `i18n-embed 0.16.0` API provides `FluentLanguageLoader::has`. Impact:
-  missing harness messages can be detected structurally before rendering
-  instead of comparing against the loader's English fallback string.
+  `i18n-embed 0.16.0` API provides `FluentLanguageLoader::has`. Impact: missing
+  harness messages can be detected structurally before rendering instead of
+  comparing against the loader's English fallback string.
 
 ## Decision log
 

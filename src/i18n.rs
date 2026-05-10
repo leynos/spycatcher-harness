@@ -149,6 +149,7 @@ mod tests {
     use super::*;
     use i18n_embed::fluent::FluentLanguageLoader;
     use i18n_embed::unic_langid::LanguageIdentifier;
+    use proptest::prelude::*;
     use rstest::{fixture, rstest};
 
     #[rstest]
@@ -210,27 +211,63 @@ mod tests {
             Box<dyn std::error::Error>,
         >,
         #[case] error: HarnessError,
-        #[case] expected: &str,
-    ) {
-        let english_loader = english_loader_result
-            .expect("English harness localization resources should load for tests");
+        #[case] expected_snapshot: &str,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let english_loader = english_loader_result?;
+        let actual = localize_harness_error(&english_loader, &error);
 
-        assert_eq!(localize_harness_error(&english_loader, &error), expected);
+        match expected_snapshot {
+            "invalid configuration: missing upstream" => {
+                insta::assert_snapshot!(actual, @"invalid configuration: missing upstream");
+            }
+            "cassette not found: session.json" => {
+                insta::assert_snapshot!(actual, @"cassette not found: session.json");
+            }
+            "request mismatch at interaction 2: expected abc, observed def" => {
+                insta::assert_snapshot!(
+                    actual,
+                    @"request mismatch at interaction 2: expected abc, observed def"
+                );
+            }
+            "invalid cassette: missing interactions" => {
+                insta::assert_snapshot!(actual, @"invalid cassette: missing interactions");
+            }
+            "unsupported cassette format version 1; supported version is 2" => {
+                insta::assert_snapshot!(
+                    actual,
+                    @"unsupported cassette format version 1; supported version is 2"
+                );
+            }
+            "upstream request failed: timed out" => {
+                insta::assert_snapshot!(actual, @"upstream request failed: timed out");
+            }
+            "mode not yet implemented: Verify" => {
+                insta::assert_snapshot!(actual, @"mode not yet implemented: Verify");
+            }
+            "io failure: disk full" => {
+                insta::assert_snapshot!(actual, @"io failure: disk full");
+            }
+            unknown => {
+                return Err(format!("unexpected localization snapshot fixture: {unknown}").into());
+            }
+        }
+        Ok(())
     }
 
     #[rstest]
     fn localize_harness_error_falls_back_when_loader_is_unloaded(
         fallback_language: Result<LanguageIdentifier, Box<dyn std::error::Error>>,
-    ) {
-        let loader = FluentLanguageLoader::new(
-            "spycatcher-harness",
-            fallback_language.expect("English fallback language identifier should parse"),
-        );
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let loader = FluentLanguageLoader::new("spycatcher-harness", fallback_language?);
         let error = HarnessError::InvalidConfig {
             message: "missing upstream".to_owned(),
         };
 
-        assert_eq!(localize_harness_error(&loader, &error), error.to_string());
+        insta::assert_snapshot!(
+            localize_harness_error(&loader, &error),
+            @"invalid configuration: missing upstream"
+        );
+        Ok(())
     }
 
     #[rstest]
@@ -239,17 +276,17 @@ mod tests {
             FluentLanguageLoader,
             Box<dyn std::error::Error>,
         >,
-    ) {
-        let english_loader = english_loader_result
-            .expect("English harness localization resources should load for tests");
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let english_loader = english_loader_result?;
         let error = HarnessError::InvalidConfig {
             message: "\u{2068}already isolated\u{2069}".to_owned(),
         };
 
-        assert_eq!(
+        insta::assert_snapshot!(
             localize_harness_error(&english_loader, &error),
-            "invalid configuration: \u{2068}already isolated\u{2069}",
+            @"invalid configuration: \u{2068}already isolated\u{2069}"
         );
+        Ok(())
     }
 
     #[fixture]
@@ -268,5 +305,32 @@ mod tests {
     #[fixture]
     fn fallback_language() -> Result<LanguageIdentifier, Box<dyn std::error::Error>> {
         Ok("en-US".parse()?)
+    }
+
+    proptest! {
+        #[test]
+        fn strip_fluent_isolation_marks_removes_only_wrapped_arguments(value in ".*") {
+            let rendered = format!("before \u{2068}{value}\u{2069} after");
+            let arg_values = [value.clone()];
+
+            prop_assert_eq!(
+                strip_fluent_isolation_marks(&rendered, arg_values.iter()),
+                format!("before {value} after"),
+            );
+        }
+
+        #[test]
+        fn strip_fluent_isolation_marks_preserves_unmatched_text(
+            rendered in ".*",
+            value in ".*",
+        ) {
+            prop_assume!(!rendered.contains(&format!("\u{2068}{value}\u{2069}")));
+            let arg_values = [value];
+
+            prop_assert_eq!(
+                strip_fluent_isolation_marks(&rendered, arg_values.iter()),
+                rendered,
+            );
+        }
     }
 }
