@@ -53,10 +53,6 @@ pub(crate) async fn start_record_server(
     cfg: &HarnessConfig,
     cassette_path: &camino::Utf8Path,
 ) -> HarnessResult<(SocketAddr, ServerHandle)> {
-    let listener = TcpListener::bind(cfg.listen.as_socket_addr())
-        .await
-        .map_err(HarnessError::from)?;
-    let bound_addr = listener.local_addr().map_err(HarnessError::from)?;
     let cassette_store = FilesystemCassetteStore::open_or_create_for_record(cassette_path)?;
     let state = RecordAppState::from_config(cfg, cassette_store)?;
     let router = Router::new()
@@ -65,16 +61,7 @@ pub(crate) async fn start_record_server(
             axum::routing::post(record_chat_completions_handler),
         )
         .with_state(state);
-    let (shutdown_tx, shutdown_rx) = oneshot::channel::<()>();
-    let task = spawn_server_task(listener, router, shutdown_rx);
-
-    Ok((
-        bound_addr,
-        ServerHandle {
-            shutdown: Some(shutdown_tx),
-            task,
-        },
-    ))
+    start_server_with_router(cfg, router).await
 }
 
 /// Binds and starts the replay-mode server.
@@ -87,10 +74,6 @@ pub(crate) async fn start_replay_server(
     cfg: &HarnessConfig,
     cassette_path: &camino::Utf8Path,
 ) -> HarnessResult<(SocketAddr, ServerHandle)> {
-    let listener = TcpListener::bind(cfg.listen.as_socket_addr())
-        .await
-        .map_err(HarnessError::from)?;
-    let bound_addr = listener.local_addr().map_err(HarnessError::from)?;
     let cassette_store = FilesystemCassetteStore::open_for_replay(cassette_path)?;
     let state = ReplayAppState::from_config(cfg, &cassette_store)?;
     let router = Router::new()
@@ -99,6 +82,17 @@ pub(crate) async fn start_replay_server(
             axum::routing::post(replay_chat_completions_handler),
         )
         .with_state(state);
+    start_server_with_router(cfg, router).await
+}
+
+async fn start_server_with_router(
+    cfg: &HarnessConfig,
+    router: Router,
+) -> HarnessResult<(SocketAddr, ServerHandle)> {
+    let listener = TcpListener::bind(cfg.listen.as_socket_addr())
+        .await
+        .map_err(HarnessError::from)?;
+    let bound_addr = listener.local_addr().map_err(HarnessError::from)?;
     let (shutdown_tx, shutdown_rx) = oneshot::channel::<()>();
     let task = spawn_server_task(listener, router, shutdown_rx);
 

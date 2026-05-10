@@ -271,9 +271,10 @@ mod tests {
         let cassette_path = unique_cassette_path("unsupported");
         let mut store = FilesystemCassetteStore::open_or_create_for_record(&cassette_path)
             .expect("record mode should create cassette");
-        store.cassette.format_version = crate::cassette::CassetteFormatVersion::from(99);
+        let mut cassette = store.load().expect("cassette should load");
+        cassette.format_version = crate::cassette::CassetteFormatVersion::from(99);
         store
-            .flush()
+            .save(cassette)
             .expect("writing unsupported cassette should succeed");
         let error = FilesystemCassetteStore::open_for_replay(&cassette_path)
             .expect_err("unsupported cassette version should fail");

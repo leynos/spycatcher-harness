@@ -240,7 +240,7 @@ Replay of non-stream chat completions reconstructs exactly the HTTP data that
 the cassette persisted: the recorded status when it is a valid HTTP status
 code, the persisted selected response headers in recorded order, and the stored
 body bytes. Replay intentionally does not reconstruct transport framing,
-hop-by-hop headers, or `content-length`, because those are not part of the
+hop-by-hop headers, or `content-length` because those are not part of the
 cassette contract. If an inbound replay request mismatches, the HTTP adapter
 returns `409 Conflict` with `request_mismatch` diagnostics derived from
 `MismatchDiagnostic`. Replay rejects malformed or non-JSON request bodies with

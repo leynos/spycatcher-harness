@@ -243,6 +243,14 @@ Skills to apply during implementation:
 - [x] 2026-05-11 14:50 CEST - Re-ran `cargo test --test
       chat_completions_replay_bdd --all-features`, `make check-fmt`, `make
       lint`, `make markdownlint`, `make test`, and `make nixie`; all passed.
+- [x] 2026-05-11 15:12 CEST - Verified three review findings. All were still
+      valid: a restrictive-clause comma in the design doc, embedded lifecycle
+      tests keeping `src/lib.rs` over the module-size limit, and duplicated
+      record/replay server listener wiring. Applied minimal fixes and moved
+      lifecycle coverage to `tests/lifecycle_tests.rs`.
+- [x] 2026-05-11 15:18 CEST - Re-ran `cargo test --test lifecycle_tests
+      --all-features`, `make check-fmt`, `make lint`, `make markdownlint`,
+      `make test`, and `make nixie`; all passed.
 - [ ] Commit the implemented feature after gates pass.
 
 ## Surprises & Discoveries
@@ -282,6 +290,12 @@ Skills to apply during implementation:
   `tests/chat_completions_replay/steps.rs` over Whitaker's 400-line module
   limit. A small `tests/chat_completions_replay/support.rs` module now owns
   repeated response assertion helpers, leaving the step file below the limit.
+- Moving lifecycle tests out of `src/lib.rs` changed them from a lib test
+  module into an integration test binary. The replay test helper now requests
+  an OS-selected port to avoid parallel integration-test port collisions.
+- Moving lifecycle tests also removed the only lib-test reference to
+  `FilesystemCassetteStore::save`; the filesystem adapter test now exercises
+  `save` directly when writing an unsupported cassette version.
 
 ## Decision Log
 
