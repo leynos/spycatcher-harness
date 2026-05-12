@@ -273,4 +273,68 @@ mod tests {
             Some("changed model"),
         );
     }
+
+    #[tokio::test]
+    async fn mismatch_error_response_matches_snapshot() -> Result<(), Box<dyn std::error::Error>> {
+        let diagnostic = MismatchDiagnostic {
+            position: InteractionPosition::Expected(3),
+            expected_hash: "expected".to_owned(),
+            observed_hash: "observed".to_owned(),
+            diff_summary: "changed model".to_owned(),
+        };
+        assert_error_response_snapshot(
+            "mismatch",
+            build_replay_error_response(&ReplayError::Mismatch(diagnostic)),
+            StatusCode::CONFLICT,
+        )
+        .await
+    }
+
+    #[tokio::test]
+    async fn unsupported_stream_error_response_matches_snapshot()
+    -> Result<(), Box<dyn std::error::Error>> {
+        assert_error_response_snapshot(
+            "unsupported_stream",
+            build_replay_error_response(&ReplayError::UnsupportedStream),
+            StatusCode::NOT_IMPLEMENTED,
+        )
+        .await
+    }
+
+    #[tokio::test]
+    async fn malformed_json_error_response_matches_snapshot()
+    -> Result<(), Box<dyn std::error::Error>> {
+        assert_error_response_snapshot(
+            "malformed_json",
+            build_replay_error_response(&ReplayError::MalformedJson),
+            StatusCode::BAD_REQUEST,
+        )
+        .await
+    }
+
+    #[tokio::test]
+    async fn internal_error_response_matches_snapshot() -> Result<(), Box<dyn std::error::Error>> {
+        assert_error_response_snapshot(
+            "internal",
+            build_replay_error_response(&ReplayError::Internal),
+            StatusCode::BAD_GATEWAY,
+        )
+        .await
+    }
+
+    async fn assert_error_response_snapshot(
+        name: &str,
+        response: Response<axum::body::Body>,
+        expected_status: StatusCode,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        assert_eq!(response.status(), expected_status);
+        let body = axum::body::to_bytes(response.into_body(), 2048).await?;
+        let value = serde_json::json!({
+            "case": name,
+            "status": expected_status.as_u16(),
+            "body": serde_json::from_slice::<serde_json::Value>(&body)?,
+        });
+        insta::assert_json_snapshot!(name, value);
+        Ok(())
+    }
 }

@@ -276,6 +276,42 @@ mod tests {
         assert_eq!(error, ReplayError::MalformedJson);
     }
 
+    #[rstest]
+    fn concurrent_sequential_replay_consumes_duplicate_hashes_once_each() {
+        let request = sample_observed_request(br#"{"model":"test","messages":[]}"#);
+        let cassette = cassette_with_duplicate_requests(request.clone(), 8)
+            .expect("requests should canonicalize");
+        let service = ReplayService::new(
+            ReplayMatchEngine::new(cassette, MatchMode::SequentialStrict)
+                .expect("cassette should build replay engine"),
+        );
+        let handles = (0..8)
+            .map(|_| {
+                let replay_service = service.clone();
+                let replay_request = request.clone();
+                std::thread::spawn(move || {
+                    replay_service
+                        .handle_chat_completions(replay_request)
+                        .expect("duplicate request should replay")
+                        .body
+                })
+            })
+            .collect::<Vec<_>>();
+
+        let mut bodies = handles
+            .into_iter()
+            .map(|handle| handle.join().expect("thread should not panic"))
+            .collect::<Vec<_>>();
+        bodies.sort();
+
+        assert_eq!(
+            bodies,
+            (0..8)
+                .map(|index| format!("response-{index}").into_bytes())
+                .collect::<Vec<_>>()
+        );
+    }
+
     fn sample_observed_request(body: &[u8]) -> ObservedRequest {
         ObservedRequest {
             method: "POST".to_owned(),
@@ -316,6 +352,45 @@ mod tests {
                     relative_offset_ms: 0,
                 },
             }],
+        })
+    }
+
+    fn cassette_with_duplicate_requests(
+        request: ObservedRequest,
+        count: usize,
+    ) -> Result<Cassette, crate::cassette::CanonicalError> {
+        let mut recorded = RecordedRequest {
+            method: request.method,
+            path: request.path,
+            query: request.query,
+            headers: request.headers,
+            body: request.body,
+            parsed_json: request.parsed_json,
+            canonical_request: None,
+            stable_hash: None,
+        };
+        recorded.populate_canonical_fields(&IgnorePathConfig::default())?;
+        let interactions = (0..count)
+            .map(|index| Interaction {
+                request: recorded.clone(),
+                response: RecordedResponse::NonStream {
+                    status: 200,
+                    headers: Vec::new(),
+                    body: format!("response-{index}").into_bytes(),
+                    parsed_json: None,
+                },
+                metadata: InteractionMetadata {
+                    protocol_id: "openai.chat_completions.v1".to_owned(),
+                    upstream_id: "test".to_owned(),
+                    recorded_at: "2026-05-08T00:00:00Z".to_owned(),
+                    relative_offset_ms: index as u64,
+                },
+            })
+            .collect();
+
+        Ok(Cassette {
+            format_version: CassetteFormatVersion::SUPPORTED,
+            interactions,
         })
     }
 }

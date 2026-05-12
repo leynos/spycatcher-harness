@@ -251,6 +251,18 @@ Skills to apply during implementation:
 - [x] 2026-05-11 15:18 CEST - Re-ran `cargo test --test lifecycle_tests
       --all-features`, `make check-fmt`, `make lint`, `make markdownlint`,
       `make test`, and `make nixie`; all passed.
+- [x] 2026-05-12 09:18 CEST - Verified the follow-up check report. The
+      parentless lifecycle cassette path issue, replay error snapshot gap, and
+      replay sequential-concurrency coverage gap were still valid. Updated the
+      helper to fail fast, added `insta` snapshots for all replay HTTP error
+      variants, and added a concurrent duplicate-request replay test. The
+      property/proof item was inconclusive rather than a concrete defect:
+      canonicalization and matching already have property coverage, and the
+      no-network replay boundary remains enforced by replay state owning no
+      upstream client.
+- [x] 2026-05-12 09:31 CEST - Re-ran focused replay snapshot and concurrency
+      tests, `make check-fmt`, `make markdownlint`, `make lint`, `make test`,
+      and `make nixie`; all passed.
 - [ ] Commit the implemented feature after gates pass.
 
 ## Surprises & Discoveries
@@ -296,6 +308,12 @@ Skills to apply during implementation:
 - Moving lifecycle tests also removed the only lib-test reference to
   `FilesystemCassetteStore::save`; the filesystem adapter test now exercises
   `save` directly when writing an unsupported cassette version.
+- `write_cassette_bytes` must reject parentless paths. Returning `Ok(())`
+  without writing anything hides broken test setup and can make lifecycle tests
+  pass for the wrong reason.
+- `ReplayService` wraps `ReplayMatchEngine` in a `Mutex`; duplicate-hash
+  concurrent replay calls are a focused way to exercise sequential cursor
+  mutation without relying on request scheduling order.
 
 ## Decision Log
 

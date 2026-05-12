@@ -1,0 +1,14 @@
+---
+source: src/server/replay_handler.rs
+expression: value
+---
+{
+  "case": "internal",
+  "status": 502,
+  "body": {
+    "error": {
+      "kind": "internal",
+      "message": "replay request failed"
+    }
+  }
+}

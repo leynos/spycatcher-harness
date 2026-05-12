@@ -235,13 +235,16 @@ fn seed_replay_cassette(cassette_name: &str) -> HarnessResult<Utf8PathBuf> {
 
 fn write_cassette_bytes(cassette_path: &Utf8PathBuf, body: &[u8]) -> HarnessResult<()> {
     let root = Dir::open_ambient_dir(".", ambient_authority())?;
-    if let Some(parent) = cassette_path.parent() {
-        root.create_dir_all(parent)?;
-        let parent_dir = root.open_dir(parent)?;
-        let mut file = parent_dir.create(cassette_file_name(cassette_path)?)?;
-        std::io::Write::write_all(&mut file, body)?;
-        file.sync_all()?;
-    }
+    let parent = cassette_path
+        .parent()
+        .ok_or_else(|| HarnessError::InvalidConfig {
+            message: "cassette path needs parent directory".to_owned(),
+        })?;
+    root.create_dir_all(parent)?;
+    let parent_dir = root.open_dir(parent)?;
+    let mut file = parent_dir.create(cassette_file_name(cassette_path)?)?;
+    std::io::Write::write_all(&mut file, body)?;
+    file.sync_all()?;
     Ok(())
 }
 

@@ -1,0 +1,21 @@
+---
+source: src/server/replay_handler.rs
+expression: value
+---
+{
+  "case": "mismatch",
+  "status": 409,
+  "body": {
+    "error": {
+      "kind": "request_mismatch",
+      "message": "replay request did not match the cassette",
+      "position": {
+        "kind": "expected",
+        "index": 3
+      },
+      "expected_hash": "expected",
+      "observed_hash": "observed",
+      "diff_summary": "changed model"
+    }
+  }
+}
