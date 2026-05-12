@@ -238,7 +238,7 @@ fn write_cassette_bytes(cassette_path: &Utf8PathBuf, body: &[u8]) -> HarnessResu
     let parent = cassette_path
         .parent()
         .ok_or_else(|| HarnessError::InvalidConfig {
-            message: "cassette path needs parent directory".to_owned(),
+            message: format!("cassette path needs parent directory: {cassette_path}"),
         })?;
     root.create_dir_all(parent)?;
     let parent_dir = root.open_dir(parent)?;
