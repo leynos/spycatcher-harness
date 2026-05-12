@@ -145,7 +145,7 @@ mod tests {
     #[rstest]
     fn matching_non_stream_request_returns_recorded_response() {
         let request = sample_observed_request(br#"{"model":"test","messages":[]}"#);
-        let cassette = cassette_for_request(
+        let service = service_with_single_interaction(
             request.clone(),
             RecordedResponse::NonStream {
                 status: 201,
@@ -154,11 +154,7 @@ mod tests {
                 parsed_json: None,
             },
         )
-        .expect("request should canonicalize");
-        let service = ReplayService::new(
-            ReplayMatchEngine::new(cassette, MatchMode::SequentialStrict)
-                .expect("cassette should build replay engine"),
-        );
+        .unwrap_or_else(|message| panic!("{message}"));
 
         let response = service
             .handle_chat_completions(request)
@@ -176,7 +172,7 @@ mod tests {
     fn mismatched_request_returns_diagnostic() {
         let recorded = sample_observed_request(br#"{"model":"test","messages":[]}"#);
         let observed = sample_observed_request(br#"{"model":"other","messages":[]}"#);
-        let cassette = cassette_for_request(
+        let service = service_with_single_interaction(
             recorded,
             RecordedResponse::NonStream {
                 status: 200,
@@ -185,11 +181,7 @@ mod tests {
                 parsed_json: None,
             },
         )
-        .expect("request should canonicalize");
-        let service = ReplayService::new(
-            ReplayMatchEngine::new(cassette, MatchMode::SequentialStrict)
-                .expect("cassette should build replay engine"),
-        );
+        .unwrap_or_else(|message| panic!("{message}"));
 
         let error = service
             .handle_chat_completions(observed)
@@ -201,7 +193,7 @@ mod tests {
     #[rstest]
     fn stream_request_is_rejected_before_matching() {
         let recorded = sample_observed_request(br#"{"model":"test","messages":[]}"#);
-        let cassette = cassette_for_request(
+        let service = service_with_single_interaction(
             recorded,
             RecordedResponse::NonStream {
                 status: 200,
@@ -210,11 +202,7 @@ mod tests {
                 parsed_json: None,
             },
         )
-        .expect("request should canonicalize");
-        let service = ReplayService::new(
-            ReplayMatchEngine::new(cassette, MatchMode::SequentialStrict)
-                .expect("cassette should build replay engine"),
-        );
+        .unwrap_or_else(|message| panic!("{message}"));
         let streaming = sample_observed_request(br#"{"model":"test","stream":true,"messages":[]}"#);
 
         let error = service
@@ -227,7 +215,7 @@ mod tests {
     #[rstest]
     fn matched_stream_response_is_rejected() {
         let request = sample_observed_request(br#"{"model":"test","messages":[]}"#);
-        let cassette = cassette_for_request(
+        let service = service_with_single_interaction(
             request.clone(),
             RecordedResponse::Stream {
                 status: 200,
@@ -237,11 +225,7 @@ mod tests {
                 timing: None,
             },
         )
-        .expect("request should canonicalize");
-        let service = ReplayService::new(
-            ReplayMatchEngine::new(cassette, MatchMode::SequentialStrict)
-                .expect("cassette should build replay engine"),
-        );
+        .unwrap_or_else(|message| panic!("{message}"));
 
         let error = service
             .handle_chat_completions(request)
@@ -253,7 +237,7 @@ mod tests {
     #[rstest]
     fn malformed_json_request_is_rejected_before_matching() {
         let recorded = sample_observed_request(br#"{"model":"test","messages":[]}"#);
-        let cassette = cassette_for_request(
+        let service = service_with_single_interaction(
             recorded,
             RecordedResponse::NonStream {
                 status: 200,
@@ -262,11 +246,7 @@ mod tests {
                 parsed_json: None,
             },
         )
-        .expect("request should canonicalize");
-        let service = ReplayService::new(
-            ReplayMatchEngine::new(cassette, MatchMode::SequentialStrict)
-                .expect("cassette should build replay engine"),
-        );
+        .unwrap_or_else(|message| panic!("{message}"));
         let malformed = sample_observed_request(br#"{"model":"test""#);
 
         let error = service
@@ -353,6 +333,17 @@ mod tests {
                 },
             }],
         })
+    }
+
+    fn service_with_single_interaction(
+        request: ObservedRequest,
+        response: RecordedResponse,
+    ) -> Result<ReplayService, &'static str> {
+        let cassette =
+            cassette_for_request(request, response).map_err(|_| "request should canonicalize")?;
+        let engine = ReplayMatchEngine::new(cassette, MatchMode::SequentialStrict)
+            .map_err(|_| "cassette should build replay engine")?;
+        Ok(ReplayService::new(engine))
     }
 
     fn cassette_with_duplicate_requests(
