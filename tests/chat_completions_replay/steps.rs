@@ -81,30 +81,14 @@ fn the_record_harness_is_started(replay_world: &ReplayWorld) -> Result<(), Box<d
 fn the_baseline_non_stream_request_is_sent_to_the_record_harness(
     replay_world: &ReplayWorld,
 ) -> Result<(), Box<dyn Error>> {
-    send_request_to_harness_slot(
-        replay_world,
-        &HarnessTarget {
-            harness_slot: &replay_world.record_harness,
-            response_slot: &replay_world.record_response,
-            label: "record harness",
-        },
-        BASELINE_REQUEST,
-    )
+    send_request_to_record_harness(replay_world, BASELINE_REQUEST)
 }
 
 #[when("a malformed JSON request is sent to the record harness")]
 fn a_malformed_json_request_is_sent_to_the_record_harness(
     replay_world: &ReplayWorld,
 ) -> Result<(), Box<dyn Error>> {
-    send_request_to_harness_slot(
-        replay_world,
-        &HarnessTarget {
-            harness_slot: &replay_world.record_harness,
-            response_slot: &replay_world.record_response,
-            label: "record harness",
-        },
-        MALFORMED_REQUEST,
-    )
+    send_request_to_record_harness(replay_world, MALFORMED_REQUEST)
 }
 
 #[when("the record harness is stopped")]
@@ -277,6 +261,21 @@ fn send_replay_request(replay_world: &ReplayWorld, body: &[u8]) -> Result<(), Bo
             harness_slot: &replay_world.replay_harness,
             response_slot: &replay_world.replay_response,
             label: "replay harness",
+        },
+        body,
+    )
+}
+
+fn send_request_to_record_harness(
+    replay_world: &ReplayWorld,
+    body: &[u8],
+) -> Result<(), Box<dyn Error>> {
+    send_request_to_harness_slot(
+        replay_world,
+        &HarnessTarget {
+            harness_slot: &replay_world.record_harness,
+            response_slot: &replay_world.record_response,
+            label: "record harness",
         },
         body,
     )
