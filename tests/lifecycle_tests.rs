@@ -200,24 +200,27 @@ async fn start_harness_verify_mode_returns_not_yet_implemented() -> HarnessResul
     Ok(())
 }
 
-fn record_config(cassette_name: String) -> HarnessConfig {
+fn base_config(cassette_name: String) -> HarnessConfig {
     HarnessConfig {
-        mode: config::Mode::Record,
         listen: SocketAddr::from(([127, 0, 0, 1], 0)).into(),
         cassette_dir: Utf8PathBuf::from("target/test-harness"),
         cassette_name,
-        upstream: Some(config::UpstreamConfig::default()),
         ..HarnessConfig::default()
+    }
+}
+
+fn record_config(cassette_name: String) -> HarnessConfig {
+    HarnessConfig {
+        mode: config::Mode::Record,
+        upstream: Some(config::UpstreamConfig::default()),
+        ..base_config(cassette_name)
     }
 }
 
 fn replay_config(cassette_name: String) -> HarnessConfig {
     HarnessConfig {
         mode: config::Mode::Replay,
-        listen: SocketAddr::from(([127, 0, 0, 1], 0)).into(),
-        cassette_dir: Utf8PathBuf::from("target/test-harness"),
-        cassette_name,
-        ..HarnessConfig::default()
+        ..base_config(cassette_name)
     }
 }
 
