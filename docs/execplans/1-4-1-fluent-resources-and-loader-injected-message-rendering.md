@@ -18,7 +18,7 @@ locale negotiation and loader construction outside the library.
 The visible outcome is deliberately modest. Library users can configure one
 Fluent loader in their application, load the library's embedded resources into
 that loader, and pass the loader to `spycatcher_harness` rendering helpers to
-obtain localised diagnostics. The library must not create a process-global
+obtain localized diagnostics. The library must not create a process-global
 language loader, read the process locale, or make the command-line interface
 (CLI) responsible for library-owned message IDs.
 
@@ -31,7 +31,7 @@ Hard invariants that must hold throughout implementation. Violation requires
 escalation, not workarounds.
 
 - This plan implements only roadmap item 1.4.1. It must not implement 1.4.2
-  locale configuration layering or 1.4.3 localised CLI help and parse errors,
+  locale configuration layering or 1.4.3 localized CLI help and parse errors,
   except where a narrow compatibility seam is needed for 1.4.1.
 - The roadmap item in `docs/roadmap.md` remains unchecked while this plan is
   only drafted. Mark 1.4.1 done only after the feature implementation is
@@ -73,7 +73,7 @@ Thresholds that trigger escalation when breached.
   now.
 - Dependencies: adding `i18n-embed` and `rust-embed` is expected. If another
   runtime dependency is needed, stop and explain why.
-- Behavioural scope: if localised CLI help, parse errors, or OrthoConfig
+- Behavioural scope: if localized CLI help, parse errors, or OrthoConfig
   locale precedence must be implemented to satisfy tests, stop. Those belong to
   1.4.2 and 1.4.3.
 - Test iterations: if `make test`, `make lint`, or `make check-fmt` still fail
@@ -96,8 +96,8 @@ Thresholds that trigger escalation when breached.
 
 - Risk: current error strings are embedded in `thiserror` display attributes
   and tests assert those English strings. Severity: medium Likelihood: high
-  Mitigation: keep `Display` as the non-localised semantic fallback. Add
-  separate localised rendering APIs so existing error matching remains stable.
+  Mitigation: keep `Display` as the non-localized semantic fallback. Add
+  separate localized rendering APIs so existing error matching remains stable.
 
 - Risk: the record-mode HTTP error body in `src/server/record_handler.rs` is
   externally observable and currently uses hard-coded text. Severity: medium
@@ -152,7 +152,7 @@ Thresholds that trigger escalation when breached.
   complete.
 - [x] (2026-05-10 09:12Z) Addressed review follow-ups for structured
   missing-message detection, I/O source rendering, narrower Fluent isolation
-  normalisation, mapping simplification, and `rstest` fixtures.
+  normalization, mapping simplification, and `rstest` fixtures.
 - [x] (2026-05-10 09:24Z) Revalidated review follow-ups with
   `cargo test i18n --all-targets --all-features`, `make fmt`,
   `make markdownlint`, `make nixie`, `make check-fmt`, `make lint`, and
@@ -162,7 +162,7 @@ Thresholds that trigger escalation when breached.
   `FluentLanguageLoader::has` for missing-message checks, and syncing the
   dependency snippet with the implemented versions.
 - [x] (2026-05-10 02:36Z) Addressed CI review findings by replacing fallible
-  fixture `expect` calls with `Result`/`?`, snapshotting localised text output
+  fixture `expect` calls with `Result`/`?`, snapshotting localized text output
   with `insta`, adding `proptest` coverage for Fluent isolation mark stripping,
   and correcting the completed ExecPlan opening text.
 - [x] (2026-05-10 02:49Z) Revalidated the CI follow-up with focused i18n
@@ -172,7 +172,7 @@ Thresholds that trigger escalation when breached.
   restored and the explicit formatting and Markdown gates were used.
 - [x] (2026-05-11 08:45Z) Addressed review follow-ups by using en-GB spelling
   in Rustdoc and ExecPlan references, defining command-line interface (CLI) on
-  first use, and splitting the localised error snapshot cases into focused
+  first use, and splitting the localized error snapshot cases into focused
   tests without an inline multi-branch dispatcher.
 - [x] (2026-05-12 08:30Z) Addressed final check findings by adding debug
   logging for unloaded-loader fallback, expanding property tests for Fluent
@@ -189,7 +189,7 @@ Thresholds that trigger escalation when breached.
 - Observation: `HarnessConfig` already includes `LocalizationConfig`, but the
   CLI and binary do not yet consume those fields for localization. Evidence:
   `src/config.rs` defines `LocalizationConfig { locale, fallback_locale }`;
-  `src/cli.rs` loads command config without localiser wiring. Impact: this plan
+  `src/cli.rs` loads command config without localizer wiring. Impact: this plan
   must avoid pulling 1.4.2 configuration layering into 1.4.1.
 
 - Observation: the current crate is a single package with both `[lib]` and
@@ -207,7 +207,7 @@ Thresholds that trigger escalation when breached.
   bidirectional isolation marks by default. Evidence: focused
   `cargo test i18n --all-targets --all-features` failed with strings containing
   `U+2068` and `U+2069` around dynamic fields. Impact: the rendering helper
-  normalises those marks out for harness diagnostics so localised output
+  normalizes those marks out for harness diagnostics so localized output
   remains suitable for assertions, logs, and command-line surfaces without
   mutating the caller-owned loader.
 
@@ -230,8 +230,8 @@ Thresholds that trigger escalation when breached.
   rendering API protects the existing public lifecycle contract and leaves
   binary loader construction for 1.4.2. Date/Author: 2026-05-08 / agent
 
-- Decision: keep `HarnessError` display messages as non-localised fallbacks and
-  add localised rendering as a separate operation. Rationale: typed errors are
+- Decision: keep `HarnessError` display messages as non-localized fallbacks and
+  add localized rendering as a separate operation. Rationale: typed errors are
   part of the design contract. Replacing their `Display` implementation with
   loader-dependent behaviour is impossible without global state and would break
   existing tests. Date/Author: 2026-05-08 / agent
@@ -258,7 +258,7 @@ Thresholds that trigger escalation when breached.
   by `localize_harness_error`. Rationale: disabling isolation would require
   mutating the application-owned loader, while leaving marks in harness
   diagnostics would make logs and test assertions surprising. The helper keeps
-  the injected-loader boundary intact and normalises only its own returned
+  the injected-loader boundary intact and normalizes only its own returned
   diagnostic string. Date/Author: 2026-05-08 / agent
 
 - Decision: replace fallback-string comparison with loaded-message detection.
@@ -274,14 +274,14 @@ Thresholds that trigger escalation when breached.
   callers a copyable setup that reliably loads bundled Fluent messages.
   Date/Author: 2026-05-10 / agent
 
-- Decision: normalise only Fluent isolation pairs surrounding argument values,
+- Decision: normalize only Fluent isolation pairs surrounding argument values,
   not every isolation mark in the rendered string. Rationale: Fluent inserts
   `U+2068` and `U+2069` around placeables; replacing only
   `LRI + argument_value + PDI` preserves intentional isolation marks present in
-  localised text or user-provided content. Date/Author: 2026-05-10 / agent
+  localized text or user-provided content. Date/Author: 2026-05-10 / agent
 
-- Decision: include `HarnessError::Io` source details in localised rendering.
-  Rationale: the localised message should not drop diagnostic context that is
+- Decision: include `HarnessError::Io` source details in localized rendering.
+  Rationale: the localized message should not drop diagnostic context that is
   available in the underlying typed error. Date/Author: 2026-05-10 / agent
 
 - Decision: do not add a new `rstest-bdd` scenario for 1.4.1. Rationale: this
@@ -296,7 +296,7 @@ Roadmap item 1.4.1 is implemented. The library now owns embedded Fluent
 resources at `i18n/en-US/spycatcher-harness.ftl`, exposes
 `HarnessLocalizations` for applications to load into their own
 `FluentLanguageLoader`, and exposes
-`localize_harness_error(&FluentLanguageLoader, &HarnessError)` for localised
+`localize_harness_error(&FluentLanguageLoader, &HarnessError)` for localized
 diagnostic rendering. The implementation does not create a process-global
 loader, does not perform locale detection, and does not change
 `start_harness(cfg)`.
@@ -311,10 +311,10 @@ Clippy/Whitaker linting, and the full test suite.
 The Fluent rendering path passes dynamic values as named arguments, so
 user-supplied strings are inserted as values and are not parsed as Fluent
 syntax, message selectors, or executable template fragments. The `Io` error
-variant deliberately includes `source.to_string()` in the localised message to
+variant deliberately includes `source.to_string()` in the localized message to
 preserve diagnostic context, but `std::io::Error` text can include
 user-controlled or sensitive path information; callers should therefore treat
-localised error output as diagnostic text rather than a scrubbed privacy
+localized error output as diagnostic text rather than a scrubbed privacy
 boundary. The embedded `i18n/en-US/spycatcher-harness.ftl` asset contains only
 message templates and placeholders, with no personal data, credentials, or
 secrets.
@@ -375,7 +375,7 @@ The relevant design documents are:
 - `docs/rust-doctest-dry-guide.md`, for public API examples.
 - `docs/complexity-antipatterns-and-refactoring-strategies.md`, for keeping
   helper functions small and responsibility-focused.
-- `docs/ortho-config-users-guide.md`, for later application-localiser
+- `docs/ortho-config-users-guide.md`, for later application-localizer
   integration. Use it as context, but do not implement 1.4.2 or 1.4.3 here.
 
 ## Plan of work
@@ -524,7 +524,7 @@ Acceptance for the implementation is behaviour-based:
 - Each `HarnessError` variant renders through the injected loader with dynamic
   fields preserved.
 - Missing or unloaded translations fall back deterministically to the existing
-  non-localised error display string.
+  non-localized error display string.
 - Searching the source shows no process-global language loader or locale
   detection created by the library.
 - Documentation explains how an application injects a loader and how this
@@ -545,14 +545,14 @@ Unit-test expectations:
 
 - Add `rstest` cases for all current `HarnessError` variants.
 - Add at least one unhappy-path case proving fallback when lookup cannot
-  produce a localised message.
+  produce a localized message.
 - Add an assertion that rendering accepts a caller-owned loader by constructing
   the loader in the test and passing it by reference.
 
 Behavioural-test expectations:
 
 - Add `rstest-bdd` only if implementation changes an externally observable
-  workflow. Examples include localised HTTP error bodies or binary output.
+  workflow. Examples include localized HTTP error bodies or binary output.
 - If no external workflow changes, document in the plan that BDD coverage is
   intentionally unnecessary for 1.4.1 because the observable contract is a
   public library helper covered by unit tests and doctests.
