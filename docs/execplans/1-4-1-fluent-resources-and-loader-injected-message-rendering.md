@@ -354,8 +354,10 @@ Those fields exist for later application-level localization work. Roadmap item
 1.4.1 is narrower: it adds library-owned resources and rendering helpers that
 consume a caller-provided `FluentLanguageLoader`.
 
-`src/i18n.rs` is currently the natural home for this feature. It is public via
-`pub mod i18n;` in `src/lib.rs`, but it contains no types or functions yet.
+`src/i18n.rs` defines the public localisation API for this feature, including
+`HarnessLocalizations` and `localize_harness_error`, and is exported via
+`pub mod i18n;` in `src/lib.rs`. The accompanying unit and property tests live
+in `src/i18n_tests.rs` through the `src/i18n.rs` test module.
 
 The relevant design documents are:
 
