@@ -152,7 +152,7 @@ Thresholds that trigger escalation when breached.
   complete.
 - [x] (2026-05-10 09:12Z) Addressed review follow-ups for structured
   missing-message detection, I/O source rendering, narrower Fluent isolation
-  normalization, mapping simplification, and `rstest` fixtures.
+  normalisation, mapping simplification, and `rstest` fixtures.
 - [x] (2026-05-10 09:24Z) Revalidated review follow-ups with
   `cargo test i18n --all-targets --all-features`, `make fmt`,
   `make markdownlint`, `make nixie`, `make check-fmt`, `make lint`, and
@@ -174,6 +174,10 @@ Thresholds that trigger escalation when breached.
   in Rustdoc and ExecPlan references, defining command-line interface (CLI) on
   first use, and splitting the localised error snapshot cases into focused
   tests without an inline multi-branch dispatcher.
+- [x] (2026-05-12 08:30Z) Addressed final check findings by adding debug
+  logging for unloaded-loader fallback, expanding property tests for Fluent
+  isolation mark stripping, and documenting security considerations for
+  Fluent argument substitution, I/O source details, and embedded FTL assets.
 
 ## Surprises & discoveries
 
@@ -203,7 +207,7 @@ Thresholds that trigger escalation when breached.
   bidirectional isolation marks by default. Evidence: focused
   `cargo test i18n --all-targets --all-features` failed with strings containing
   `U+2068` and `U+2069` around dynamic fields. Impact: the rendering helper
-  normalizes those marks out for harness diagnostics so localised output
+  normalises those marks out for harness diagnostics so localised output
   remains suitable for assertions, logs, and command-line surfaces without
   mutating the caller-owned loader.
 
@@ -254,7 +258,7 @@ Thresholds that trigger escalation when breached.
   by `localize_harness_error`. Rationale: disabling isolation would require
   mutating the application-owned loader, while leaving marks in harness
   diagnostics would make logs and test assertions surprising. The helper keeps
-  the injected-loader boundary intact and normalizes only its own returned
+  the injected-loader boundary intact and normalises only its own returned
   diagnostic string. Date/Author: 2026-05-08 / agent
 
 - Decision: replace fallback-string comparison with loaded-message detection.
@@ -270,7 +274,7 @@ Thresholds that trigger escalation when breached.
   callers a copyable setup that reliably loads bundled Fluent messages.
   Date/Author: 2026-05-10 / agent
 
-- Decision: normalize only Fluent isolation pairs surrounding argument values,
+- Decision: normalise only Fluent isolation pairs surrounding argument values,
   not every isolation mark in the rendered string. Rationale: Fluent inserts
   `U+2068` and `U+2069` around placeables; replacing only
   `LRI + argument_value + PDI` preserves intentional isolation marks present in
@@ -301,6 +305,19 @@ The implementation is validated by `rstest` unit cases covering every current
 `HarnessError` variant, an unhappy-path unloaded-loader fallback test, public
 API doctests, Markdown linting, diagram validation, Rust formatting checks,
 Clippy/Whitaker linting, and the full test suite.
+
+### Security considerations
+
+The Fluent rendering path passes dynamic values as named arguments, so
+user-supplied strings are inserted as values and are not parsed as Fluent
+syntax, message selectors, or executable template fragments. The `Io` error
+variant deliberately includes `source.to_string()` in the localised message to
+preserve diagnostic context, but `std::io::Error` text can include
+user-controlled or sensitive path information; callers should therefore treat
+localised error output as diagnostic text rather than a scrubbed privacy
+boundary. The embedded `i18n/en-US/spycatcher-harness.ftl` asset contains only
+message templates and placeholders, with no personal data, credentials, or
+secrets.
 
 No `rstest-bdd` scenario was added because this milestone did not change an
 externally observable workflow such as HTTP responses, CLI output, persistence,
