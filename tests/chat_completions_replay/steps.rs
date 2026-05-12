@@ -335,14 +335,7 @@ fn make_record_config(
     cassette_path: &camino::Utf8PathBuf,
     upstream: UpstreamConfig,
 ) -> Result<HarnessConfig, Box<dyn Error>> {
-    let cassette_name = cassette_path
-        .file_name()
-        .ok_or_else(|| std::io::Error::other("cassette path should contain a file name"))?
-        .to_owned();
-    let cassette_dir = cassette_path
-        .parent()
-        .ok_or_else(|| std::io::Error::other("cassette path should contain a parent directory"))?
-        .to_path_buf();
+    let (cassette_dir, cassette_name) = split_cassette_path(cassette_path)?;
 
     Ok(HarnessConfig {
         listen: ListenAddr::from(SocketAddr::from(([127, 0, 0, 1], 0))),
@@ -357,14 +350,7 @@ fn make_record_config(
 fn make_replay_config(
     cassette_path: &camino::Utf8PathBuf,
 ) -> Result<HarnessConfig, Box<dyn Error>> {
-    let cassette_name = cassette_path
-        .file_name()
-        .ok_or_else(|| std::io::Error::other("cassette path should contain a file name"))?
-        .to_owned();
-    let cassette_dir = cassette_path
-        .parent()
-        .ok_or_else(|| std::io::Error::other("cassette path should contain a parent directory"))?
-        .to_path_buf();
+    let (cassette_dir, cassette_name) = split_cassette_path(cassette_path)?;
 
     Ok(HarnessConfig {
         listen: ListenAddr::from(SocketAddr::from(([127, 0, 0, 1], 0))),
@@ -379,4 +365,18 @@ fn make_replay_config(
         }),
         ..HarnessConfig::default()
     })
+}
+
+fn split_cassette_path(
+    cassette_path: &camino::Utf8PathBuf,
+) -> Result<(camino::Utf8PathBuf, String), Box<dyn Error>> {
+    let cassette_name = cassette_path
+        .file_name()
+        .ok_or_else(|| std::io::Error::other("cassette path should contain a file name"))?
+        .to_owned();
+    let cassette_dir = cassette_path
+        .parent()
+        .ok_or_else(|| std::io::Error::other("cassette path should contain a parent directory"))?
+        .to_path_buf();
+    Ok((cassette_dir, cassette_name))
 }

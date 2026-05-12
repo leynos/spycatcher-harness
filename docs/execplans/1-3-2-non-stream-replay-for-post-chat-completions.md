@@ -263,7 +263,7 @@ Skills to apply during implementation:
 - [x] 2026-05-12 09:31 CEST - Re-ran focused replay snapshot and concurrency
       tests, `make check-fmt`, `make markdownlint`, `make lint`, `make test`,
       and `make nixie`; all passed.
-- [ ] Commit the implemented feature after gates pass.
+- [x] Commit the implemented feature after gates pass.
 
 ## Surprises & Discoveries
 

@@ -244,7 +244,7 @@ hop-by-hop headers, or `content-length` because those are not part of the
 cassette contract. If an inbound replay request mismatches, the HTTP adapter
 returns `409 Conflict` with `request_mismatch` diagnostics derived from
 `MismatchDiagnostic`. Replay rejects malformed or non-JSON request bodies with
-`400 Bad Request` before matching, because body-less canonicalization would
+`400 Bad Request` before matching because body-less canonicalization would
 otherwise give different malformed byte sequences the same replay key. If a
 request asks for `stream: true`, or a manually authored cassette contains a
 stream response for a matched request, replay returns `501 Not Implemented`.
