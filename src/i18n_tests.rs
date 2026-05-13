@@ -86,7 +86,7 @@ fn assert_cassette_not_found_snapshot(actual: &str) {
 fn assert_request_mismatch_snapshot(actual: &str) {
     insta::assert_snapshot!(
         actual,
-        @"request mismatch at interaction \u{2068}2\u{2069}: expected \u{2068}abc\u{2069}, observed \u{2068}def\u{2069}"
+        @"request mismatch at interaction \u{2068}2\u{2069}: expected \u{2068}abc\u{2069}, observed \u{2068}def\u{2069}; \u{2068}method differs\u{2069}"
     );
 }
 

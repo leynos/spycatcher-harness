@@ -111,13 +111,14 @@ fn harness_error_message(error: &HarnessError) -> (&'static str, HashMap<&'stati
             interaction_id,
             expected_hash,
             observed_hash,
-            ..
+            diff_summary,
         } => (
             REQUEST_MISMATCH,
             HashMap::from([
                 ("interaction_id", interaction_id.to_string()),
                 ("expected_hash", expected_hash.clone()),
                 ("observed_hash", observed_hash.clone()),
+                ("diff_summary", diff_summary.clone()),
             ]),
         ),
         HarnessError::InvalidCassette { message } => (
