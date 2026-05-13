@@ -151,8 +151,8 @@ Thresholds that trigger escalation when breached.
 - [x] Mark roadmap item 1.4.1 done after the feature implementation is
   complete.
 - [x] (2026-05-10 09:12Z) Addressed review follow-ups for structured
-  missing-message detection, I/O source rendering, narrower Fluent isolation
-  normalization, mapping simplification, and `rstest` fixtures.
+  missing-message detection, I/O source rendering, mapping simplification, and
+  `rstest` fixtures.
 - [x] (2026-05-10 09:24Z) Revalidated review follow-ups with
   `cargo test i18n --all-targets --all-features`, `make fmt`,
   `make markdownlint`, `make nixie`, `make check-fmt`, `make lint`, and
@@ -163,8 +163,7 @@ Thresholds that trigger escalation when breached.
   dependency snippet with the implemented versions.
 - [x] (2026-05-10 02:36Z) Addressed CI review findings by replacing fallible
   fixture `expect` calls with `Result`/`?`, snapshotting localized text output
-  with `insta`, adding `proptest` coverage for Fluent isolation mark stripping,
-  and correcting the completed ExecPlan opening text.
+  with `insta`, and correcting the completed ExecPlan opening text.
 - [x] (2026-05-10 02:49Z) Revalidated the CI follow-up with focused i18n
   tests, `make check-fmt`, `make markdownlint`, `make nixie`, `make lint`, and
   `make test`. `make fmt` still reports unrelated repository-wide MD013
@@ -175,9 +174,11 @@ Thresholds that trigger escalation when breached.
   first use, and splitting the localized error snapshot cases into focused
   tests without an inline multi-branch dispatcher.
 - [x] (2026-05-12 08:30Z) Addressed final check findings by adding debug
-  logging for unloaded-loader fallback, expanding property tests for Fluent
-  isolation mark stripping, and documenting security considerations for
+  logging for unloaded-loader fallback and documenting security considerations for
   Fluent argument substitution, I/O source details, and embedded FTL assets.
+- [x] (2026-05-13 09:20Z) Addressed review finding by preserving
+  `FluentLanguageLoader` bidirectional isolation marks in localized production
+  output and updating tests to assert those marks are retained.
 
 ## Surprises & discoveries
 
@@ -205,11 +206,10 @@ Thresholds that trigger escalation when breached.
 
 - Observation: `FluentLanguageLoader` wraps interpolated variables in Unicode
   bidirectional isolation marks by default. Evidence: focused
-  `cargo test i18n --all-targets --all-features` failed with strings containing
-  `U+2068` and `U+2069` around dynamic fields. Impact: the rendering helper
-  normalizes those marks out for harness diagnostics so localized output
-  remains suitable for assertions, logs, and command-line surfaces without
-  mutating the caller-owned loader.
+  `cargo test i18n --all-targets --all-features` rendered strings containing
+  `U+2068` and `U+2069` around dynamic fields. Impact: the rendering helper now
+  preserves those marks so caller-enabled bidirectional isolation protects
+  diagnostics containing user-controlled values.
 
 - Observation: `FluentLanguageLoader` exposes `has(message_id)`, which checks
   whether a message is available in any loaded language bundle. Evidence: the
@@ -254,12 +254,14 @@ Thresholds that trigger escalation when breached.
   `rstest-bdd`; direct dependencies should expose the runtime contract without
   unnecessary version churn. Date/Author: 2026-05-08 / agent
 
-- Decision: strip Fluent bidirectional isolation marks from strings returned
-  by `localize_harness_error`. Rationale: disabling isolation would require
-  mutating the application-owned loader, while leaving marks in harness
-  diagnostics would make logs and test assertions surprising. The helper keeps
-  the injected-loader boundary intact and normalizes only its own returned
-  diagnostic string. Date/Author: 2026-05-08 / agent
+- Decision: preserve Fluent bidirectional isolation marks in strings returned
+  by `localize_harness_error`. Rationale: caller-owned
+  `FluentLanguageLoader` instances enable isolation by default to prevent
+  mixed-direction text from visually reordering or spoofing adjacent text. The
+  library should return the loader's formatted output unchanged rather than
+  weakening that protection for user-controlled cassette names, configuration
+  messages, upstream errors, or I/O source text. Date/Author: 2026-05-13 /
+  agent
 
 - Decision: replace fallback-string comparison with loaded-message detection.
   Rationale: comparing against `i18n-embed`'s `"No localization for id: ..."`
@@ -273,12 +275,6 @@ Thresholds that trigger escalation when breached.
   `current_languages()` state before resources have been loaded, and gives
   callers a copyable setup that reliably loads bundled Fluent messages.
   Date/Author: 2026-05-10 / agent
-
-- Decision: normalize only Fluent isolation pairs surrounding argument values,
-  not every isolation mark in the rendered string. Rationale: Fluent inserts
-  `U+2068` and `U+2069` around placeables; replacing only
-  `LRI + argument_value + PDI` preserves intentional isolation marks present in
-  localized text or user-provided content. Date/Author: 2026-05-10 / agent
 
 - Decision: include `HarnessError::Io` source details in localized rendering.
   Rationale: the localized message should not drop diagnostic context that is
@@ -297,14 +293,16 @@ resources at `i18n/en-US/spycatcher-harness.ftl`, exposes
 `HarnessLocalizations` for applications to load into their own
 `FluentLanguageLoader`, and exposes
 `localize_harness_error(&FluentLanguageLoader, &HarnessError)` for localized
-diagnostic rendering. The implementation does not create a process-global
-loader, does not perform locale detection, and does not change
-`start_harness(cfg)`.
+diagnostic rendering. Successful rendering returns Fluent's formatted output
+unchanged, including bidirectional isolation marks around placeables. The
+implementation does not create a process-global loader, does not perform locale
+detection, and does not change `start_harness(cfg)`.
 
 The implementation is validated by `rstest` unit cases covering every current
-`HarnessError` variant, an unhappy-path unloaded-loader fallback test, public
-API doctests, Markdown linting, diagram validation, Rust formatting checks,
-Clippy/Whitaker linting, and the full test suite.
+`HarnessError` variant, bidirectional isolation preservation for user-controlled
+values, an unhappy-path unloaded-loader fallback test, public API doctests,
+Markdown linting, diagram validation, Rust formatting checks, Clippy/Whitaker
+linting, and the full test suite.
 
 ### Security considerations
 
@@ -354,10 +352,10 @@ Those fields exist for later application-level localization work. Roadmap item
 1.4.1 is narrower: it adds library-owned resources and rendering helpers that
 consume a caller-provided `FluentLanguageLoader`.
 
-`src/i18n.rs` defines the public localisation API for this feature, including
+`src/i18n.rs` defines the public localization API for this feature, including
 `HarnessLocalizations` and `localize_harness_error`, and is exported via
-`pub mod i18n;` in `src/lib.rs`. The accompanying unit and property tests live
-in `src/i18n_tests.rs` through the `src/i18n.rs` test module.
+`pub mod i18n;` in `src/lib.rs`. The accompanying unit tests live in
+`src/i18n_tests.rs` through the `src/i18n.rs` test module.
 
 The relevant design documents are:
 

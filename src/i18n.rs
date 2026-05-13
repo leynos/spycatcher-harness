@@ -1,10 +1,10 @@
 //! Embedded Fluent Translation List (FTL) resources and message IDs for the
 //! Spycatcher harness.
 //!
-//! This module will contain library-owned localisation assets and
-//! rendering APIs that accept an application-provided language loader.
+//! This module contains library-owned localization assets and rendering APIs
+//! that accept an application-provided language loader.
 //! See `docs/localizable-rust-libraries-with-fluent.md` for the
-//! localisation architecture.
+//! localization architecture.
 
 use std::collections::HashMap;
 
@@ -46,14 +46,16 @@ const IO: &str = "harness-error-io";
 #[folder = "i18n/"]
 pub struct HarnessLocalizations;
 
-/// Renders a localised message for a harness error through the caller's
+/// Renders a localized message for a harness error through the caller's
 /// language loader.
 ///
 /// The caller owns locale negotiation, fallback policy, and loader
 /// lifecycle. If the loader has not been populated with this crate's
 /// embedded resources, rendering falls back to the error's existing
-/// non-localised [`std::fmt::Display`] text and emits a `debug`-level log
+/// non-localized [`std::fmt::Display`] text and emits a `debug`-level log
 /// entry so callers can detect that fallback through their log subscriber.
+/// Fluent's formatted output is returned unchanged, including bidirectional
+/// isolation marks around placeables.
 ///
 /// # Security considerations
 ///
@@ -81,15 +83,14 @@ pub struct HarnessLocalizations;
 /// };
 /// let rendered = localize_harness_error(&loader, &error);
 ///
-/// assert_eq!(rendered, "invalid configuration: missing upstream");
+/// assert_eq!(rendered, "invalid configuration: \u{2068}missing upstream\u{2069}");
 /// # Ok::<(), Box<dyn std::error::Error>>(())
 /// ```
 #[must_use]
 pub fn localize_harness_error(loader: &FluentLanguageLoader, error: &HarnessError) -> String {
     let (id, args) = harness_error_message(error);
     if loader.has(id) {
-        let rendered = loader.get_args(id, args.clone());
-        strip_fluent_isolation_marks(&rendered, args.values())
+        loader.get_args(id, args)
     } else {
         log::debug!("Fluent message '{id}' not available in loader; falling back to Display text");
         error.to_string()
@@ -140,17 +141,6 @@ fn harness_error_message(error: &HarnessError) -> (&'static str, HashMap<&'stati
         ),
         HarnessError::Io { source } => (IO, HashMap::from([("source", source.to_string())])),
     }
-}
-
-fn strip_fluent_isolation_marks<'a>(
-    rendered: &str,
-    arg_values: impl IntoIterator<Item = &'a String>,
-) -> String {
-    arg_values
-        .into_iter()
-        .fold(rendered.to_owned(), |text, value| {
-            text.replace(&format!("\u{2068}{value}\u{2069}"), value)
-        })
 }
 
 #[cfg(test)]

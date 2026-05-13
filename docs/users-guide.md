@@ -102,13 +102,17 @@ let error = HarnessError::InvalidConfig {
 };
 let rendered = localize_harness_error(&loader, &error);
 
-assert_eq!(rendered, "invalid configuration: missing upstream");
+assert_eq!(
+    rendered,
+    "invalid configuration: \u{2068}missing upstream\u{2069}"
+);
 ```
 
-If the supplied loader has not loaded the library resources, rendering falls
-back to the existing non-localized `HarnessError` display text. CLI locale
-selection and localized `clap` help remain separate application-level
-responsibilities.
+Successful rendering preserves Fluent's bidirectional isolation marks around
+dynamic values. If the supplied loader has not loaded the library resources,
+rendering falls back to the existing non-localized `HarnessError` display text.
+CLI locale selection and localized `clap` help remain separate
+application-level responsibilities.
 
 Replay startup expectations:
 

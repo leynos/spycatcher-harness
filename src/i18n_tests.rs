@@ -3,7 +3,6 @@
 use super::*;
 use i18n_embed::fluent::FluentLanguageLoader;
 use i18n_embed::unic_langid::LanguageIdentifier;
-use proptest::prelude::*;
 use rstest::{fixture, rstest};
 
 type SnapshotAssertion = fn(&str);
@@ -77,41 +76,41 @@ fn localize_harness_error_renders_embedded_message(
 }
 
 fn assert_invalid_config_snapshot(actual: &str) {
-    insta::assert_snapshot!(actual, @"invalid configuration: missing upstream");
+    insta::assert_snapshot!(actual, @"invalid configuration: \u{2068}missing upstream\u{2069}");
 }
 
 fn assert_cassette_not_found_snapshot(actual: &str) {
-    insta::assert_snapshot!(actual, @"cassette not found: session.json");
+    insta::assert_snapshot!(actual, @"cassette not found: \u{2068}session.json\u{2069}");
 }
 
 fn assert_request_mismatch_snapshot(actual: &str) {
     insta::assert_snapshot!(
         actual,
-        @"request mismatch at interaction 2: expected abc, observed def"
+        @"request mismatch at interaction \u{2068}2\u{2069}: expected \u{2068}abc\u{2069}, observed \u{2068}def\u{2069}"
     );
 }
 
 fn assert_invalid_cassette_snapshot(actual: &str) {
-    insta::assert_snapshot!(actual, @"invalid cassette: missing interactions");
+    insta::assert_snapshot!(actual, @"invalid cassette: \u{2068}missing interactions\u{2069}");
 }
 
 fn assert_unsupported_version_snapshot(actual: &str) {
     insta::assert_snapshot!(
         actual,
-        @"unsupported cassette format version 1; supported version is 2"
+        @"unsupported cassette format version \u{2068}1\u{2069}; supported version is \u{2068}2\u{2069}"
     );
 }
 
 fn assert_upstream_failure_snapshot(actual: &str) {
-    insta::assert_snapshot!(actual, @"upstream request failed: timed out");
+    insta::assert_snapshot!(actual, @"upstream request failed: \u{2068}timed out\u{2069}");
 }
 
 fn assert_mode_not_yet_implemented_snapshot(actual: &str) {
-    insta::assert_snapshot!(actual, @"mode not yet implemented: Verify");
+    insta::assert_snapshot!(actual, @"mode not yet implemented: \u{2068}Verify\u{2069}");
 }
 
 fn assert_io_snapshot(actual: &str) {
-    insta::assert_snapshot!(actual, @"io failure: disk full");
+    insta::assert_snapshot!(actual, @"io failure: \u{2068}disk full\u{2069}");
 }
 
 #[rstest]
@@ -144,7 +143,26 @@ fn localize_harness_error_preserves_intentional_isolation_marks(
 
     insta::assert_snapshot!(
         localize_harness_error(&english_loader, &error),
-        @"invalid configuration: \u{2068}already isolated\u{2069}"
+        @"invalid configuration: \u{2068}\u{2068}already isolated\u{2069}\u{2069}"
+    );
+    Ok(())
+}
+
+#[rstest]
+fn localize_harness_error_preserves_fluent_isolation_for_user_values(
+    #[from(english_loader)] english_loader_result: Result<
+        FluentLanguageLoader,
+        Box<dyn std::error::Error>,
+    >,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let english_loader = english_loader_result?;
+    let error = HarnessError::CassetteNotFound {
+        cassette_name: "rtl-\u{202e}session.json".to_owned(),
+    };
+
+    insta::assert_snapshot!(
+        localize_harness_error(&english_loader, &error),
+        @"cassette not found: \u{2068}rtl-\u{202e}session.json\u{2069}"
     );
     Ok(())
 }
@@ -165,82 +183,4 @@ fn english_loader(
 #[fixture]
 fn fallback_language() -> Result<LanguageIdentifier, Box<dyn std::error::Error>> {
     Ok("en-US".parse()?)
-}
-
-proptest! {
-    #[test]
-    fn strip_fluent_isolation_marks_removes_only_wrapped_arguments(value in ".*") {
-        let rendered = format!("before \u{2068}{value}\u{2069} after");
-        let arg_values = [value.clone()];
-
-        prop_assert_eq!(
-            strip_fluent_isolation_marks(&rendered, arg_values.iter()),
-            format!("before {value} after"),
-        );
-    }
-
-    #[test]
-    fn strip_fluent_isolation_marks_preserves_unmatched_text(
-        rendered in ".*",
-        value in ".*",
-    ) {
-        prop_assume!(!rendered.contains(&format!("\u{2068}{value}\u{2069}")));
-        let arg_values = [value];
-
-        prop_assert_eq!(
-            strip_fluent_isolation_marks(&rendered, arg_values.iter()),
-            rendered,
-        );
-    }
-
-    #[test]
-    fn strip_fluent_isolation_marks_removes_multiple_wrapped_arguments(
-        a in ".+",
-        b in ".+",
-    ) {
-        prop_assume!(a != b);
-        let rendered = format!("first \u{2068}{a}\u{2069} second \u{2068}{b}\u{2069}");
-        let arg_values = [a.clone(), b.clone()];
-
-        prop_assert_eq!(
-            strip_fluent_isolation_marks(&rendered, arg_values.iter()),
-            format!("first {a} second {b}"),
-        );
-    }
-
-    #[test]
-    fn strip_fluent_isolation_marks_is_idempotent(value in ".*") {
-        let rendered = format!("before \u{2068}{value}\u{2069} after");
-        let arg_values = [value];
-        let once = strip_fluent_isolation_marks(&rendered, arg_values.iter());
-        let twice = strip_fluent_isolation_marks(&once, arg_values.iter());
-
-        prop_assert_eq!(once, twice);
-    }
-
-    #[test]
-    fn strip_fluent_isolation_marks_preserves_isolation_chars_inside_argument(
-        prefix in ".*",
-        suffix in ".*",
-        marker in prop_oneof![Just("\u{2068}"), Just("\u{2069}")],
-    ) {
-        let value = format!("{prefix}{marker}{suffix}");
-        let rendered = format!("before \u{2068}{value}\u{2069} after");
-        let arg_values = [value.clone()];
-
-        prop_assert_eq!(
-            strip_fluent_isolation_marks(&rendered, arg_values.iter()),
-            format!("before {value} after"),
-        );
-    }
-
-    #[test]
-    fn strip_fluent_isolation_marks_leaves_empty_argument_list_unchanged(
-        rendered in ".*",
-    ) {
-        prop_assert_eq!(
-            strip_fluent_isolation_marks(&rendered, std::iter::empty::<&String>()),
-            rendered,
-        );
-    }
 }
