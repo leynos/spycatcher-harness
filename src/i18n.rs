@@ -92,7 +92,9 @@ pub fn localize_harness_error(loader: &FluentLanguageLoader, error: &HarnessErro
     if loader.has(id) {
         loader.get_args(id, args)
     } else {
-        log::debug!("Fluent message '{id}' not available in loader; falling back to Display text");
+        tracing::debug!(
+            "Fluent message '{id}' not available in loader; falling back to Display text"
+        );
         error.to_string()
     }
 }

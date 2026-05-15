@@ -114,6 +114,7 @@ fn assert_io_snapshot(actual: &str) {
 }
 
 #[rstest]
+#[tracing_test::traced_test]
 fn localize_harness_error_falls_back_when_loader_is_unloaded(
     fallback_language: Result<LanguageIdentifier, Box<dyn std::error::Error>>,
 ) -> Result<(), Box<dyn std::error::Error>> {
@@ -126,7 +127,12 @@ fn localize_harness_error_falls_back_when_loader_is_unloaded(
         localize_harness_error(&loader, &error),
         @"invalid configuration: missing upstream"
     );
+    assert_log_contains(logs_contain("harness-error-invalid-config"));
     Ok(())
+}
+
+fn assert_log_contains(has_expected_log: bool) {
+    assert!(has_expected_log);
 }
 
 #[rstest]

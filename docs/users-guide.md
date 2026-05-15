@@ -114,6 +114,16 @@ rendering falls back to the existing non-localized `HarnessError` display text.
 CLI locale selection and localized `clap` help remain separate
 application-level responsibilities.
 
+#### Security considerations
+
+Fluent argument substitution is named and does not re-parse argument values as
+Fluent Translation List syntax, so user-supplied strings cannot escape the
+template or invoke arbitrary selectors.
+
+`HarnessError::Io` includes the underlying [`std::io::Error`] text, which may
+carry sensitive path information. Callers should treat that text accordingly and
+avoid surfacing it in user-visible output without sanitization.
+
 Replay startup expectations:
 
 - The cassette file must already exist at `cassette_dir/cassette_name`.

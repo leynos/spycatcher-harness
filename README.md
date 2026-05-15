@@ -50,6 +50,10 @@ See [docs/users-guide.md](docs/users-guide.md) for user-facing configuration
 and [docs/developers-guide.md](docs/developers-guide.md) for implementation
 notes.
 
+For localized error messages, see the
+[Localizing library messages](docs/users-guide.md#localizing-library-messages)
+section of the users' guide.
+
 ## Security defaults
 
 `RedactionConfig::default()` drops `authorization` before persistence. Supply
