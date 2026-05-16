@@ -105,15 +105,15 @@ units with explicit dependencies and completion criteria.
 
 ### 1.4. Localization foundation
 
-- [ ] 1.4.1. Embed library Fluent resources and expose loader-injected message
+- [x] 1.4.1. Embed library Fluent resources and expose loader-injected message
       rendering.
   - Depends on: 1.1.1.
   - Success criteria:
-    - [ ] Library-owned FTL assets are embedded in the library crate and
+    - [x] Library-owned FTL assets are embedded in the library crate and
           versioned with the API.
-    - [ ] Localized message rendering APIs accept an application-provided
+    - [x] Localized message rendering APIs accept an application-provided
           `FluentLanguageLoader`.
-    - [ ] Library components do not create process-global language loaders.
+    - [x] Library components do not create process-global language loaders.
   - Design references:
     [Localization architecture](spycatcher-harness-design.md#localization-architecture),
     [Core traits and types](spycatcher-harness-design.md#core-traits-and-types).

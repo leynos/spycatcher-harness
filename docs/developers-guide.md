@@ -164,6 +164,14 @@ The crate root re-exports the public entry point `start_harness`, the
 `HarnessResult`. Shutdown is exposed as the `RunningHarness::shutdown` method,
 not as a standalone crate-root function.
 
+The `i18n` module owns the library Fluent assets at
+`i18n/en-US/spycatcher-harness.ftl`, exposes `HarnessLocalizations` for
+application loaders, and renders `HarnessError` values through
+`localize_harness_error(&FluentLanguageLoader, &HarnessError)`. Keep loader
+construction, locale detection, and process-global localization state out of
+library modules; callers inject a configured loader when they need localized
+text.
+
 The upstream adapter returns `ObservedResponse` values carrying the HTTP status
 code, raw header byte pairs for proxying as `Vec<(String, Vec<u8>)>`, and exact
 response body bytes. Header value percent-encoding happens only at the

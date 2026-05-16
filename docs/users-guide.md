@@ -79,6 +79,51 @@ Configuration fields:
 - `replay` — timing controls for replay mode.
 - `localization` — locale settings.
 
+### Localizing library messages
+
+The library embeds its own Fluent Translation List resources under `i18n/`, but
+does not create a process-wide language loader or detect the process locale.
+Applications own language negotiation and inject their configured loader when
+they need localized library text:
+
+```rust
+use i18n_embed::fluent::FluentLanguageLoader;
+use spycatcher_harness::HarnessError;
+use spycatcher_harness::i18n::{HarnessLocalizations, localize_harness_error};
+
+let fallback = "en-US"
+    .parse::<i18n_embed::unic_langid::LanguageIdentifier>()
+    .unwrap();
+let loader = FluentLanguageLoader::new("spycatcher-harness", fallback.clone());
+i18n_embed::select(&loader, &HarnessLocalizations, &[fallback]).unwrap();
+
+let error = HarnessError::InvalidConfig {
+    message: "missing upstream".to_owned(),
+};
+let rendered = localize_harness_error(&loader, &error);
+
+assert_eq!(
+    rendered,
+    "invalid configuration: \u{2068}missing upstream\u{2069}"
+);
+```
+
+Successful rendering preserves Fluent's bidirectional isolation marks around
+dynamic values. If the supplied loader has not loaded the library resources,
+rendering falls back to the existing non-localized `HarnessError` display text.
+CLI locale selection and localized `clap` help remain separate
+application-level responsibilities.
+
+#### Security considerations
+
+Fluent argument substitution is named and does not re-parse argument values as
+Fluent Translation List syntax, so user-supplied strings cannot escape the
+template or invoke arbitrary selectors.
+
+`HarnessError::Io` includes the underlying [`std::io::Error`] text, which may
+carry sensitive path information. Callers should treat that text accordingly and
+avoid surfacing it in user-visible output without sanitization.
+
 Replay startup expectations:
 
 - The cassette file must already exist at `cassette_dir/cassette_name`.
