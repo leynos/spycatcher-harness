@@ -128,6 +128,29 @@ fn malformed_json_request_is_rejected_before_matching() {
 }
 
 #[rstest]
+fn different_malformed_json_request_is_rejected_before_recorded_response_can_match() {
+    let recorded = sample_observed_request(br#"{"model":"recorded""#);
+    let service = service_with_single_interaction(
+        recorded,
+        RecordedResponse::NonStream {
+            status: 200,
+            headers: vec![],
+            body: b"must not replay for a different malformed body".to_vec(),
+            parsed_json: None,
+        },
+    )
+    .unwrap_or_else(|message| panic!("{message}"));
+    let observed = sample_observed_request(br#"{"model":"observed""#);
+
+    let error = service
+        .handle_chat_completions(observed)
+        .expect_err("malformed JSON must be rejected before cassette matching");
+
+    assert_eq!(error, ReplayError::MalformedJson);
+    assert_eq!(service.counters(), (0, 0));
+}
+
+#[rstest]
 fn concurrent_sequential_replay_consumes_duplicate_hashes_once_each() {
     let request = sample_observed_request(br#"{"model":"test","messages":[]}"#);
     let cassette =
