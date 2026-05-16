@@ -89,20 +89,26 @@ async fn start_server_with_router(
     cfg: &HarnessConfig,
     router: Router,
 ) -> HarnessResult<(SocketAddr, ServerHandle)> {
+    let (listener, bound_addr) = bind_listener(cfg).await?;
+    Ok((bound_addr, start_server(listener, router)))
+}
+
+async fn bind_listener(cfg: &HarnessConfig) -> HarnessResult<(TcpListener, SocketAddr)> {
     let listener = TcpListener::bind(cfg.listen.as_socket_addr())
         .await
         .map_err(HarnessError::from)?;
     let bound_addr = listener.local_addr().map_err(HarnessError::from)?;
+    Ok((listener, bound_addr))
+}
+
+fn start_server(listener: TcpListener, router: Router) -> ServerHandle {
     let (shutdown_tx, shutdown_rx) = oneshot::channel::<()>();
     let task = spawn_server_task(listener, router, shutdown_rx);
 
-    Ok((
-        bound_addr,
-        ServerHandle {
-            shutdown: Some(shutdown_tx),
-            task,
-        },
-    ))
+    ServerHandle {
+        shutdown: Some(shutdown_tx),
+        task,
+    }
 }
 
 fn spawn_server_task(
