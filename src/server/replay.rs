@@ -7,7 +7,9 @@
 use crate::HarnessResult;
 use crate::cassette::{CassetteReader, ReplayMatchEngine, filesystem::FilesystemCassetteStore};
 use crate::config::HarnessConfig;
-use crate::replay::ReplayService;
+use crate::protocol::CHAT_COMPLETIONS_PROTOCOL_ID;
+use crate::replay::{ReplayContext, ReplayService};
+use log::info;
 
 /// Shared replay-mode application state for the inbound server.
 #[derive(Debug, Clone)]
@@ -26,9 +28,20 @@ impl ReplayAppState {
         store: &FilesystemCassetteStore,
     ) -> HarnessResult<Self> {
         let cassette = store.load()?;
+        let interaction_count = cassette.interactions.len();
+        info!(
+            target: "spycatcher.harness.replay",
+            "cassette loaded mode=replay protocol={protocol} outcome=loaded \
+             cassette={cassette_name} interaction_count={interaction_count}",
+            protocol = CHAT_COMPLETIONS_PROTOCOL_ID,
+            cassette_name = cfg.cassette_name,
+        );
         let engine = ReplayMatchEngine::new(cassette, cfg.match_mode)?;
         Ok(Self {
-            service: ReplayService::new(engine),
+            service: ReplayService::with_context(
+                engine,
+                ReplayContext::new(cfg.cassette_name.clone()),
+            ),
         })
     }
 }

@@ -55,7 +55,12 @@ pub struct MismatchDiagnostic {
 #[derive(Debug)]
 pub enum MatchOutcome<'a> {
     /// The incoming request matched a recorded interaction.
-    Matched(&'a Interaction),
+    Matched {
+        /// Zero-based position of the matched interaction in the cassette.
+        interaction_id: usize,
+        /// Matched cassette interaction.
+        interaction: &'a Interaction,
+    },
     /// No match was found; diagnostics explain why.
     Mismatch(MismatchDiagnostic),
 }
@@ -164,7 +169,7 @@ impl ReplayMatchEngine {
     ///     let mut engine = ReplayMatchEngine::new(Cassette::new(), MatchMode::SequentialStrict)?;
     ///     let canonical_request = serde_json::json!({});
     ///     match engine.next_match("abc123", &canonical_request) {
-    ///         MatchOutcome::Matched(_interaction) => { /* use interaction */ }
+    ///         MatchOutcome::Matched { interaction: _interaction, .. } => { /* use interaction */ }
     ///         MatchOutcome::Mismatch(_diagnostic) => { /* handle mismatch */ }
     ///     }
     ///     Ok(())
@@ -208,7 +213,10 @@ impl ReplayMatchEngine {
                 });
             };
             self.sequential_cursor += 1;
-            MatchOutcome::Matched(interaction)
+            MatchOutcome::Matched {
+                interaction_id: self.sequential_cursor - 1,
+                interaction,
+            }
         } else {
             let diff_summary = expected_data.canonical_request.as_ref().map_or_else(
                 || "diff unavailable: expected interaction has no canonical_request".to_owned(),
@@ -255,7 +263,10 @@ impl ReplayMatchEngine {
 
             // Return the matched interaction
             if let Some(interaction) = self.cassette.interactions.get(idx) {
-                return MatchOutcome::Matched(interaction);
+                return MatchOutcome::Matched {
+                    interaction_id: idx,
+                    interaction,
+                };
             }
         }
 

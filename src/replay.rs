@@ -4,30 +4,55 @@
 //! observed request, advances the cassette matching engine, and returns an
 //! owned replay response for the inbound HTTP adapter to render.
 
-use std::sync::{Arc, Mutex};
+use std::sync::{
+    Arc, Mutex,
+    atomic::{AtomicU64, Ordering},
+};
 
-use log::error;
+use log::{error, info, warn};
 
 use crate::cassette::{
     IgnorePathConfig, MatchOutcome, MismatchDiagnostic, RecordedRequest, RecordedResponse,
     ReplayMatchEngine,
 };
 use crate::http_exchange::ObservedRequest;
-use crate::protocol::is_streaming_chat_completions_request;
+use crate::protocol::{CHAT_COMPLETIONS_PROTOCOL_ID, is_streaming_chat_completions_request};
 
 /// Thread-safe replay orchestration boundary.
 #[derive(Debug, Clone)]
 pub(crate) struct ReplayService {
     engine: Arc<Mutex<ReplayMatchEngine>>,
+    context: ReplayContext,
+    matched_count: Arc<AtomicU64>,
+    mismatch_count: Arc<AtomicU64>,
 }
 
 impl ReplayService {
     /// Creates a replay service around a prepared match engine.
     #[must_use]
+    #[cfg(test)]
     pub(crate) fn new(engine: ReplayMatchEngine) -> Self {
+        Self::with_context(engine, ReplayContext::default())
+    }
+
+    /// Creates a replay service with contextual observability fields.
+    #[must_use]
+    pub(crate) fn with_context(engine: ReplayMatchEngine, context: ReplayContext) -> Self {
         Self {
             engine: Arc::new(Mutex::new(engine)),
+            context,
+            matched_count: Arc::new(AtomicU64::new(0)),
+            mismatch_count: Arc::new(AtomicU64::new(0)),
         }
+    }
+
+    /// Returns replay match and mismatch counters for operational checks.
+    #[cfg(test)]
+    pub(crate) fn counters(&self) -> (u64, u64) {
+        (
+            self.matched_count.load(Ordering::Relaxed),
+            self.mismatch_count.load(Ordering::Relaxed),
+        )
     }
 
     /// Replays one non-stream chat completions request from the cassette.
@@ -35,48 +60,102 @@ impl ReplayService {
         &self,
         request: ObservedRequest,
     ) -> Result<ReplayResponse, ReplayError> {
+        self.reject_unreplayable_request_shape(&request)?;
+        let recorded_request = canonicalize_observed_request(request)?;
+        let observed_hash = recorded_hash(&recorded_request)?;
+        let canonical_request = recorded_canonical_request(&recorded_request)?;
+        let response = self.match_recorded_response(observed_hash, canonical_request)?;
+        self.response_from_recorded(response)
+    }
+
+    fn reject_unreplayable_request_shape(
+        &self,
+        request: &ObservedRequest,
+    ) -> Result<(), ReplayError> {
         if is_streaming_chat_completions_request(request.parsed_json.as_ref()) {
-            return Err(ReplayError::UnsupportedStream);
+            self.log_rejection("unsupported_stream", &request.path);
+            Err(ReplayError::UnsupportedStream)
+        } else if request.parsed_json.is_none() {
+            self.log_rejection("malformed_json", &request.path);
+            Err(ReplayError::MalformedJson)
+        } else {
+            Ok(())
         }
-        if request.parsed_json.is_none() {
-            return Err(ReplayError::MalformedJson);
-        }
+    }
 
-        let mut recorded_request = observed_to_recorded_request(request);
-        recorded_request
-            .populate_canonical_fields(&IgnorePathConfig::default())
-            .map_err(|error| {
-                error!(
-                    target: "spycatcher.harness.replay",
-                    "failed to canonicalize replay request: {error}"
-                );
-                ReplayError::Internal
-            })?;
-        let observed_hash = recorded_request
-            .stable_hash
-            .as_deref()
-            .ok_or(ReplayError::Internal)?;
-        let canonical_request = recorded_request
-            .canonical_request
-            .as_ref()
-            .ok_or(ReplayError::Internal)?;
+    fn log_rejection(&self, outcome: &str, path: &str) {
+        warn!(
+            target: "spycatcher.harness.replay",
+            "replay request rejected mode=replay protocol={protocol} outcome={outcome} \
+             cassette={cassette} path={path}",
+            protocol = self.context.protocol,
+            cassette = self.context.cassette,
+        );
+    }
 
-        let response = {
-            let mut guard = self.engine.lock().map_err(|error| {
-                error!(
-                    target: "spycatcher.harness.replay",
-                    "failed to lock replay match engine: {error:?}"
-                );
-                ReplayError::Internal
-            })?;
-            match guard.next_match(observed_hash, canonical_request) {
-                MatchOutcome::Matched(interaction) => interaction.response.clone(),
-                MatchOutcome::Mismatch(diagnostic) => {
-                    return Err(ReplayError::Mismatch(diagnostic));
-                }
+    fn match_recorded_response(
+        &self,
+        observed_hash: &str,
+        canonical_request: &serde_json::Value,
+    ) -> Result<RecordedResponse, ReplayError> {
+        let mut guard = self.engine.lock().map_err(|error| {
+            error!(
+                target: "spycatcher.harness.replay",
+                "failed to lock replay match engine: {error:?}"
+            );
+            ReplayError::Internal
+        })?;
+        match guard.next_match(observed_hash, canonical_request) {
+            MatchOutcome::Matched {
+                interaction_id,
+                interaction,
+            } => {
+                self.log_match(interaction_id, observed_hash);
+                Ok(interaction.response.clone())
             }
-        };
+            MatchOutcome::Mismatch(diagnostic) => {
+                self.log_mismatch(&diagnostic);
+                Err(ReplayError::Mismatch(diagnostic))
+            }
+        }
+    }
 
+    fn log_match(&self, interaction_id: usize, observed_hash: &str) {
+        let matched_count = self.matched_count.fetch_add(1, Ordering::Relaxed) + 1;
+        let mismatch_count = self.mismatch_count.load(Ordering::Relaxed);
+        info!(
+            target: "spycatcher.harness.replay",
+            "interaction replayed interaction_id={interaction_id} mode=replay \
+             protocol={protocol} outcome=matched cassette={cassette} \
+             observed_hash={observed_hash} matched_count={matched_count} \
+             mismatch_count={mismatch_count}",
+            protocol = self.context.protocol,
+            cassette = self.context.cassette,
+        );
+    }
+
+    fn log_mismatch(&self, diagnostic: &MismatchDiagnostic) {
+        let mismatch_count = self.mismatch_count.fetch_add(1, Ordering::Relaxed) + 1;
+        let matched_count = self.matched_count.load(Ordering::Relaxed);
+        warn!(
+            target: "spycatcher.harness.replay",
+            "replay request mismatched interaction_id={interaction_id} mode=replay \
+             protocol={protocol} outcome=mismatch cassette={cassette} \
+             expected_hash={expected_hash} observed_hash={observed_hash} \
+             matched_count={matched_count} mismatch_count={mismatch_count} reason={reason}",
+            interaction_id = diagnostic.position.metric_id(),
+            protocol = self.context.protocol,
+            cassette = self.context.cassette,
+            expected_hash = diagnostic.expected_hash,
+            observed_hash = diagnostic.observed_hash,
+            reason = diagnostic.diff_summary,
+        );
+    }
+
+    fn response_from_recorded(
+        &self,
+        response: RecordedResponse,
+    ) -> Result<ReplayResponse, ReplayError> {
         match response {
             RecordedResponse::NonStream {
                 status,
@@ -88,7 +167,84 @@ impl ReplayService {
                 headers,
                 body,
             }),
-            RecordedResponse::Stream { .. } => Err(ReplayError::UnsupportedStream),
+            RecordedResponse::Stream { .. } => {
+                warn!(
+                    target: "spycatcher.harness.replay",
+                    "replay response rejected mode=replay protocol={protocol} \
+                     outcome=unsupported_stream cassette={cassette}",
+                    protocol = self.context.protocol,
+                    cassette = self.context.cassette,
+                );
+                Err(ReplayError::UnsupportedStream)
+            }
+        }
+    }
+}
+
+fn canonicalize_observed_request(request: ObservedRequest) -> Result<RecordedRequest, ReplayError> {
+    let mut recorded_request = observed_to_recorded_request(request);
+    recorded_request
+        .populate_canonical_fields(&IgnorePathConfig::default())
+        .map_err(|error| {
+            error!(
+                target: "spycatcher.harness.replay",
+                "failed to canonicalize replay request: {error}"
+            );
+            ReplayError::Internal
+        })?;
+    Ok(recorded_request)
+}
+
+fn recorded_hash(recorded_request: &RecordedRequest) -> Result<&str, ReplayError> {
+    recorded_request
+        .stable_hash
+        .as_deref()
+        .ok_or(ReplayError::Internal)
+}
+
+fn recorded_canonical_request(
+    recorded_request: &RecordedRequest,
+) -> Result<&serde_json::Value, ReplayError> {
+    recorded_request
+        .canonical_request
+        .as_ref()
+        .ok_or(ReplayError::Internal)
+}
+
+/// Contextual fields shared by replay-mode observability events.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ReplayContext {
+    /// Configured cassette name.
+    pub(crate) cassette: String,
+    /// Protocol identifier served by this replay service.
+    pub(crate) protocol: &'static str,
+}
+
+impl ReplayContext {
+    /// Creates replay context from a configured cassette name.
+    #[must_use]
+    pub(crate) const fn new(cassette: String) -> Self {
+        Self {
+            cassette,
+            protocol: CHAT_COMPLETIONS_PROTOCOL_ID,
+        }
+    }
+}
+
+impl Default for ReplayContext {
+    fn default() -> Self {
+        Self::new("unknown".to_owned())
+    }
+}
+
+trait InteractionPositionMetrics {
+    fn metric_id(&self) -> usize;
+}
+
+impl InteractionPositionMetrics for crate::cassette::InteractionPosition {
+    fn metric_id(&self) -> usize {
+        match *self {
+            Self::Expected(index) | Self::Exhausted(index) | Self::KeyedMiss(index) => index,
         }
     }
 }
@@ -131,257 +287,5 @@ pub(crate) enum ReplayError {
 }
 
 #[cfg(test)]
-mod tests {
-    //! Unit tests for adapter-neutral replay orchestration.
-
-    use super::*;
-    use crate::cassette::{
-        Cassette, CassetteFormatVersion, Interaction, InteractionMetadata, RecordedResponse,
-    };
-    use crate::config::MatchMode;
-    use crate::protocol::CHAT_COMPLETIONS_PATH;
-    use rstest::rstest;
-
-    #[rstest]
-    fn matching_non_stream_request_returns_recorded_response() {
-        let request = sample_observed_request(br#"{"model":"test","messages":[]}"#);
-        let service = service_with_single_interaction(
-            request.clone(),
-            RecordedResponse::NonStream {
-                status: 201,
-                headers: vec![("x-replay".to_owned(), "yes".to_owned())],
-                body: b"recorded".to_vec(),
-                parsed_json: None,
-            },
-        )
-        .unwrap_or_else(|message| panic!("{message}"));
-
-        let response = service
-            .handle_chat_completions(request)
-            .expect("request should replay");
-
-        assert_eq!(response.status, 201);
-        assert_eq!(
-            response.headers,
-            vec![("x-replay".to_owned(), "yes".to_owned())]
-        );
-        assert_eq!(response.body, b"recorded");
-    }
-
-    #[rstest]
-    fn mismatched_request_returns_diagnostic() {
-        let recorded = sample_observed_request(br#"{"model":"test","messages":[]}"#);
-        let observed = sample_observed_request(br#"{"model":"other","messages":[]}"#);
-        let service = service_with_single_interaction(
-            recorded,
-            RecordedResponse::NonStream {
-                status: 200,
-                headers: vec![],
-                body: vec![],
-                parsed_json: None,
-            },
-        )
-        .unwrap_or_else(|message| panic!("{message}"));
-
-        let error = service
-            .handle_chat_completions(observed)
-            .expect_err("request should not match");
-
-        assert!(matches!(error, ReplayError::Mismatch(_)));
-    }
-
-    #[rstest]
-    fn stream_request_is_rejected_before_matching() {
-        let recorded = sample_observed_request(br#"{"model":"test","messages":[]}"#);
-        let service = service_with_single_interaction(
-            recorded,
-            RecordedResponse::NonStream {
-                status: 200,
-                headers: vec![],
-                body: vec![],
-                parsed_json: None,
-            },
-        )
-        .unwrap_or_else(|message| panic!("{message}"));
-        let streaming = sample_observed_request(br#"{"model":"test","stream":true,"messages":[]}"#);
-
-        let error = service
-            .handle_chat_completions(streaming)
-            .expect_err("streaming replay request should fail");
-
-        assert_eq!(error, ReplayError::UnsupportedStream);
-    }
-
-    #[rstest]
-    fn matched_stream_response_is_rejected() {
-        let request = sample_observed_request(br#"{"model":"test","messages":[]}"#);
-        let service = service_with_single_interaction(
-            request.clone(),
-            RecordedResponse::Stream {
-                status: 200,
-                headers: vec![],
-                events: vec![],
-                raw_transcript: b"data: {}\n\n".to_vec(),
-                timing: None,
-            },
-        )
-        .unwrap_or_else(|message| panic!("{message}"));
-
-        let error = service
-            .handle_chat_completions(request)
-            .expect_err("stream response should fail");
-
-        assert_eq!(error, ReplayError::UnsupportedStream);
-    }
-
-    #[rstest]
-    fn malformed_json_request_is_rejected_before_matching() {
-        let recorded = sample_observed_request(br#"{"model":"test","messages":[]}"#);
-        let service = service_with_single_interaction(
-            recorded,
-            RecordedResponse::NonStream {
-                status: 200,
-                headers: vec![],
-                body: b"would hide the malformed body".to_vec(),
-                parsed_json: None,
-            },
-        )
-        .unwrap_or_else(|message| panic!("{message}"));
-        let malformed = sample_observed_request(br#"{"model":"test""#);
-
-        let error = service
-            .handle_chat_completions(malformed)
-            .expect_err("malformed JSON replay request should fail before matching");
-
-        assert_eq!(error, ReplayError::MalformedJson);
-    }
-
-    #[rstest]
-    fn concurrent_sequential_replay_consumes_duplicate_hashes_once_each() {
-        let request = sample_observed_request(br#"{"model":"test","messages":[]}"#);
-        let cassette = cassette_with_duplicate_requests(request.clone(), 8)
-            .expect("requests should canonicalize");
-        let service = ReplayService::new(
-            ReplayMatchEngine::new(cassette, MatchMode::SequentialStrict)
-                .expect("cassette should build replay engine"),
-        );
-        let handles = (0..8)
-            .map(|_| {
-                let replay_service = service.clone();
-                let replay_request = request.clone();
-                std::thread::spawn(move || {
-                    replay_service
-                        .handle_chat_completions(replay_request)
-                        .expect("duplicate request should replay")
-                        .body
-                })
-            })
-            .collect::<Vec<_>>();
-
-        let mut bodies = handles
-            .into_iter()
-            .map(|handle| handle.join().expect("thread should not panic"))
-            .collect::<Vec<_>>();
-        bodies.sort();
-
-        assert_eq!(
-            bodies,
-            (0..8)
-                .map(|index| format!("response-{index}").into_bytes())
-                .collect::<Vec<_>>()
-        );
-    }
-
-    fn sample_observed_request(body: &[u8]) -> ObservedRequest {
-        ObservedRequest {
-            method: "POST".to_owned(),
-            path: CHAT_COMPLETIONS_PATH.to_owned(),
-            query: String::new(),
-            headers: vec![("content-type".to_owned(), "application/json".to_owned())],
-            forward_headers: vec![],
-            body: body.to_vec(),
-            parsed_json: serde_json::from_slice(body).ok(),
-        }
-    }
-
-    fn cassette_for_request(
-        request: ObservedRequest,
-        response: RecordedResponse,
-    ) -> Result<Cassette, crate::cassette::CanonicalError> {
-        let mut recorded = RecordedRequest {
-            method: request.method,
-            path: request.path,
-            query: request.query,
-            headers: request.headers,
-            body: request.body,
-            parsed_json: request.parsed_json,
-            canonical_request: None,
-            stable_hash: None,
-        };
-        recorded.populate_canonical_fields(&IgnorePathConfig::default())?;
-
-        Ok(Cassette {
-            format_version: CassetteFormatVersion::SUPPORTED,
-            interactions: vec![Interaction {
-                request: recorded,
-                response,
-                metadata: InteractionMetadata {
-                    protocol_id: "openai.chat_completions.v1".to_owned(),
-                    upstream_id: "test".to_owned(),
-                    recorded_at: "2026-05-08T00:00:00Z".to_owned(),
-                    relative_offset_ms: 0,
-                },
-            }],
-        })
-    }
-
-    fn service_with_single_interaction(
-        request: ObservedRequest,
-        response: RecordedResponse,
-    ) -> Result<ReplayService, &'static str> {
-        let cassette =
-            cassette_for_request(request, response).map_err(|_| "request should canonicalize")?;
-        let engine = ReplayMatchEngine::new(cassette, MatchMode::SequentialStrict)
-            .map_err(|_| "cassette should build replay engine")?;
-        Ok(ReplayService::new(engine))
-    }
-
-    fn cassette_with_duplicate_requests(
-        request: ObservedRequest,
-        count: usize,
-    ) -> Result<Cassette, crate::cassette::CanonicalError> {
-        let mut recorded = RecordedRequest {
-            method: request.method,
-            path: request.path,
-            query: request.query,
-            headers: request.headers,
-            body: request.body,
-            parsed_json: request.parsed_json,
-            canonical_request: None,
-            stable_hash: None,
-        };
-        recorded.populate_canonical_fields(&IgnorePathConfig::default())?;
-        let interactions = (0..count)
-            .map(|index| Interaction {
-                request: recorded.clone(),
-                response: RecordedResponse::NonStream {
-                    status: 200,
-                    headers: Vec::new(),
-                    body: format!("response-{index}").into_bytes(),
-                    parsed_json: None,
-                },
-                metadata: InteractionMetadata {
-                    protocol_id: "openai.chat_completions.v1".to_owned(),
-                    upstream_id: "test".to_owned(),
-                    recorded_at: "2026-05-08T00:00:00Z".to_owned(),
-                    relative_offset_ms: index as u64,
-                },
-            })
-            .collect();
-
-        Ok(Cassette {
-            format_version: CassetteFormatVersion::SUPPORTED,
-            interactions,
-        })
-    }
-}
+#[path = "replay_tests.rs"]
+mod tests;
