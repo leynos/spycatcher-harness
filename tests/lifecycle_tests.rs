@@ -213,7 +213,11 @@ fn unique_cassette_name(prefix: &str) -> String {
 
 fn seed_replay_cassette(cassette_name: &str) -> HarnessResult<Utf8PathBuf> {
     let cassette_path = Utf8PathBuf::from("target/test-harness").join(cassette_name);
-    write_cassette_bytes(&cassette_path, br#"{"format_version":1,"interactions":[]}"#)?;
+    let cassette_json = serde_json::json!({
+        "format_version": CassetteFormatVersion::SUPPORTED.as_u32(),
+        "interactions": [],
+    });
+    write_cassette_bytes(&cassette_path, cassette_json.to_string().as_bytes())?;
     Ok(cassette_path)
 }
 
