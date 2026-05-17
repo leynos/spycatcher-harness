@@ -51,6 +51,24 @@ pub struct MismatchDiagnostic {
     pub diff_summary: String,
 }
 
+impl MismatchDiagnostic {
+    /// Returns a bounded reason identifier suitable for logs and metrics.
+    #[must_use]
+    pub(crate) fn reason_code(&self) -> &'static str {
+        match self.position {
+            InteractionPosition::Expected(_) => "request_hash_mismatch",
+            InteractionPosition::Exhausted(_) => "cassette_exhausted",
+            InteractionPosition::KeyedMiss(_) => {
+                if self.diff_summary.starts_with(DIAGNOSTIC_CONSUMED) {
+                    "interaction_already_consumed"
+                } else {
+                    "no_matching_interaction"
+                }
+            }
+        }
+    }
+}
+
 /// Outcome of a replay match attempt.
 #[derive(Debug)]
 pub enum MatchOutcome<'a> {

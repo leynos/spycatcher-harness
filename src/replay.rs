@@ -98,22 +98,35 @@ impl ReplayService {
         observed_hash: &str,
         canonical_request: &serde_json::Value,
     ) -> Result<RecordedResponse, ReplayError> {
-        let mut guard = self.engine.lock().map_err(|error| {
-            error!(
-                target: "spycatcher.harness.replay",
-                "failed to lock replay match engine: {error:?}"
-            );
-            ReplayError::Internal
-        })?;
-        match guard.next_match(observed_hash, canonical_request) {
-            MatchOutcome::Matched {
+        let decision = {
+            let mut guard = self.engine.lock().map_err(|error| {
+                error!(
+                    target: "spycatcher.harness.replay",
+                    "failed to lock replay match engine: {error:?}"
+                );
+                ReplayError::Internal
+            })?;
+            match guard.next_match(observed_hash, canonical_request) {
+                MatchOutcome::Matched {
+                    interaction_id,
+                    interaction,
+                } => ReplayMatchDecision::Matched {
+                    interaction_id,
+                    response: interaction.response.clone(),
+                },
+                MatchOutcome::Mismatch(diagnostic) => ReplayMatchDecision::Mismatch(diagnostic),
+            }
+        };
+
+        match decision {
+            ReplayMatchDecision::Matched {
                 interaction_id,
-                interaction,
+                response,
             } => {
                 self.log_match(interaction_id, observed_hash);
-                Ok(interaction.response.clone())
+                Ok(response)
             }
-            MatchOutcome::Mismatch(diagnostic) => {
+            ReplayMatchDecision::Mismatch(diagnostic) => {
                 self.log_mismatch(&diagnostic);
                 Err(ReplayError::Mismatch(diagnostic))
             }
@@ -148,7 +161,7 @@ impl ReplayService {
             cassette = self.context.cassette,
             expected_hash = diagnostic.expected_hash,
             observed_hash = diagnostic.observed_hash,
-            reason = diagnostic.diff_summary,
+            reason = diagnostic.reason_code(),
         );
     }
 
@@ -179,6 +192,14 @@ impl ReplayService {
             }
         }
     }
+}
+
+enum ReplayMatchDecision {
+    Matched {
+        interaction_id: usize,
+        response: RecordedResponse,
+    },
+    Mismatch(MismatchDiagnostic),
 }
 
 fn canonicalize_observed_request(request: ObservedRequest) -> Result<RecordedRequest, ReplayError> {

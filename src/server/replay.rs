@@ -29,6 +29,7 @@ impl ReplayAppState {
     ) -> HarnessResult<Self> {
         let cassette = store.load()?;
         let interaction_count = cassette.interactions.len();
+        let engine = ReplayMatchEngine::new(cassette, cfg.match_mode)?;
         info!(
             target: "spycatcher.harness.replay",
             "cassette loaded mode=replay protocol={protocol} outcome=loaded \
@@ -36,7 +37,6 @@ impl ReplayAppState {
             protocol = CHAT_COMPLETIONS_PROTOCOL_ID,
             cassette_name = cfg.cassette_name,
         );
-        let engine = ReplayMatchEngine::new(cassette, cfg.match_mode)?;
         Ok(Self {
             service: ReplayService::with_context(
                 engine,
