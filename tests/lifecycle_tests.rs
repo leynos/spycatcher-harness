@@ -25,31 +25,12 @@ async fn start_harness_with_record_config_succeeds() {
 
 #[rstest]
 #[tokio::test]
-async fn start_harness_with_empty_cassette_name_fails() {
+#[case::empty("")]
+#[case::traversal("../escape")]
+#[case::absolute("/tmp/out")]
+async fn start_harness_with_invalid_cassette_name_fails(#[case] cassette_name: &str) {
     let cfg = HarnessConfig {
-        cassette_name: String::new(),
-        ..HarnessConfig::default()
-    };
-    let result = start_harness(cfg).await;
-    assert!(matches!(result, Err(HarnessError::InvalidConfig { .. })));
-}
-
-#[rstest]
-#[tokio::test]
-async fn start_harness_with_traversal_cassette_name_fails() {
-    let cfg = HarnessConfig {
-        cassette_name: "../escape".to_owned(),
-        ..HarnessConfig::default()
-    };
-    let result = start_harness(cfg).await;
-    assert!(matches!(result, Err(HarnessError::InvalidConfig { .. })));
-}
-
-#[rstest]
-#[tokio::test]
-async fn start_harness_with_absolute_cassette_name_fails() {
-    let cfg = HarnessConfig {
-        cassette_name: "/tmp/out".to_owned(),
+        cassette_name: cassette_name.to_owned(),
         ..HarnessConfig::default()
     };
     let result = start_harness(cfg).await;
