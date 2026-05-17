@@ -59,29 +59,6 @@ fn mismatched_request_returns_diagnostic() {
 }
 
 #[rstest]
-fn stream_request_is_rejected_before_matching() {
-    let recorded = sample_observed_request(br#"{"model":"test","messages":[]}"#);
-    let service = service_with_single_interaction(
-        recorded,
-        RecordedResponse::NonStream {
-            status: 200,
-            headers: vec![],
-            body: vec![],
-            parsed_json: None,
-        },
-    )
-    .unwrap_or_else(|message| panic!("{message}"));
-    let streaming = sample_observed_request(br#"{"model":"test","stream":true,"messages":[]}"#);
-
-    let error = service
-        .handle_chat_completions(streaming)
-        .expect_err("streaming replay request should fail");
-
-    assert_eq!(error, ReplayError::UnsupportedStream);
-    assert_eq!(service.counters(), (0, 0));
-}
-
-#[rstest]
 fn matched_stream_response_is_rejected() {
     let request = sample_observed_request(br#"{"model":"test","messages":[]}"#);
     let service = service_with_single_interaction(
@@ -105,49 +82,61 @@ fn matched_stream_response_is_rejected() {
 }
 
 #[rstest]
-fn malformed_json_request_is_rejected_before_matching() {
-    let recorded = sample_observed_request(br#"{"model":"test","messages":[]}"#);
+#[case(
+    PreMatchRejectionCase {
+        recorded_body: br#"{"model":"test","messages":[]}"#,
+        trigger_body: br#"{"model":"test","stream":true,"messages":[]}"#,
+        response_body: b"",
+        expected_error: ReplayError::UnsupportedStream,
+        expect_err_msg: "streaming replay request should fail",
+    }
+)]
+#[case(
+    PreMatchRejectionCase {
+        recorded_body: br#"{"model":"test","messages":[]}"#,
+        trigger_body: br#"{"model":"test""#,
+        response_body: b"would hide the malformed body",
+        expected_error: ReplayError::MalformedJson,
+        expect_err_msg: "malformed JSON replay request should fail before matching",
+    }
+)]
+#[case(
+    PreMatchRejectionCase {
+        recorded_body: br#"{"model":"recorded""#,
+        trigger_body: br#"{"model":"observed""#,
+        response_body: b"must not replay for a different malformed body",
+        expected_error: ReplayError::MalformedJson,
+        expect_err_msg: "malformed JSON must be rejected before cassette matching",
+    }
+)]
+fn request_is_rejected_before_matching(#[case] test_case: PreMatchRejectionCase) {
+    let recorded = sample_observed_request(test_case.recorded_body);
     let service = service_with_single_interaction(
         recorded,
         RecordedResponse::NonStream {
             status: 200,
             headers: vec![],
-            body: b"would hide the malformed body".to_vec(),
+            body: test_case.response_body.to_vec(),
             parsed_json: None,
         },
     )
     .unwrap_or_else(|message| panic!("{message}"));
-    let malformed = sample_observed_request(br#"{"model":"test""#);
+    let trigger = sample_observed_request(test_case.trigger_body);
 
     let error = service
-        .handle_chat_completions(malformed)
-        .expect_err("malformed JSON replay request should fail before matching");
+        .handle_chat_completions(trigger)
+        .expect_err(test_case.expect_err_msg);
 
-    assert_eq!(error, ReplayError::MalformedJson);
+    assert_eq!(error, test_case.expected_error);
     assert_eq!(service.counters(), (0, 0));
 }
 
-#[rstest]
-fn different_malformed_json_request_is_rejected_before_recorded_response_can_match() {
-    let recorded = sample_observed_request(br#"{"model":"recorded""#);
-    let service = service_with_single_interaction(
-        recorded,
-        RecordedResponse::NonStream {
-            status: 200,
-            headers: vec![],
-            body: b"must not replay for a different malformed body".to_vec(),
-            parsed_json: None,
-        },
-    )
-    .unwrap_or_else(|message| panic!("{message}"));
-    let observed = sample_observed_request(br#"{"model":"observed""#);
-
-    let error = service
-        .handle_chat_completions(observed)
-        .expect_err("malformed JSON must be rejected before cassette matching");
-
-    assert_eq!(error, ReplayError::MalformedJson);
-    assert_eq!(service.counters(), (0, 0));
+struct PreMatchRejectionCase {
+    recorded_body: &'static [u8],
+    trigger_body: &'static [u8],
+    response_body: &'static [u8],
+    expected_error: ReplayError,
+    expect_err_msg: &'static str,
 }
 
 #[rstest]
