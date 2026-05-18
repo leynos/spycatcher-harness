@@ -5,7 +5,7 @@ This ExecPlan (execution plan) is a living document. The sections
 `Decision Log`, and `Outcomes & Retrospective` must be kept up to date as work
 proceeds.
 
-Status: IN PROGRESS
+Status: COMPLETE
 
 ## Purpose / big picture
 
@@ -160,13 +160,18 @@ review, and commit gates are complete.
   nested env keys, startup loader ownership, and invalid language identifier
   behaviour.
 - [x] 2026-05-18: Ran documentation validation. Changed docs passed targeted
-  `markdownlint-cli2`; `make nixie` passed. `make fmt` still reports
-  pre-existing repository-wide Markdown line-length failures, so unrelated
-  formatter churn was reverted.
+  `markdownlint-cli2`; `make markdownlint` and `make nixie` passed.
+  `make fmt` still reports pre-existing repository-wide Markdown line-length
+  failures from the legacy `markdownlint --fix` tool, so unrelated formatter
+  churn was reverted.
 - [x] 2026-05-18: Ran CodeRabbit after Milestone 4; it reported zero
   findings.
-- [ ] Implement the plan milestone by milestone.
-- [ ] After implementation, mark roadmap item `1.4.2` done.
+- [x] 2026-05-18: Ran final gates. `make check-fmt`, `make lint`,
+  `make test`, `make markdownlint`, and `make nixie` passed.
+- [x] 2026-05-18: Marked roadmap item `1.4.2` and its success criteria done.
+- [x] 2026-05-18: Ran final CodeRabbit review; it reported zero findings.
+- [x] Implement the plan milestone by milestone.
+- [x] After implementation, mark roadmap item `1.4.2` done.
 
 ## Surprises & Discoveries
 
@@ -226,9 +231,22 @@ review, and commit gates are complete.
 
 ## Outcomes & Retrospective
 
-This section is intentionally empty while the plan is in draft. During
-implementation, update it after each milestone with what changed, what was
-validated, and whether the plan's tolerances were sufficient.
+Implemented the localization configuration layering for the binary
+application. `locale` and `fallback_locale` now load through the existing
+subcommand layering model: CLI flags override nested environment variables,
+environment variables override `[cmds.<subcommand>.localization]` config file
+values, and defaults provide `locale = None` with `fallback_locale = "en-US"`.
+
+Startup now constructs one binary-owned `FluentLanguageLoader` from
+`LocalizationConfig`, loads the embedded harness catalogue, and carries that
+loader through the startup boundary for future localized rendering. The
+library remains loader-injected and does not construct process-global
+localization state.
+
+Validation passed for code formatting, linting, full tests, Markdown linting,
+diagram validation, and CodeRabbit review. The only residual tooling caveat is
+that `make fmt` still reports unrelated pre-existing line-length errors from
+the legacy Markdown fixer, even though `make markdownlint` passes.
 
 ## Relevant documentation and skills
 

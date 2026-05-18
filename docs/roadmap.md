@@ -118,14 +118,14 @@ units with explicit dependencies and completion criteria.
     [Localization architecture](spycatcher-harness-design.md#localization-architecture),
     [Core traits and types](spycatcher-harness-design.md#core-traits-and-types).
 
-- [ ] 1.4.2. Add localization configuration layering for the binary application.
+- [x] 1.4.2. Add localization configuration layering for the binary application.
   - Depends on: 1.1.2.
   - Success criteria:
-    - [ ] `locale` and `fallback_locale` are loadable through
+    - [x] `locale` and `fallback_locale` are loadable through
           `CLI > env > config files > defaults`.
-    - [ ] Startup locale negotiation is deterministic and tested for fallback
+    - [x] Startup locale negotiation is deterministic and tested for fallback
           behaviour.
-    - [ ] One authoritative language loader is created at startup and reused.
+    - [x] One authoritative language loader is created at startup and reused.
   - Design references:
     [Localization architecture](spycatcher-harness-design.md#localization-architecture),
     [Configuration via OrthoConfig](spycatcher-harness-design.md#configuration-via-orthoconfig).
