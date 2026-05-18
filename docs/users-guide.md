@@ -112,7 +112,9 @@ Successful rendering preserves Fluent's bidirectional isolation marks around
 dynamic values. If the supplied loader has not loaded the library resources,
 rendering falls back to the existing non-localized `HarnessError` display text.
 CLI locale selection and localized `clap` help remain separate
-application-level responsibilities.
+application-level responsibilities. The `spycatcher-harness` binary builds one
+language loader at startup from its layered localization configuration and uses
+the embedded English catalogue as the default fallback.
 
 #### Security considerations
 
@@ -121,8 +123,8 @@ Fluent Translation List syntax, so user-supplied strings cannot escape the
 template or invoke arbitrary selectors.
 
 `HarnessError::Io` includes the underlying [`std::io::Error`] text, which may
-carry sensitive path information. Callers should treat that text accordingly and
-avoid surfacing it in user-visible output without sanitization.
+carry sensitive path information. Callers should treat that text accordingly
+and avoid surfacing it in user-visible output without sanitization.
 
 Replay startup expectations:
 
@@ -353,9 +355,16 @@ The current subcommands support the same top-level override flags:
 - `--listen <SOCKET_ADDR>`
 - `--cassette-dir <PATH>`
 - `--cassette-name <NAME>`
+- `--locale <LANGID>`
+- `--fallback-locale <LANGID>`
 
 `record` additionally supports nested upstream config through file and env
 layering under `cmds.record.upstream`.
+
+`--locale` selects the preferred BCP 47 language identifier for localized
+application messages. `--fallback-locale` selects the deterministic fallback
+locale and defaults to `en-US`. Invalid language identifiers fail startup
+before the harness begins serving.
 
 ### Configuration file shape
 
@@ -373,6 +382,10 @@ api_key_env = "OPENROUTER_API_KEY"
 [cmds.replay]
 cassette_name = "replay_smoke"
 
+[cmds.replay.localization]
+locale = "en-GB"
+fallback_locale = "en-US"
+
 [cmds.verify]
 cassette_name = "verify_smoke"
 ```
@@ -386,7 +399,12 @@ Examples:
 ```sh
 SPYCATCHER_HARNESS_CMDS_REPLAY_CASSETTE_NAME=env_replay
 SPYCATCHER_HARNESS_CMDS_RECORD_UPSTREAM__BASE_URL=https://example.invalid/api
+SPYCATCHER_HARNESS_CMDS_REPLAY_LOCALIZATION__LOCALE=en-GB
+SPYCATCHER_HARNESS_CMDS_REPLAY_LOCALIZATION__FALLBACK_LOCALE=en-US
 ```
+
+Nested environment keys use a double underscore between path segments. For
+example, `LOCALIZATION__LOCALE` maps to `cmds.<subcommand>.localization.locale`.
 
 Nested keys use double underscores (`__`).
 

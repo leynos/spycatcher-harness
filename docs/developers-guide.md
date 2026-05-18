@@ -55,8 +55,8 @@ record-mode task spawning, and the concurrent record-mode tests.
 The `tracing` dependency is used at the HTTP adapter boundary for structured
 record-mode request events. `record_chat_completions_handler` calls
 `log_chat_request`, which records the HTTP method and `uri.path()` only. Query
-strings are intentionally excluded, so credentials passed in query parameters do
-not enter request logs.
+strings are intentionally excluded, so credentials passed in query parameters
+do not enter request logs.
 
 ## Dev-dependencies
 
@@ -193,7 +193,12 @@ The `cassette` module contains several submodules:
 _Table 2: Cassette submodules._
 
 The binary crate (`src/bin/spycatcher_harness.rs`) delegates all behaviour to
-the library entry points.
+the library entry points. It owns application startup localization: after
+layered CLI configuration is loaded, the binary parses the requested `locale`,
+parses `fallback_locale`, constructs one `FluentLanguageLoader`, and loads
+`HarnessLocalizations` into it. Library modules must continue to accept
+injected loaders for localized rendering rather than constructing their own
+loaders or reading process locale state.
 
 ## Internal abstractions
 
@@ -238,8 +243,8 @@ pub(crate) const UPSTREAM_TIMEOUT: Duration = Duration::from_secs(30);
 `ReqwestUpstreamClient::new()` applies that constant via
 `reqwest::Client::builder().timeout(UPSTREAM_TIMEOUT)`. It bounds non-stream
 chat completion requests sent to the adapter's chat/completions endpoint, which
-is built from `config.base_url` plus `chat/completions`, so stalled upstreams do
-not block graceful shutdown indefinitely.
+is built from `config.base_url` plus `chat/completions`, so stalled upstreams
+do not block graceful shutdown indefinitely.
 
 ### Record metadata plumbing (`src/server/record_metadata.rs`)
 
@@ -285,12 +290,11 @@ round-trip.
   query parameters are preserved, and inbound query parameters are appended.
 
 `ObservedRequest` ([`src/http_exchange.rs`](../src/http_exchange.rs))
-represents what the inbound adapter observed. Its `forward_headers:
-Vec<(String, Vec<u8>)>` field holds inbound headers selected for forwarding in
-a binary-safe form.
+represents what the inbound adapter observed. Its
+`forward_headers: Vec<(String, Vec<u8>)>` field holds inbound headers selected
+for forwarding in a binary-safe form.
 
-`ObservedResponse` ([`src/http_exchange.rs`](../src/http_exchange.rs))
-carries:
+`ObservedResponse` ([`src/http_exchange.rs`](../src/http_exchange.rs)) carries:
 
 - `proxy_headers: Vec<(String, Vec<u8>)>`, raw header bytes forwarded
   downstream

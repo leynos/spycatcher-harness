@@ -135,8 +135,8 @@ review, and commit gates are complete.
 - [x] 2026-05-18: Ran CodeRabbit after Milestone 1; it reported zero
   findings.
 - [x] 2026-05-18: Implemented CLI adapter support for `--locale`,
-  `--fallback-locale`, `[cmds.<subcommand>.localization]`, nested env keys,
-  and language identifier validation at the adapter boundary.
+  `--fallback-locale`, `[cmds.<subcommand>.localization]`, nested env keys, and
+  language identifier validation at the adapter boundary.
 - [x] 2026-05-18: Re-ran targeted CLI layering tests. `cli_layering_unit`
   passed 15 tests and `harness_cli_layering_bdd` passed 7 scenarios.
 - [x] 2026-05-18: Ran CodeRabbit after Milestone 2; it reported zero
@@ -146,8 +146,8 @@ review, and commit gates are complete.
 - [x] 2026-05-18: Implemented binary startup localization planning and
   one-time `FluentLanguageLoader` construction from `LocalizationConfig`.
 - [x] 2026-05-18: Added `rstest` coverage in the binary for fallback-only
-  planning, requested-locale ordering, invalid explicit locale failure,
-  invalid fallback failure, and fallback to the embedded English catalogue.
+  planning, requested-locale ordering, invalid explicit locale failure, invalid
+  fallback failure, and fallback to the embedded English catalogue.
 - [x] 2026-05-18: Ran targeted startup loader tests. `cargo test --bin
   spycatcher-harness` passed 5 tests and `cargo test --test
   cli_layering_unit` passed 15 tests.
@@ -155,6 +155,16 @@ review, and commit gates are complete.
   findings.
 - [x] 2026-05-18: Gated the startup loader milestone with `make check-fmt`,
   `make lint`, and `make test`; all passed.
+- [x] 2026-05-18: Updated user, developer, and design documentation with the
+  implemented subcommand-local localization config shape, double-underscore
+  nested env keys, startup loader ownership, and invalid language identifier
+  behaviour.
+- [x] 2026-05-18: Ran documentation validation. Changed docs passed targeted
+  `markdownlint-cli2`; `make nixie` passed. `make fmt` still reports
+  pre-existing repository-wide Markdown line-length failures, so unrelated
+  formatter churn was reverted.
+- [x] 2026-05-18: Ran CodeRabbit after Milestone 4; it reported zero
+  findings.
 - [ ] Implement the plan milestone by milestone.
 - [ ] After implementation, mark roadmap item `1.4.2` done.
 
@@ -210,9 +220,9 @@ review, and commit gates are complete.
 - Decision: use OrthoConfig's existing double-underscore nested environment
   key convention for localization fields. Rationale: attempting to alias
   `LOCALIZATION_LOCALE` onto the top-level CLI field caused duplicate-field
-  merge errors when CLI and env both set `fallback_locale`; the existing
-  nested convention is already documented by the CLI help for `upstream`
-  fields. Date/Author: 2026-05-18 / agent.
+  merge errors when CLI and env both set `fallback_locale`; the existing nested
+  convention is already documented by the CLI help for `upstream` fields.
+  Date/Author: 2026-05-18 / agent.
 
 ## Outcomes & Retrospective
 

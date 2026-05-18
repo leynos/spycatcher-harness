@@ -503,6 +503,8 @@ Application responsibilities:
   locale context.
 - Inject the configured loader into any library helper that renders localized
   text.
+- Load `locale` and `fallback_locale` through the same OrthoConfig layering as
+  other subcommand-local binary settings.
 
 CLI localization responsibilities:
 
@@ -818,10 +820,11 @@ Subcommands map directly to vertical-slice deliverables:
 
 Global CLI localization behaviour:
 
-- `--locale <LANGID>` allows explicit locale override for command help, error
-  messages, and localized diagnostics.
-- Without `--locale`, the binary resolves locale through OrthoConfig layering
-  (env and config files), then applies `fallback_locale`.
+- `--locale <LANGID>` allows explicit locale override for application messages
+  and localized diagnostics.
+- `--fallback-locale <LANGID>` controls the deterministic fallback locale and
+  defaults to `en-US`.
+- Without `--locale`, the binary uses `fallback_locale`.
 - `clap` parsing errors should be routed through
   `localize_clap_error_with_command(..)` before rendering to users.
 
@@ -855,31 +858,20 @@ In replay configuration, `ttft_ms` is the time-to-first-token (TTFT) delay in
 milliseconds, and `tps` is tokens per second (TPS). In upstream configuration,
 `extra_headers` is a map of HTTP header names to header values. This uses TOML
 table syntax so it deserializes directly into `BTreeMap<String, String>` in
-`UpstreamConfig`. For localization, `locale` can be set from CLI flags,
+`UpstreamConfig`. For localization, `locale` can be set from CLI flags, nested
 environment variables, or configuration files using OrthoConfig precedence, and
-`fallback_locale` provides a deterministic default when locale negotiation
-fails.
+`fallback_locale` provides a deterministic default when no explicit locale is
+configured.
 
 ```toml
+[cmds.replay]
 listen = "127.0.0.1:8787"
-mode = "replay"
-protocol = "openai_chat_completions"
-match_mode = "sequential_strict"
-
 cassette_dir = "fixtures/llm"
 cassette_name = "podbot_smoke_001"
 
-[localization]
+[cmds.replay.localization]
 locale = "en-GB"
 fallback_locale = "en-US"
-
-[redaction]
-drop_headers = ["authorization", "x-api-key"]
-
-[replay]
-simulate_timing = true
-ttft_ms = 20
-tps = 200
 
 [cmds.record.upstream]
 kind = "openrouter"
@@ -892,6 +884,10 @@ api_key_env = "OPENROUTER_API_KEY"
 "HTTP-Referer" = "https://example.invalid"
 "X-Title" = "CI Regression Harness"
 ```
+
+The corresponding nested environment keys use a double underscore between path
+segments, for example `SPYCATCHER_HARNESS_CMDS_REPLAY_LOCALIZATION__LOCALE` and
+`SPYCATCHER_HARNESS_CMDS_REPLAY_LOCALIZATION__FALLBACK_LOCALE`.
 
 ## Testing, observability, and rollout roadmap
 
