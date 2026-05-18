@@ -143,6 +143,18 @@ review, and commit gates are complete.
   findings.
 - [x] 2026-05-18: Gated the CLI adapter milestone with `make check-fmt`,
   `make lint`, and `make test`; all passed.
+- [x] 2026-05-18: Implemented binary startup localization planning and
+  one-time `FluentLanguageLoader` construction from `LocalizationConfig`.
+- [x] 2026-05-18: Added `rstest` coverage in the binary for fallback-only
+  planning, requested-locale ordering, invalid explicit locale failure,
+  invalid fallback failure, and fallback to the embedded English catalogue.
+- [x] 2026-05-18: Ran targeted startup loader tests. `cargo test --bin
+  spycatcher-harness` passed 5 tests and `cargo test --test
+  cli_layering_unit` passed 15 tests.
+- [x] 2026-05-18: Ran CodeRabbit after Milestone 3; it reported zero
+  findings.
+- [x] 2026-05-18: Gated the startup loader milestone with `make check-fmt`,
+  `make lint`, and `make test`; all passed.
 - [ ] Implement the plan milestone by milestone.
 - [ ] After implementation, mark roadmap item `1.4.2` done.
 
@@ -172,6 +184,10 @@ review, and commit gates are complete.
   path segments. The supported env keys are therefore
   `SPYCATCHER_HARNESS_CMDS_<SUBCOMMAND>_LOCALIZATION__LOCALE` and
   `SPYCATCHER_HARNESS_CMDS_<SUBCOMMAND>_LOCALIZATION__FALLBACK_LOCALE`.
+- The binary can construct and hold one authoritative language loader today
+  even though most localized boundary rendering belongs to roadmap item
+  `1.4.3`. Passing the loader into `run_harness` makes that ownership visible
+  without introducing process-global state.
 
 ## Decision Log
 
