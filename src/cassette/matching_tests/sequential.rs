@@ -69,7 +69,7 @@ fn sequential_strict_second_request_wrong_hash_returns_mismatch(
 
     // First request matches.
     let outcome_first = engine.next_match("hash_a", &canonical_a());
-    assert!(matches!(outcome_first, MatchOutcome::Matched(_)));
+    assert!(matches!(outcome_first, MatchOutcome::Matched { .. }));
 
     // Second request has wrong hash.
     let canonical_wrong = json!({"method": "GET", "path": "/wrong"});

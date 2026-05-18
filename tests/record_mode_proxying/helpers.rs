@@ -19,6 +19,7 @@ use spycatcher_harness::cassette::Cassette;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ClientResponse {
     pub(crate) status: u16,
+    pub(crate) headers: Vec<(String, String)>,
     pub(crate) body: Vec<u8>,
 }
 
@@ -161,10 +162,21 @@ pub(crate) fn send_request(
         }
         let response = request.body(body.to_vec()).send().await?;
         let status = response.status().as_u16();
+        let headers = response
+            .headers()
+            .iter()
+            .filter_map(|(name, value)| {
+                value
+                    .to_str()
+                    .ok()
+                    .map(|header_value| (name.as_str().to_owned(), header_value.to_owned()))
+            })
+            .collect();
         let response_body = response.bytes().await?.to_vec();
 
         Ok(ClientResponse {
             status,
+            headers,
             body: response_body,
         })
     })

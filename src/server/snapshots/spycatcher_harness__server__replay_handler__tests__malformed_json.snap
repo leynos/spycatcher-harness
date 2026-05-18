@@ -1,0 +1,14 @@
+---
+source: src/server/replay_handler.rs
+expression: value
+---
+{
+  "case": "malformed_json",
+  "status": 400,
+  "body": {
+    "error": {
+      "kind": "malformed_json",
+      "message": "chat completions replay requires a valid JSON request body"
+    }
+  }
+}

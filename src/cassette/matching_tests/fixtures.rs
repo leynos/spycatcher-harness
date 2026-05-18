@@ -180,7 +180,7 @@ pub(super) fn nth_response(cassette: &Cassette, n: usize) -> RecordedResponse {
 #[track_caller]
 pub(super) fn expect_matched(outcome: MatchOutcome<'_>) -> Interaction {
     match outcome {
-        MatchOutcome::Matched(i) => i.clone(),
+        MatchOutcome::Matched { interaction, .. } => interaction.clone(),
         other @ MatchOutcome::Mismatch(_) => {
             panic!("expected MatchOutcome::Matched, got {other:?}")
         }
@@ -198,7 +198,7 @@ pub(super) fn assert_matched(outcome: MatchOutcome<'_>) {
 pub(super) fn expect_mismatch(outcome: MatchOutcome<'_>) -> MismatchDiagnostic {
     match outcome {
         MatchOutcome::Mismatch(d) => d,
-        other @ MatchOutcome::Matched(_) => {
+        other @ MatchOutcome::Matched { .. } => {
             panic!("expected MatchOutcome::Mismatch, got {other:?}")
         }
     }

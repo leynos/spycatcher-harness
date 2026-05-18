@@ -169,7 +169,7 @@ fn a_request_arrives_with_a_hash_that_does_not_match_the_next_interaction(
             matching_world.mismatch_count.set(1);
             Ok(())
         }
-        other @ MatchOutcome::Matched(_) => {
+        other @ MatchOutcome::Matched { .. } => {
             Err(format!("expected MatchOutcome::Mismatch for wrong hash, got: {other:?}").into())
         }
     };
@@ -229,7 +229,7 @@ fn the_first_request_matches_and_consumes_the_interaction(
         .ok_or("engine must be set before matching")?;
 
     let outcome = engine.next_match("hash_single", &json!({"method": "POST"}));
-    let matched = matches!(outcome, MatchOutcome::Matched(_));
+    let matched = matches!(outcome, MatchOutcome::Matched { .. });
 
     matching_world.engine.set(engine);
 
@@ -260,7 +260,7 @@ fn a_second_request_arrives(
             matching_world.mismatch_count.set(1);
             Ok(())
         }
-        other @ MatchOutcome::Matched(_) => Err(format!(
+        other @ MatchOutcome::Matched { .. } => Err(format!(
             "expected MatchOutcome::Mismatch for exhausted cassette, got: {other:?}"
         )
         .into()),

@@ -182,6 +182,26 @@ Persisted response contract:
   valid JSON; otherwise `parsed_json` is left empty so consumers know what
   replay can reconstruct.
 
+Replay behaviour for non-stream chat completions:
+
+- Replay mode accepts `POST /v1/chat/completions` against an existing
+  cassette.
+- A matching request returns the recorded status, persisted selected response
+  headers, and body bytes from the cassette.
+- Replay mode does not require upstream configuration or an upstream API key,
+  and it constructs no outbound upstream client. If `upstream` is present in a
+  replay configuration, it is ignored by the replay request path.
+- Mismatched requests return HTTP `409 Conflict` with a JSON
+  `request_mismatch` diagnostic containing the position, expected hash,
+  observed hash, and diff summary.
+- Replay rejects malformed or non-JSON chat completions request bodies with
+  HTTP `400 Bad Request` and a JSON `malformed_json` error before matching.
+  This prevents different malformed byte sequences from sharing the same
+  body-less replay hash.
+- Requests with `stream: true`, and matched stream interactions in manually
+  authored cassettes, return HTTP `501 Not Implemented` until streaming replay
+  lands in a later roadmap task.
+
 ### Replay matching modes
 
 The harness supports two matching modes for replay:

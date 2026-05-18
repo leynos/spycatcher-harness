@@ -1,0 +1,14 @@
+---
+source: src/server/replay_handler.rs
+expression: value
+---
+{
+  "case": "unsupported_stream",
+  "status": 501,
+  "body": {
+    "error": {
+      "kind": "unsupported_stream",
+      "message": "streaming chat completions replay is not implemented yet"
+    }
+  }
+}

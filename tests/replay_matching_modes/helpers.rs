@@ -33,7 +33,7 @@ pub(super) fn run_requests(
     let mut matched_count = 0;
     for (hash, canonical) in requests {
         let outcome = engine.next_match(hash, canonical);
-        if matches!(outcome, MatchOutcome::Matched(_)) {
+        if matches!(outcome, MatchOutcome::Matched { .. }) {
             matched_count += 1;
         }
         if let Some(id) = extract_response_id(&outcome) {
@@ -49,7 +49,7 @@ pub(super) fn run_requests(
 
 /// Extracts response ID from a match outcome if it's a `NonStream` response.
 pub(super) fn extract_response_id(outcome: &MatchOutcome<'_>) -> Option<String> {
-    if let MatchOutcome::Matched(interaction) = outcome
+    if let MatchOutcome::Matched { interaction, .. } = outcome
         && let RecordedResponse::NonStream { parsed_json, .. } = &interaction.response
     {
         return parsed_json

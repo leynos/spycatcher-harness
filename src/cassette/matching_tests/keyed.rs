@@ -20,15 +20,15 @@ fn keyed_mode_three_correct_requests_in_order_match(sample_cassette: Cassette) {
 
     let canonical_a = json!({"method": "POST", "path": "/v1/chat/completions"});
     let outcome_a = engine.next_match("hash_a", &canonical_a);
-    assert!(matches!(outcome_a, MatchOutcome::Matched(_)));
+    assert!(matches!(outcome_a, MatchOutcome::Matched { .. }));
 
     let canonical_b = json!({"method": "POST", "path": "/v1/chat/completions", "body": {"messages": [{"role": "user"}]}});
     let outcome_b = engine.next_match("hash_b", &canonical_b);
-    assert!(matches!(outcome_b, MatchOutcome::Matched(_)));
+    assert!(matches!(outcome_b, MatchOutcome::Matched { .. }));
 
     let canonical_c = json!({"method": "GET", "path": "/v1/models"});
     let outcome_c = engine.next_match("hash_c", &canonical_c);
-    assert!(matches!(outcome_c, MatchOutcome::Matched(_)));
+    assert!(matches!(outcome_c, MatchOutcome::Matched { .. }));
 }
 
 #[rstest]
