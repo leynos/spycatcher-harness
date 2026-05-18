@@ -24,3 +24,23 @@ Feature: Harness CLI layered configuration
     And environment sets replay listen to invalid value not-an-address
     When the layered command configuration is loaded
     Then command configuration loading fails with error containing address
+
+  Scenario: Replay locale precedence favours CLI over env and file
+    Given a replay command with locale en-CA
+    And config file sets replay locale to en-GB
+    And environment sets replay locale to en-AU
+    When the layered command configuration is loaded
+    Then replay locale is en-CA
+
+  Scenario: Fallback locale is used when no explicit locale is configured
+    Given a replay command with no CLI overrides
+    And config file sets replay fallback locale to en-GB
+    When the layered command configuration is loaded
+    Then replay locale is unset
+    And fallback locale is en-GB
+
+  Scenario: Invalid locale configuration fails loading
+    Given a replay command with no CLI overrides
+    And environment sets replay locale to not_a_locale
+    When the layered command configuration is loaded
+    Then command configuration loading fails with error containing not_a_locale

@@ -5,7 +5,7 @@ This ExecPlan (execution plan) is a living document. The sections
 `Decision Log`, and `Outcomes & Retrospective` must be kept up to date as work
 proceeds.
 
-Status: DRAFT
+Status: IN PROGRESS
 
 ## Purpose / big picture
 
@@ -122,8 +122,28 @@ review, and commit gates are complete.
 - [x] 2026-05-18: Used Firecrawl to check current Rust/Fluent prior art for
   BCP 47 language identifiers, Fluent fallback bundles, and locale negotiation.
 - [x] 2026-05-18: Drafted this ExecPlan.
-- [ ] Open a draft PR for approval.
-- [ ] After approval, implement the plan milestone by milestone.
+- [x] 2026-05-18: Opened draft PR #43 for approval.
+- [x] 2026-05-18: Received approval to proceed with implementation.
+- [x] 2026-05-18: Added red `rstest` unit coverage for localization
+  defaults, config/env/CLI precedence, all subcommands, and invalid locale
+  input.
+- [x] 2026-05-18: Added red `rstest-bdd` scenarios for replay locale
+  precedence, fallback locale behaviour, and invalid locale configuration.
+- [x] 2026-05-18: Ran targeted red tests. `cli_layering_unit` failed because
+  localization fields are not merged and `--locale` is not recognized;
+  `harness_cli_layering_bdd` failed on the missing `--locale` flag path.
+- [x] 2026-05-18: Ran CodeRabbit after Milestone 1; it reported zero
+  findings.
+- [x] 2026-05-18: Implemented CLI adapter support for `--locale`,
+  `--fallback-locale`, `[cmds.<subcommand>.localization]`, nested env keys,
+  and language identifier validation at the adapter boundary.
+- [x] 2026-05-18: Re-ran targeted CLI layering tests. `cli_layering_unit`
+  passed 15 tests and `harness_cli_layering_bdd` passed 7 scenarios.
+- [x] 2026-05-18: Ran CodeRabbit after Milestone 2; it reported zero
+  findings.
+- [x] 2026-05-18: Gated the CLI adapter milestone with `make check-fmt`,
+  `make lint`, and `make test`; all passed.
+- [ ] Implement the plan milestone by milestone.
 - [ ] After implementation, mark roadmap item `1.4.2` done.
 
 ## Surprises & Discoveries
@@ -144,6 +164,14 @@ review, and commit gates are complete.
 - Firecrawl found Rust prior art around `unic-langid`, `fluent-locale`, and
   `fluent-fallback`. The repository already depends on the Fluent stack used by
   `i18n-embed`, so this plan does not assume a new negotiation dependency.
+- The BDD feature file is not automatically treated as a Cargo recompilation
+  input by the test binary. If only the `.feature` file changes, touch or edit
+  `tests/harness_cli_layering_bdd.rs` before rerunning targeted BDD tests so
+  generated scenarios reflect the current feature text.
+- OrthoConfig's nested environment protocol uses a double underscore between
+  path segments. The supported env keys are therefore
+  `SPYCATCHER_HARNESS_CMDS_<SUBCOMMAND>_LOCALIZATION__LOCALE` and
+  `SPYCATCHER_HARNESS_CMDS_<SUBCOMMAND>_LOCALIZATION__FALLBACK_LOCALE`.
 
 ## Decision Log
 
@@ -163,6 +191,12 @@ review, and commit gates are complete.
   implementation. Rationale: locale negotiation is policy, and ambiguous
   fallback behaviour is the highest-risk part of this task. Date/Author:
   2026-05-18 / agent.
+- Decision: use OrthoConfig's existing double-underscore nested environment
+  key convention for localization fields. Rationale: attempting to alias
+  `LOCALIZATION_LOCALE` onto the top-level CLI field caused duplicate-field
+  merge errors when CLI and env both set `fallback_locale`; the existing
+  nested convention is already documented by the CLI help for `upstream`
+  fields. Date/Author: 2026-05-18 / agent.
 
 ## Outcomes & Retrospective
 
@@ -255,8 +289,8 @@ The desired environment variables follow the existing prefix and subcommand
 path:
 
 ```plaintext
-SPYCATCHER_HARNESS_CMDS_REPLAY_LOCALIZATION_LOCALE=en-GB
-SPYCATCHER_HARNESS_CMDS_REPLAY_LOCALIZATION_FALLBACK_LOCALE=en-US
+SPYCATCHER_HARNESS_CMDS_REPLAY_LOCALIZATION__LOCALE=en-GB
+SPYCATCHER_HARNESS_CMDS_REPLAY_LOCALIZATION__FALLBACK_LOCALE=en-US
 ```
 
 If OrthoConfig also supports top-level global localization without a separate

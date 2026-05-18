@@ -5,11 +5,10 @@
 //! apply precedence `CLI > env > config files > defaults` within each
 //! subcommand namespace (`cmds.record`, `cmds.replay`, `cmds.verify`).
 
-use std::collections::BTreeMap;
-
 use camino::Utf8PathBuf;
 use clap::error::ErrorKind;
 use clap::{CommandFactory, Parser, Subcommand};
+use i18n_embed::unic_langid::LanguageIdentifier;
 use ortho_config::load_and_merge_subcommand;
 use ortho_config::subcommand::Prefix;
 use serde::{Deserialize, Serialize};
@@ -17,20 +16,13 @@ use thiserror::Error;
 
 use crate::{HarnessConfig, config};
 
-const CLI_MERGE_HELP: &str = concat!(
-    "Configuration precedence: CLI > env > config files > defaults.\n",
-    "Subcommand defaults merge from the `cmds` namespace.\n\n",
-    "Example:\n",
-    "  [cmds.record]\n",
-    "  cassette_name = \"session_a\"\n\n",
-    "  [cmds.record.upstream]\n",
-    "  kind = \"openrouter\"\n",
-    "  base_url = \"https://openrouter.ai/api/v1\"\n",
-    "  api_key_env = \"OPENROUTER_API_KEY\"\n\n",
-    "Environment prefix: SPYCATCHER_HARNESS_CMDS_<SUBCOMMAND>_...\n",
-    "Nested keys use double underscores, e.g.\n",
-    "SPYCATCHER_HARNESS_CMDS_RECORD_UPSTREAM__BASE_URL."
-);
+#[path = "cli_args.rs"]
+mod cli_args;
+#[path = "cli_help.rs"]
+mod cli_help;
+
+use cli_args::{LocalizationArgs, RecordUpstreamArgs};
+use cli_help::CLI_MERGE_HELP;
 
 /// Errors returned while loading merged command configuration.
 #[derive(Debug, Error)]
@@ -45,6 +37,17 @@ pub enum CliConfigError {
         subcommand: &'static str,
         /// Merge failure message.
         message: String,
+    },
+    /// A merged localization field did not contain a valid language
+    /// identifier.
+    #[error("invalid localization field `{field}` value `{value}`: {source}")]
+    InvalidLocale {
+        /// Field containing the invalid value.
+        field: &'static str,
+        /// Invalid language identifier text.
+        value: String,
+        /// Parser failure from `unic-langid`.
+        source: i18n_embed::unic_langid::LanguageIdentifierError,
     },
     /// Help/version output was requested and should be printed before a clean
     /// process exit.
@@ -175,17 +178,17 @@ fn load_command_config(
 
 fn load_record_config(prefix: &Prefix, args: &RecordArgs) -> Result<HarnessConfig, CliConfigError> {
     let merged_args: RecordArgs = merge_subcommand_config(prefix, args, "record")?;
-    Ok(to_record_config(&merged_args))
+    to_record_config(&merged_args)
 }
 
 fn load_replay_config(prefix: &Prefix, args: &ReplayArgs) -> Result<HarnessConfig, CliConfigError> {
     let merged_args: ReplayArgs = merge_subcommand_config(prefix, args, "replay")?;
-    Ok(to_replay_config(&merged_args))
+    to_replay_config(&merged_args)
 }
 
 fn load_verify_config(prefix: &Prefix, args: &VerifyArgs) -> Result<HarnessConfig, CliConfigError> {
     let merged_args: VerifyArgs = merge_subcommand_config(prefix, args, "verify")?;
-    Ok(to_verify_config(&merged_args))
+    to_verify_config(&merged_args)
 }
 
 #[derive(Debug, Clone, Parser, Serialize, Deserialize, Default, PartialEq)]
@@ -200,6 +203,15 @@ struct RecordArgs {
     /// Cassette name for this subcommand invocation.
     #[arg(long)]
     cassette_name: Option<String>,
+    /// Locale for localized application messages.
+    #[arg(long)]
+    locale: Option<String>,
+    /// Fallback locale for localized application messages.
+    #[arg(long)]
+    fallback_locale: Option<String>,
+    #[serde(default)]
+    #[arg(skip)]
+    localization: LocalizationArgs,
     #[serde(default)]
     #[arg(skip)]
     upstream: Option<RecordUpstreamArgs>,
@@ -217,6 +229,15 @@ struct ReplayArgs {
     /// Cassette name for this subcommand invocation.
     #[arg(long)]
     cassette_name: Option<String>,
+    /// Locale for localized application messages.
+    #[arg(long)]
+    locale: Option<String>,
+    /// Fallback locale for localized application messages.
+    #[arg(long)]
+    fallback_locale: Option<String>,
+    #[serde(default)]
+    #[arg(skip)]
+    localization: LocalizationArgs,
 }
 
 #[derive(Debug, Clone, Parser, Serialize, Deserialize, Default, PartialEq)]
@@ -231,34 +252,15 @@ struct VerifyArgs {
     /// Cassette name for this subcommand invocation.
     #[arg(long)]
     cassette_name: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
-struct RecordUpstreamArgs {
+    /// Locale for localized application messages.
+    #[arg(long)]
+    locale: Option<String>,
+    /// Fallback locale for localized application messages.
+    #[arg(long)]
+    fallback_locale: Option<String>,
     #[serde(default)]
-    kind: RecordUpstreamKind,
-    #[serde(default = "default_record_base_url")]
-    base_url: String,
-    #[serde(default = "default_record_api_key_env")]
-    api_key_env: String,
-    #[serde(default)]
-    extra_headers: BTreeMap<String, String>,
-}
-
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq)]
-#[serde(rename_all = "snake_case")]
-enum RecordUpstreamKind {
-    #[serde(alias = "openrouter")]
-    #[default]
-    OpenRouter,
-}
-
-fn default_record_base_url() -> String {
-    String::from("https://openrouter.ai/api/v1")
-}
-
-fn default_record_api_key_env() -> String {
-    String::from("OPENROUTER_API_KEY")
+    #[arg(skip)]
+    localization: LocalizationArgs,
 }
 
 /// Common field overrides shared by every subcommand.
@@ -267,6 +269,8 @@ struct CommonOverrides<'a> {
     listen: Option<std::net::SocketAddr>,
     cassette_dir: Option<&'a str>,
     cassette_name: Option<&'a str>,
+    locale: Option<&'a str>,
+    fallback_locale: Option<&'a str>,
 }
 
 impl<'a> From<&'a RecordArgs> for CommonOverrides<'a> {
@@ -275,6 +279,14 @@ impl<'a> From<&'a RecordArgs> for CommonOverrides<'a> {
             listen: args.listen,
             cassette_dir: args.cassette_dir.as_deref(),
             cassette_name: args.cassette_name.as_deref(),
+            locale: args
+                .locale
+                .as_deref()
+                .or(args.localization.locale.as_deref()),
+            fallback_locale: args
+                .fallback_locale
+                .as_deref()
+                .or(args.localization.fallback_locale.as_deref()),
         }
     }
 }
@@ -285,6 +297,14 @@ impl<'a> From<&'a ReplayArgs> for CommonOverrides<'a> {
             listen: args.listen,
             cassette_dir: args.cassette_dir.as_deref(),
             cassette_name: args.cassette_name.as_deref(),
+            locale: args
+                .locale
+                .as_deref()
+                .or(args.localization.locale.as_deref()),
+            fallback_locale: args
+                .fallback_locale
+                .as_deref()
+                .or(args.localization.fallback_locale.as_deref()),
         }
     }
 }
@@ -295,6 +315,14 @@ impl<'a> From<&'a VerifyArgs> for CommonOverrides<'a> {
             listen: args.listen,
             cassette_dir: args.cassette_dir.as_deref(),
             cassette_name: args.cassette_name.as_deref(),
+            locale: args
+                .locale
+                .as_deref()
+                .or(args.localization.locale.as_deref()),
+            fallback_locale: args
+                .fallback_locale
+                .as_deref()
+                .or(args.localization.fallback_locale.as_deref()),
         }
     }
 }
@@ -303,20 +331,15 @@ fn build_config(
     overrides: CommonOverrides<'_>,
     mode: config::Mode,
     upstream: Option<config::UpstreamConfig>,
-) -> HarnessConfig {
+) -> Result<HarnessConfig, CliConfigError> {
     let mut config = HarnessConfig::default();
-    apply_overrides(
-        &mut config,
-        overrides.listen,
-        overrides.cassette_dir,
-        overrides.cassette_name,
-    );
+    apply_overrides(&mut config, overrides)?;
     config.mode = mode;
     config.upstream = upstream;
-    config
+    Ok(config)
 }
 
-fn to_record_config(args: &RecordArgs) -> HarnessConfig {
+fn to_record_config(args: &RecordArgs) -> Result<HarnessConfig, CliConfigError> {
     build_config(
         args.into(),
         config::Mode::Record,
@@ -324,46 +347,46 @@ fn to_record_config(args: &RecordArgs) -> HarnessConfig {
     )
 }
 
-fn to_replay_config(args: &ReplayArgs) -> HarnessConfig {
+fn to_replay_config(args: &ReplayArgs) -> Result<HarnessConfig, CliConfigError> {
     build_config(args.into(), config::Mode::Replay, None)
 }
 
-fn to_verify_config(args: &VerifyArgs) -> HarnessConfig {
+fn to_verify_config(args: &VerifyArgs) -> Result<HarnessConfig, CliConfigError> {
     build_config(args.into(), config::Mode::Verify, None)
 }
 
 fn apply_overrides(
     config: &mut HarnessConfig,
-    listen: Option<std::net::SocketAddr>,
-    cassette_dir: Option<&str>,
-    cassette_name: Option<&str>,
-) {
-    if let Some(listen_override) = listen {
+    overrides: CommonOverrides<'_>,
+) -> Result<(), CliConfigError> {
+    if let Some(listen_override) = overrides.listen {
         config.listen = listen_override.into();
     }
-    if let Some(cassette_dir_override) = cassette_dir {
+    if let Some(cassette_dir_override) = overrides.cassette_dir {
         config.cassette_dir = Utf8PathBuf::from(cassette_dir_override);
     }
-    if let Some(cassette_name_override) = cassette_name {
+    if let Some(cassette_name_override) = overrides.cassette_name {
         cassette_name_override.clone_into(&mut config.cassette_name);
     }
+    if let Some(locale_override) = overrides.locale {
+        validate_language_identifier("locale", locale_override)?;
+        config.localization.locale = Some(locale_override.to_owned());
+    }
+    if let Some(fallback_locale_override) = overrides.fallback_locale {
+        validate_language_identifier("fallback_locale", fallback_locale_override)?;
+        fallback_locale_override.clone_into(&mut config.localization.fallback_locale);
+    }
+    validate_language_identifier("fallback_locale", &config.localization.fallback_locale)?;
+    Ok(())
 }
 
-impl From<RecordUpstreamArgs> for config::UpstreamConfig {
-    fn from(value: RecordUpstreamArgs) -> Self {
-        Self {
-            kind: value.kind.into(),
-            base_url: value.base_url,
-            api_key_env: value.api_key_env,
-            extra_headers: value.extra_headers,
-        }
-    }
-}
-
-impl From<RecordUpstreamKind> for config::UpstreamKind {
-    fn from(value: RecordUpstreamKind) -> Self {
-        match value {
-            RecordUpstreamKind::OpenRouter => Self::OpenRouter,
-        }
-    }
+fn validate_language_identifier(field: &'static str, value: &str) -> Result<(), CliConfigError> {
+    value
+        .parse::<LanguageIdentifier>()
+        .map(|_| ())
+        .map_err(|source| CliConfigError::InvalidLocale {
+            field,
+            value: value.to_owned(),
+            source,
+        })
 }

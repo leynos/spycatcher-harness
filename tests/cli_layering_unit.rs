@@ -40,6 +40,11 @@ fn load_with_jail(
 }
 
 const REPLAY_FILE_CONFIG: &str = "[cmds.replay]\ncassette_name = \"from_file\"\n";
+const REPLAY_LOCALIZATION_FILE_CONFIG: &str = concat!(
+    "[cmds.replay.localization]\n",
+    "locale = \"en-GB\"\n",
+    "fallback_locale = \"en-US\"\n",
+);
 
 #[rstest]
 #[case(
@@ -75,6 +80,111 @@ fn replay_cassette_name_precedence(
     let loaded = load_with_jail(argv, config_file, env_vars).expect("config should load");
     assert_eq!(loaded.cassette_name, expected_cassette_name);
     assert_eq!(loaded.mode, config::Mode::Replay);
+}
+
+#[rstest]
+fn replay_localization_defaults_to_fallback_locale() {
+    let loaded =
+        load_with_jail(&["spycatcher-harness", "replay"], None, &[]).expect("config should load");
+
+    assert_eq!(loaded.localization.locale, None);
+    assert_eq!(loaded.localization.fallback_locale, "en-US");
+}
+
+#[rstest]
+#[case(
+    &["spycatcher-harness", "replay"],
+    Some(REPLAY_LOCALIZATION_FILE_CONFIG),
+    &[],
+    (Some("en-GB"), "en-US"),
+)]
+#[case(
+    &["spycatcher-harness", "replay"],
+    Some(REPLAY_LOCALIZATION_FILE_CONFIG),
+    &[
+        ("SPYCATCHER_HARNESS_CMDS_REPLAY_LOCALIZATION__LOCALE", "en-AU"),
+        (
+            "SPYCATCHER_HARNESS_CMDS_REPLAY_LOCALIZATION__FALLBACK_LOCALE",
+            "en-US"
+        ),
+    ],
+    (Some("en-AU"), "en-US"),
+)]
+#[case(
+    &[
+        "spycatcher-harness",
+        "replay",
+        "--locale",
+        "en-CA",
+        "--fallback-locale",
+        "en-US",
+    ],
+    Some(REPLAY_LOCALIZATION_FILE_CONFIG),
+    &[
+        ("SPYCATCHER_HARNESS_CMDS_REPLAY_LOCALIZATION__LOCALE", "en-AU"),
+        (
+            "SPYCATCHER_HARNESS_CMDS_REPLAY_LOCALIZATION__FALLBACK_LOCALE",
+            "en-US"
+        ),
+    ],
+    (Some("en-CA"), "en-US"),
+)]
+fn replay_localization_precedence(
+    #[case] argv: &[&str],
+    #[case] config_file: Option<&str>,
+    #[case] env_vars: &[(&str, &str)],
+    #[case] expected: (Option<&str>, &str),
+) {
+    let loaded = load_with_jail(argv, config_file, env_vars).expect("config should load");
+
+    let (expected_locale, expected_fallback_locale) = expected;
+    assert_eq!(loaded.localization.locale.as_deref(), expected_locale);
+    assert_eq!(
+        loaded.localization.fallback_locale,
+        expected_fallback_locale
+    );
+}
+
+#[rstest]
+#[case("record", config::Mode::Record)]
+#[case("replay", config::Mode::Replay)]
+#[case("verify", config::Mode::Verify)]
+fn localization_overrides_work_for_each_subcommand(
+    #[case] subcommand: &str,
+    #[case] expected_mode: config::Mode,
+) {
+    let config = format!(
+        "[cmds.{subcommand}.localization]\n\
+         locale = \"en-GB\"\n\
+         fallback_locale = \"en-US\"\n"
+    );
+    let argv = ["spycatcher-harness", subcommand];
+    let env_locale = format!(
+        "SPYCATCHER_HARNESS_CMDS_{}_LOCALIZATION__LOCALE",
+        subcommand.to_uppercase()
+    );
+    let env_vars = [(env_locale.as_str(), "en-CA")];
+    let loaded = load_with_jail(&argv, Some(&config), &env_vars).expect("config should load");
+
+    assert_eq!(loaded.mode, expected_mode);
+    assert_eq!(loaded.localization.locale.as_deref(), Some("en-CA"));
+    assert_eq!(loaded.localization.fallback_locale, "en-US");
+}
+
+#[rstest]
+fn invalid_cli_locale_fails_loading() {
+    let error = load_with_jail(
+        &["spycatcher-harness", "replay", "--locale", "not_a_locale"],
+        None,
+        &[],
+    )
+    .expect_err("invalid locale should fail loading");
+    let message = error.to_string();
+
+    assert!(
+        message.contains("locale") && message.contains("not_a_locale"),
+        "expected error about invalid locale, got: {message}",
+    );
 }
 
 #[rstest]
