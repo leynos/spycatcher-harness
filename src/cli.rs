@@ -273,59 +273,31 @@ struct CommonOverrides<'a> {
     fallback_locale: Option<&'a str>,
 }
 
-impl<'a> From<&'a RecordArgs> for CommonOverrides<'a> {
-    fn from(args: &'a RecordArgs) -> Self {
-        Self {
-            listen: args.listen,
-            cassette_dir: args.cassette_dir.as_deref(),
-            cassette_name: args.cassette_name.as_deref(),
-            locale: args
-                .locale
-                .as_deref()
-                .or(args.localization.locale.as_deref()),
-            fallback_locale: args
-                .fallback_locale
-                .as_deref()
-                .or(args.localization.fallback_locale.as_deref()),
-        }
-    }
+macro_rules! impl_common_overrides {
+    ($($T:ty),+ $(,)?) => {
+        $(
+            impl<'a> From<&'a $T> for CommonOverrides<'a> {
+                fn from(args: &'a $T) -> Self {
+                    Self {
+                        listen: args.listen,
+                        cassette_dir: args.cassette_dir.as_deref(),
+                        cassette_name: args.cassette_name.as_deref(),
+                        locale: args
+                            .locale
+                            .as_deref()
+                            .or(args.localization.locale.as_deref()),
+                        fallback_locale: args
+                            .fallback_locale
+                            .as_deref()
+                            .or(args.localization.fallback_locale.as_deref()),
+                    }
+                }
+            }
+        )+
+    };
 }
 
-impl<'a> From<&'a ReplayArgs> for CommonOverrides<'a> {
-    fn from(args: &'a ReplayArgs) -> Self {
-        Self {
-            listen: args.listen,
-            cassette_dir: args.cassette_dir.as_deref(),
-            cassette_name: args.cassette_name.as_deref(),
-            locale: args
-                .locale
-                .as_deref()
-                .or(args.localization.locale.as_deref()),
-            fallback_locale: args
-                .fallback_locale
-                .as_deref()
-                .or(args.localization.fallback_locale.as_deref()),
-        }
-    }
-}
-
-impl<'a> From<&'a VerifyArgs> for CommonOverrides<'a> {
-    fn from(args: &'a VerifyArgs) -> Self {
-        Self {
-            listen: args.listen,
-            cassette_dir: args.cassette_dir.as_deref(),
-            cassette_name: args.cassette_name.as_deref(),
-            locale: args
-                .locale
-                .as_deref()
-                .or(args.localization.locale.as_deref()),
-            fallback_locale: args
-                .fallback_locale
-                .as_deref()
-                .or(args.localization.fallback_locale.as_deref()),
-        }
-    }
-}
+impl_common_overrides!(RecordArgs, ReplayArgs, VerifyArgs);
 
 fn build_config(
     overrides: CommonOverrides<'_>,
