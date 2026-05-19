@@ -43,56 +43,74 @@ fn trim_surrounding_quotes(value: &str) -> String {
     value.trim_matches('"').to_owned()
 }
 
-#[given("a replay command with cassette name {cassette_name}")]
-fn replay_command_with_cassette_name(cli_layering_world: &CliLayeringWorld, cassette_name: String) {
-    let cassette_name_value = trim_surrounding_quotes(&cassette_name);
+fn set_flag_command(
+    cli_layering_world: &CliLayeringWorld,
+    subcommand: &str,
+    flag: &str,
+    value: String,
+) {
     set_command(
         cli_layering_world,
         vec![
             String::from("spycatcher-harness"),
-            String::from("replay"),
-            String::from("--cassette-name"),
-            cassette_name_value,
+            String::from(subcommand),
+            String::from(flag),
+            value,
         ],
+    );
+}
+
+fn set_subcommand_only(cli_layering_world: &CliLayeringWorld, subcommand: &str) {
+    set_command(
+        cli_layering_world,
+        vec![String::from("spycatcher-harness"), String::from(subcommand)],
+    );
+}
+
+fn expect_loaded_config(cli_layering_world: &CliLayeringWorld, context: &str) -> HarnessConfig {
+    let outcome = cli_layering_world
+        .result
+        .with_ref(Clone::clone)
+        .unwrap_or_else(|| Err(String::from("result slot missing")));
+    match outcome {
+        Ok(config) => config,
+        Err(error) => panic!("expected {context} configuration, load failed: {error}"),
+    }
+}
+
+#[given("a replay command with cassette name {cassette_name}")]
+fn replay_command_with_cassette_name(cli_layering_world: &CliLayeringWorld, cassette_name: String) {
+    set_flag_command(
+        cli_layering_world,
+        "replay",
+        "--cassette-name",
+        trim_surrounding_quotes(&cassette_name),
     );
 }
 
 #[given("a replay command with no CLI overrides")]
 fn replay_command_with_no_cli_overrides(cli_layering_world: &CliLayeringWorld) {
-    set_command(
-        cli_layering_world,
-        vec![String::from("spycatcher-harness"), String::from("replay")],
-    );
+    set_subcommand_only(cli_layering_world, "replay");
 }
 
 #[given("a replay command with locale {locale}")]
 fn replay_command_with_locale(cli_layering_world: &CliLayeringWorld, locale: String) {
-    let locale_value = trim_surrounding_quotes(&locale);
-    set_command(
+    set_flag_command(
         cli_layering_world,
-        vec![
-            String::from("spycatcher-harness"),
-            String::from("replay"),
-            String::from("--locale"),
-            locale_value,
-        ],
+        "replay",
+        "--locale",
+        trim_surrounding_quotes(&locale),
     );
 }
 
 #[given("a record command with no CLI overrides")]
 fn record_command_with_no_cli_overrides(cli_layering_world: &CliLayeringWorld) {
-    set_command(
-        cli_layering_world,
-        vec![String::from("spycatcher-harness"), String::from("record")],
-    );
+    set_subcommand_only(cli_layering_world, "record");
 }
 
 #[given("a verify command with no CLI overrides")]
 fn verify_command_with_no_cli_overrides(cli_layering_world: &CliLayeringWorld) {
-    set_command(
-        cli_layering_world,
-        vec![String::from("spycatcher-harness"), String::from("verify")],
-    );
+    set_subcommand_only(cli_layering_world, "verify");
 }
 
 #[given("config file sets replay cassette name to {cassette_name}")]
@@ -218,63 +236,38 @@ fn load_layered_config(cli_layering_world: &CliLayeringWorld) {
 
 #[then("replay cassette name is {cassette_name}")]
 fn replay_cassette_name_is(cli_layering_world: &CliLayeringWorld, cassette_name: String) {
-    let cassette_name_value = trim_surrounding_quotes(&cassette_name);
-    let outcome = cli_layering_world
-        .result
-        .with_ref(Clone::clone)
-        .unwrap_or_else(|| Err(String::from("result slot missing")));
-    let loaded_config = match outcome {
-        Ok(config) => config,
-        Err(error) => panic!("expected replay configuration, load failed: {error}"),
-    };
-    assert_eq!(loaded_config.cassette_name, cassette_name_value);
+    let loaded_config = expect_loaded_config(cli_layering_world, "replay");
+    assert_eq!(
+        loaded_config.cassette_name,
+        trim_surrounding_quotes(&cassette_name)
+    );
     assert_eq!(loaded_config.mode, config::Mode::Replay);
 }
 
 #[then("verify cassette name is {cassette_name}")]
 fn verify_cassette_name_is(cli_layering_world: &CliLayeringWorld, cassette_name: String) {
-    let cassette_name_value = trim_surrounding_quotes(&cassette_name);
-    let outcome = cli_layering_world
-        .result
-        .with_ref(Clone::clone)
-        .unwrap_or_else(|| Err(String::from("result slot missing")));
-    let loaded_config = match outcome {
-        Ok(config) => config,
-        Err(error) => panic!("expected verify configuration, load failed: {error}"),
-    };
-    assert_eq!(loaded_config.cassette_name, cassette_name_value);
+    let loaded_config = expect_loaded_config(cli_layering_world, "verify");
+    assert_eq!(
+        loaded_config.cassette_name,
+        trim_surrounding_quotes(&cassette_name)
+    );
     assert_eq!(loaded_config.mode, config::Mode::Verify);
 }
 
 #[then("record upstream base URL is {base_url}")]
 fn record_upstream_base_url_is(cli_layering_world: &CliLayeringWorld, base_url: String) {
-    let base_url_value = trim_surrounding_quotes(&base_url);
-    let outcome = cli_layering_world
-        .result
-        .with_ref(Clone::clone)
-        .unwrap_or_else(|| Err(String::from("result slot missing")));
-    let loaded_config = match outcome {
-        Ok(config) => config,
-        Err(error) => panic!("expected record configuration, load failed: {error}"),
-    };
+    let loaded_config = expect_loaded_config(cli_layering_world, "record");
     let Some(upstream) = loaded_config.upstream else {
         panic!("expected record upstream");
     };
     assert_eq!(loaded_config.mode, config::Mode::Record);
-    assert_eq!(upstream.base_url, base_url_value);
+    assert_eq!(upstream.base_url, trim_surrounding_quotes(&base_url));
 }
 
 #[then("replay locale is {locale}")]
 fn replay_locale_is(cli_layering_world: &CliLayeringWorld, locale: String) {
     let locale_value = trim_surrounding_quotes(&locale);
-    let outcome = cli_layering_world
-        .result
-        .with_ref(Clone::clone)
-        .unwrap_or_else(|| Err(String::from("result slot missing")));
-    let loaded_config = match outcome {
-        Ok(config) => config,
-        Err(error) => panic!("expected replay configuration, load failed: {error}"),
-    };
+    let loaded_config = expect_loaded_config(cli_layering_world, "replay");
 
     assert_eq!(
         loaded_config.localization.locale.as_deref(),
@@ -285,14 +278,7 @@ fn replay_locale_is(cli_layering_world: &CliLayeringWorld, locale: String) {
 
 #[then("replay locale is unset")]
 fn replay_locale_is_unset(cli_layering_world: &CliLayeringWorld) {
-    let outcome = cli_layering_world
-        .result
-        .with_ref(Clone::clone)
-        .unwrap_or_else(|| Err(String::from("result slot missing")));
-    let loaded_config = match outcome {
-        Ok(config) => config,
-        Err(error) => panic!("expected replay configuration, load failed: {error}"),
-    };
+    let loaded_config = expect_loaded_config(cli_layering_world, "replay");
 
     assert_eq!(loaded_config.localization.locale, None);
     assert_eq!(loaded_config.mode, config::Mode::Replay);
@@ -300,19 +286,11 @@ fn replay_locale_is_unset(cli_layering_world: &CliLayeringWorld) {
 
 #[then("fallback locale is {fallback_locale}")]
 fn fallback_locale_is(cli_layering_world: &CliLayeringWorld, fallback_locale: String) {
-    let fallback_locale_value = trim_surrounding_quotes(&fallback_locale);
-    let outcome = cli_layering_world
-        .result
-        .with_ref(Clone::clone)
-        .unwrap_or_else(|| Err(String::from("result slot missing")));
-    let loaded_config = match outcome {
-        Ok(config) => config,
-        Err(error) => panic!("expected configuration, load failed: {error}"),
-    };
+    let loaded_config = expect_loaded_config(cli_layering_world, "configuration");
 
     assert_eq!(
         loaded_config.localization.fallback_locale,
-        fallback_locale_value
+        trim_surrounding_quotes(&fallback_locale)
     );
 }
 
