@@ -43,27 +43,62 @@ fn trim_surrounding_quotes(value: &str) -> String {
     value.trim_matches('"').to_owned()
 }
 
+#[derive(Clone, Copy)]
+enum Subcommand {
+    Record,
+    Replay,
+    Verify,
+}
+
+impl Subcommand {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Record => "record",
+            Self::Replay => "replay",
+            Self::Verify => "verify",
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
+enum CliFlag {
+    CassetteName,
+    Locale,
+}
+
+impl CliFlag {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::CassetteName => "--cassette-name",
+            Self::Locale => "--locale",
+        }
+    }
+}
+
 fn set_flag_command(
     cli_layering_world: &CliLayeringWorld,
-    subcommand: &str,
-    flag: &str,
-    value: String,
+    subcommand: Subcommand,
+    flag: CliFlag,
+    value: &str,
 ) {
     set_command(
         cli_layering_world,
         vec![
             String::from("spycatcher-harness"),
-            String::from(subcommand),
-            String::from(flag),
-            value,
+            String::from(subcommand.as_str()),
+            String::from(flag.as_str()),
+            String::from(value),
         ],
     );
 }
 
-fn set_subcommand_only(cli_layering_world: &CliLayeringWorld, subcommand: &str) {
+fn set_subcommand_only(cli_layering_world: &CliLayeringWorld, subcommand: Subcommand) {
     set_command(
         cli_layering_world,
-        vec![String::from("spycatcher-harness"), String::from(subcommand)],
+        vec![
+            String::from("spycatcher-harness"),
+            String::from(subcommand.as_str()),
+        ],
     );
 }
 
@@ -80,37 +115,39 @@ fn expect_loaded_config(cli_layering_world: &CliLayeringWorld, context: &str) ->
 
 #[given("a replay command with cassette name {cassette_name}")]
 fn replay_command_with_cassette_name(cli_layering_world: &CliLayeringWorld, cassette_name: String) {
+    let cassette_name = trim_surrounding_quotes(&cassette_name);
     set_flag_command(
         cli_layering_world,
-        "replay",
-        "--cassette-name",
-        trim_surrounding_quotes(&cassette_name),
+        Subcommand::Replay,
+        CliFlag::CassetteName,
+        &cassette_name,
     );
 }
 
 #[given("a replay command with no CLI overrides")]
 fn replay_command_with_no_cli_overrides(cli_layering_world: &CliLayeringWorld) {
-    set_subcommand_only(cli_layering_world, "replay");
+    set_subcommand_only(cli_layering_world, Subcommand::Replay);
 }
 
 #[given("a replay command with locale {locale}")]
 fn replay_command_with_locale(cli_layering_world: &CliLayeringWorld, locale: String) {
+    let locale = trim_surrounding_quotes(&locale);
     set_flag_command(
         cli_layering_world,
-        "replay",
-        "--locale",
-        trim_surrounding_quotes(&locale),
+        Subcommand::Replay,
+        CliFlag::Locale,
+        &locale,
     );
 }
 
 #[given("a record command with no CLI overrides")]
 fn record_command_with_no_cli_overrides(cli_layering_world: &CliLayeringWorld) {
-    set_subcommand_only(cli_layering_world, "record");
+    set_subcommand_only(cli_layering_world, Subcommand::Record);
 }
 
 #[given("a verify command with no CLI overrides")]
 fn verify_command_with_no_cli_overrides(cli_layering_world: &CliLayeringWorld) {
-    set_subcommand_only(cli_layering_world, "verify");
+    set_subcommand_only(cli_layering_world, Subcommand::Verify);
 }
 
 #[given("config file sets replay cassette name to {cassette_name}")]
