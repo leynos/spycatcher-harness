@@ -47,31 +47,7 @@ impl StubUpstream {
         runtime: &tokio::runtime::Runtime,
         response_body: Value,
     ) -> Result<Self, Box<dyn Error>> {
-        runtime.block_on(async move {
-            let seen_requests = Arc::new(Mutex::new(Vec::new()));
-            let state = StubState {
-                response: StubResponse::Json(response_body),
-                seen_requests: Arc::clone(&seen_requests),
-            };
-            let router = Router::new()
-                .route("/api/v1/chat/completions", post(stub_handler))
-                .with_state(state);
-            let listener = TcpListener::bind(("127.0.0.1", 0)).await?;
-            let addr = listener.local_addr()?;
-            let (shutdown_tx, shutdown_rx) = oneshot::channel();
-            let task = tokio::spawn(async move {
-                axum::serve(listener, router)
-                    .with_graceful_shutdown(wait_for_shutdown(shutdown_rx))
-                    .await
-            });
-
-            Ok(Self {
-                addr,
-                seen_requests,
-                shutdown: Some(shutdown_tx),
-                task,
-            })
-        })
+        Self::start_with_response(runtime, StubResponse::Json(response_body))
     }
 
     /// Starts a stub upstream returning an SSE byte transcript.
@@ -79,10 +55,17 @@ impl StubUpstream {
         runtime: &tokio::runtime::Runtime,
         transcript: Vec<u8>,
     ) -> Result<Self, Box<dyn Error>> {
+        Self::start_with_response(runtime, StubResponse::Stream(transcript))
+    }
+
+    fn start_with_response(
+        runtime: &tokio::runtime::Runtime,
+        response: StubResponse,
+    ) -> Result<Self, Box<dyn std::error::Error>> {
         runtime.block_on(async move {
             let seen_requests = Arc::new(Mutex::new(Vec::new()));
             let state = StubState {
-                response: StubResponse::Stream(transcript),
+                response,
                 seen_requests: Arc::clone(&seen_requests),
             };
             let router = Router::new()
