@@ -127,6 +127,35 @@ impl ReqwestUpstreamClient {
     pub(crate) const fn with_client(client: Client) -> Self {
         Self { client }
     }
+
+    /// Sends one upstream chat completions request and extracts shared response
+    /// metadata before the caller chooses buffered or streaming body handling.
+    async fn execute_upstream_request(
+        &self,
+        request: ChatCompletionsRequest<'_>,
+    ) -> HarnessResult<(
+        u16,
+        Vec<(String, String)>,
+        Vec<(String, Vec<u8>)>,
+        reqwest::Response,
+    )> {
+        let url = chat_completions_url(&request.config.base_url, request.query)?;
+        let authed_builder = self.client.post(url).bearer_auth(request.api_key);
+        let forwarded_builder = apply_forwarded_headers(authed_builder, request.headers)?;
+        let extra_builder = apply_extra_headers(forwarded_builder, &request.config.extra_headers)?;
+
+        let response = extra_builder
+            .body(request.body.to_vec())
+            .send()
+            .await
+            .map_err(|source| HarnessError::UpstreamRequestFailed {
+                source: source.into(),
+            })?;
+        let status = response.status().as_u16();
+        let selected_headers = selected_response_headers(response.headers());
+        let proxy_headers = selected_response_proxy_headers(response.headers());
+        Ok((status, selected_headers, proxy_headers, response))
+    }
 }
 
 fn to_outbound_header(name: &str, value: &[u8]) -> HarnessResult<(HeaderName, HeaderValue)> {
@@ -189,21 +218,8 @@ impl ChatCompletionsUpstream for ReqwestUpstreamClient {
         &self,
         request: ChatCompletionsRequest<'_>,
     ) -> HarnessResult<ObservedResponse> {
-        let url = chat_completions_url(&request.config.base_url, request.query)?;
-        let authed_builder = self.client.post(url).bearer_auth(request.api_key);
-        let forwarded_builder = apply_forwarded_headers(authed_builder, request.headers)?;
-        let extra_builder = apply_extra_headers(forwarded_builder, &request.config.extra_headers)?;
-
-        let response = extra_builder
-            .body(request.body.to_vec())
-            .send()
-            .await
-            .map_err(|source| HarnessError::UpstreamRequestFailed {
-                source: source.into(),
-            })?;
-        let status = response.status().as_u16();
-        let selected_headers = selected_response_headers(response.headers());
-        let proxy_headers = selected_response_proxy_headers(response.headers());
+        let (status, selected_headers, proxy_headers, response) =
+            self.execute_upstream_request(request).await?;
         let response_body = response
             .bytes()
             .await
@@ -225,21 +241,8 @@ impl ChatCompletionsUpstream for ReqwestUpstreamClient {
         &self,
         request: ChatCompletionsRequest<'_>,
     ) -> HarnessResult<StreamingObservedResponse> {
-        let url = chat_completions_url(&request.config.base_url, request.query)?;
-        let authed_builder = self.client.post(url).bearer_auth(request.api_key);
-        let forwarded_builder = apply_forwarded_headers(authed_builder, request.headers)?;
-        let extra_builder = apply_extra_headers(forwarded_builder, &request.config.extra_headers)?;
-
-        let upstream_response = extra_builder
-            .body(request.body.to_vec())
-            .send()
-            .await
-            .map_err(|source| HarnessError::UpstreamRequestFailed {
-                source: source.into(),
-            })?;
-        let status = upstream_response.status().as_u16();
-        let selected_headers = selected_response_headers(upstream_response.headers());
-        let proxy_headers = selected_response_proxy_headers(upstream_response.headers());
+        let (status, selected_headers, proxy_headers, upstream_response) =
+            self.execute_upstream_request(request).await?;
         let body = futures_util::stream::try_unfold(upstream_response, |mut streamed| async move {
             streamed
                 .chunk()
