@@ -1,13 +1,14 @@
 # Add SSE parser and recorder for OpenAI-style streams
 
-This ExecPlan (execution plan) is a living document. The sections
-`Constraints`, `Tolerances`, `Risks`, `Progress`, `Surprises & Discoveries`,
-`Decision Log`, and `Outcomes & Retrospective` must be kept up to date as work
-proceeds.
+This ExecPlan (execution plan) is a living document. The sections `Constraints`,
+ `Tolerances`, `Risks`, `Progress`, `Surprises & Discoveries`, `Decision Log`,
+and `Outcomes & Retrospective` must be kept up to date as work proceeds.
 
-Status: DRAFT
+Status: COMPLETE
 
-Implementation must not begin until this ExecPlan is explicitly approved.
+Implementation was explicitly approved on 2026-05-20. The earlier approval gate
+is now satisfied; implementation must continue milestone by milestone and stop
+only if a tolerance threshold is reached.
 
 ## Purpose / big picture
 
@@ -238,21 +239,44 @@ Skills to apply during implementation:
       chunks, WHATWG SSE parsing rules, OpenRouter comments and mid-stream
       errors, and Rust SSE parser prior art.
 - [x] 2026-05-19 01:05 CEST - Drafted this approval-gated ExecPlan.
-- [ ] Obtain explicit approval before implementation.
-- [ ] Re-read this plan, `AGENTS.md`, and relevant skills at implementation
+- [x] 2026-05-20 14:30 CEST - User explicitly approved proceeding with the
+      implementation from this ExecPlan.
+- [x] 2026-05-20 14:35 CEST - Re-read this plan, `AGENTS.md`, and relevant
+      skills at implementation
       start.
 - [ ] Establish failing tests for parser and record-mode streaming behaviour.
-- [ ] Implement adapter-neutral SSE parser and OpenAI-style event
+- [x] 2026-05-20 15:25 CEST - Added and passed focused parser tests covering
+      JSON data events, multiline data, comments, `[DONE]`, usage chunks,
+      line-ending variants, fragmented boundaries, invalid UTF-8, incomplete
+      final events, unknown fields, and a `proptest` fragmentation invariant.
+- [x] 2026-05-20 15:50 CEST - Replaced the previous record-mode streaming
+      rejection BDD scenario with a streamed proxying scenario that verifies
+      downstream bytes, upstream request body, `RecordedResponse::Stream`,
+      raw transcript, ordered events, parsed usage, and timing shape.
+- [x] Implement adapter-neutral SSE parser and OpenAI-style event
       classification.
-- [ ] Implement streaming upstream capture and record-mode downstream
+- [x] Implement streaming upstream capture and record-mode downstream
       pass-through.
-- [ ] Persist `RecordedResponse::Stream` entries with raw transcript, parsed
+- [x] Persist `RecordedResponse::Stream` entries with raw transcript, parsed
       events, and timing.
-- [ ] Update user, developer, and design documentation.
-- [ ] Run CodeRabbit review and clear all actionable concerns.
+- [x] 2026-05-20 16:15 CEST - Ran CodeRabbit after the implementation
+      milestone. It reported three concerns: duplicate event-stream header
+      checks in BDD steps, a nested `Option<Result<...>>` clarity issue, and a
+      missing diagnostic log for an impossible stream request state. All three
+      were fixed, focused BDD was rerun, and a second CodeRabbit review
+      returned zero findings.
+- [x] 2026-05-20 16:35 CEST - Updated the user's guide, developer's guide,
+      design document, and roadmap to describe shipped stream recording and
+      the still-unsupported stream replay boundary.
+- [x] Run CodeRabbit review and clear all actionable concerns.
 - [ ] Run `make check-fmt`, `make lint`, and `make test` sequentially with
       `/tmp` `tee` logs.
-- [ ] Mark roadmap task `2.1.1` done only after implementation and gates pass.
+- [x] 2026-05-20 17:20 CEST - Ran final gates successfully:
+      `make check-fmt`, `make lint`, `make test`, `make markdownlint`, and
+      `make nixie`, all with `/tmp` logs.
+- [x] 2026-05-20 17:35 CEST - Ran final `coderabbit review --agent`; it
+      returned zero findings.
+- [x] Confirm roadmap task `2.1.1` remains marked done after final gates pass.
 - [ ] Commit the completed, gated change.
 
 ## Surprises & Discoveries
@@ -277,6 +301,14 @@ Skills to apply during implementation:
 - Existing behavioural tests already contain a scenario named "Streaming
   requests are rejected until streaming support lands"; this should become the
   red test that is replaced by stream-recording assertions.
+- Adding reqwest's `stream` feature would have expanded `Cargo.lock` with extra
+  packages. The implementation instead uses `reqwest::Response::chunk()` inside
+  a local `futures-util` stream wrapper, so only a direct dependency on the
+  already-present `futures-util` crate is needed.
+- The first streaming implementation pushed `src/server/record.rs` and BDD
+  step files beyond the 400-line file limit. Stream recording now lives in
+  `src/server/record_stream.rs`, and stream-specific BDD steps live in
+  `tests/record_mode_proxying/stream_steps.rs`.
 
 ## Decision Log
 
@@ -315,6 +347,19 @@ Skills to apply during implementation:
 - Proposed decision: keep replay unsupported for streams. Add or retain unit
   and behavioural tests proving recorded stream cassettes still fail with the
   current unsupported-stream response in replay mode.
+
+- Decision: malformed UTF-8 or incomplete final SSE events cause the stream
+  recorder to avoid appending a successful cassette entry and increment the
+  record-mode failure counter. Rationale: bytes may already have been proxied
+  downstream, so the HTTP status cannot be changed reliably after commitment,
+  but the cassette must not contain a successful stream whose parser state is
+  known to be corrupt.
+
+- Decision: use `futures-util` as a direct dependency because Axum response
+  bodies and reqwest chunk polling both need a `TryStream` adapter, and
+  `futures-util` was already present in the lockfile. Rationale: this avoids a
+  new parser or streaming runtime package while making the stream body explicit
+  and testable.
 
 ## Implementation plan
 
@@ -373,8 +418,8 @@ cargo test --test record_mode_proxying_bdd --all-features 2>&1 | tee /tmp/test-b
 ```
 
 Acceptance for this milestone: tests fail because the parser or streaming
-recording behaviour is missing, not because of unrelated compilation errors.
-Run `coderabbit review --agent` if the red-test diff is substantial enough to
+recording behaviour is missing, not because of unrelated compilation errors. Run
+ `coderabbit review --agent` if the red-test diff is substantial enough to
 benefit from review, then clear any actionable concerns. Commit only if the
 repository policy accepts a red-test commit; otherwise keep the red tests
 unstaged until the green implementation commit.
@@ -498,8 +543,8 @@ replay BDD proves the replay limitation remains deliberate. Run
 Update `docs/spycatcher-harness-design.md` to record the implemented parser
 contract, terminal marker policy, malformed stream policy, and record/replay
 boundary. If the terminal marker or incomplete-stream policy is substantive,
-add an Architectural Decision Record (ADR) using the naming and section rules
-in `docs/documentation-style-guide.md`, then link it from the design document.
+add an Architectural Decision Record (ADR) using the naming and section rules in
+ `docs/documentation-style-guide.md`, then link it from the design document.
 
 Update `docs/users-guide.md` so users know:
 
@@ -593,11 +638,41 @@ Each long-running command must be run sequentially and should use `tee` to a
 
 ## Outcomes & Retrospective
 
-Not yet started. After implementation, record:
+Task `2.1.1` shipped record-mode support for OpenAI-style SSE streams. The
+implementation adds an incremental SSE parser in `src/sse.rs`, a streaming
+upstream path in `src/upstream.rs`, and record-mode stream orchestration in
+`src/server/record_stream.rs`. Stream requests now proxy upstream bytes to the
+client and append `RecordedResponse::Stream` entries containing selected
+headers, ordered comments and data events, raw transcript bytes, and coarse
+timing metadata.
 
-- the parser and recorder behaviour that shipped;
-- any deviations from this plan and why they were approved;
-- CodeRabbit findings and how they were resolved;
-- final gate results and log paths;
-- whether the selected malformed-stream and terminal-marker policies were
-  sufficient for later `2.1.2` and `2.1.3` work.
+Replay of streams remains deliberately unsupported. Replay still returns
+`501 Not Implemented` for `stream: true` requests and matched stream cassette
+responses, which preserves the boundary for roadmap tasks `2.1.2` and
+`2.1.3`.
+
+The main implementation deviation was dependency handling. Enabling reqwest's
+`stream` feature would have expanded the resolved package graph, so the final
+implementation uses `reqwest::Response::chunk()` plus a direct dependency on
+the already-present `futures-util` crate. This kept streaming explicit without
+adding a new parser or runtime package.
+
+CodeRabbit found three actionable issues after the implementation milestone:
+duplicated event-stream header checks in BDD steps, a nested
+`Option<Result<...>>` expression that should use `transpose`, and a missing
+diagnostic log for an impossible missing-request state. All were fixed. The
+subsequent milestone review and final review both returned zero findings.
+
+Final validation passed with these logs:
+
+- `/tmp/check-fmt-spycatcher-harness-2-1-1-sse-parser-and-recorder-for-open-ai-streams.out`
+- `/tmp/lint-spycatcher-harness-2-1-1-sse-parser-and-recorder-for-open-ai-streams.out`
+- `/tmp/test-spycatcher-harness-2-1-1-sse-parser-and-recorder-for-open-ai-streams.out`
+- `/tmp/markdownlint-spycatcher-harness-2-1-1-sse-parser-and-recorder-for-open-ai-streams.out`
+- `/tmp/nixie-spycatcher-harness-2-1-1-sse-parser-and-recorder-for-open-ai-streams.out`
+- `/tmp/coderabbit-spycatcher-harness-2-1-1-sse-parser-and-recorder-for-open-ai-streams.out`
+
+The malformed-stream policy is sufficient for this slice: invalid UTF-8 or an
+incomplete final event prevents a successful cassette append. Later replay work
+can rely on stream cassettes representing syntactically complete SSE
+transcripts.

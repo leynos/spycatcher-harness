@@ -29,12 +29,6 @@ cassette file read-only, validates its `format_version`, and then returns
 use spycatcher_harness::{start_harness, HarnessConfig};
 
 # async fn example() -> spycatcher_harness::HarnessResult<()> {
-let cfg = HarnessConfig::default();
-let harness = start_harness(cfg).await?;
-// In record mode, the harness is now running.
-// harness.addr contains the listen address.
-// harness.cassette_path contains the cassette file path.
-harness.shutdown().await?;
 # Ok(())
 # }
 ```
@@ -144,13 +138,14 @@ Record-mode startup expectations:
 
 ### Record mode proxying
 
-Task `1.3.1` ships the first live HTTP-serving slice for record mode:
+Record mode supports OpenAI-compatible chat completions requests:
 
 - The harness accepts `POST /v1/chat/completions`.
 - Requests with `stream` unset or `false` are proxied upstream, returned to the
   client, and appended to the configured cassette.
-- Requests with `stream: true` currently return HTTP `501 Not Implemented` and
-  do not write to the cassette.
+- Requests with `stream: true` are proxied as Server-Sent Events (SSE),
+  returned to the client as upstream bytes arrive, and appended to the
+  configured cassette after the stream completes successfully.
 
 Upstream authentication and enrichment:
 
@@ -185,6 +180,17 @@ Persisted response contract:
 - `parsed_json` is populated only when the response body decodes and parses as
   valid JSON; otherwise `parsed_json` is left empty so consumers know what
   replay can reconstruct.
+- Streamed upstream responses are stored as `kind: "stream"` responses with
+  selected response headers, parsed stream events, raw transcript bytes, and
+  timing metadata.
+- SSE comment lines such as `: OPENROUTER PROCESSING` are recorded as comment
+  events. `data:` frames are recorded with their raw payload text and
+  `parsed_json` when the payload is valid JSON. Terminal `data: [DONE]` markers
+  are retained as data events with no parsed JSON.
+- If a streamed upstream response contains invalid UTF-8 or ends with an
+  incomplete SSE event, the harness still returns any bytes already received
+  from upstream to the client, but it does not append a successful cassette
+  entry for that malformed stream.
 
 Replay behaviour for non-stream chat completions:
 
@@ -202,9 +208,9 @@ Replay behaviour for non-stream chat completions:
   HTTP `400 Bad Request` and a JSON `malformed_json` error before matching.
   This prevents different malformed byte sequences from sharing the same
   body-less replay hash.
-- Requests with `stream: true`, and matched stream interactions in manually
-  authored cassettes, return HTTP `501 Not Implemented` until streaming replay
-  lands in a later roadmap task.
+- Requests with `stream: true`, and matched stream interactions in recorded or
+  manually authored cassettes, return HTTP `501 Not Implemented` until
+  streaming replay lands in a later roadmap task.
 
 ### Replay matching modes
 
@@ -250,8 +256,8 @@ observed canonical requests. The diff format uses:
 - `changed: <path>: <expected_value> -> <observed_value>` — differing values.
 
 Paths use dotted notation for nested objects (e.g.,
-`canonical_body.metadata.run_id`) and bracket notation for array elements
-(e.g., `messages[0].role`).
+`canonical_body.metadata.run_id`) and bracket notation for array elements (e.g.,
+ `messages[0].role`).
 
 ### Canonical request hashing
 
@@ -291,29 +297,6 @@ assert_eq!(hash.len(), 64);
 # Ok(())
 # }
 ```
-
-Canonicalization rules:
-
-- Methods are uppercased before hashing.
-- Query parameters decode percent triplets, preserve literal `+`, are sorted
-  by key then value, and are re-encoded with uppercase hex escapes.
-- JSON bodies are compacted with object keys sorted recursively.
-- Ignore paths use JSON Pointer syntax (RFC 6901), for example
-  `/metadata/run_id`.
-- `canonicalize` returns `Result<CanonicalRequest, CanonicalError>` and
-  `RecordedRequest::populate_canonical_fields` returns
-  `Result<(), CanonicalError>`.
-- Canonicalization returns `CanonicalError::InvalidPointerPath` when any
-  configured ignore path is empty or is not a valid RFC 6901 JSON Pointer.
-- Non-JSON bodies keep `canonical_body` as `None`; the stable hash is then
-  derived from the method, path, and canonical query only.
-
-`RecordedRequest::populate_canonical_fields(&IgnorePathConfig)` fills the
-reserved `canonical_request` and `stable_hash` fields in-place after the ignore
-paths are successfully validated. This is the current public configuration
-surface for ignore paths; `HarnessConfig` remains source-compatible in this
-release, so canonicalization configuration is not yet threaded through harness
-startup.
 
 ### Error handling
 
@@ -436,10 +419,22 @@ example, `LOCALIZATION__LOCALE` maps to `cmds.<subcommand>.localization.locale`.
 # Record using layered defaults and an explicit cassette name override.
 cargo run --bin spycatcher-harness -- record --cassette-name cli_record
 
+
+# then exits with ModeNotYetImplemented.
+cargo run --bin spycatcher-harness -- verify
+```
+
+For replay and verify mode, ensure the cassette file already exists at the
+configured `cassette_dir/cassette_name` path and was created by a compatible
+`format_version`.
 # Replay with layered configuration. This currently validates cassette loading,
 # then exits with ModeNotYetImplemented.
-cargo run --bin spycatcher-harness -- replay
+cargo run --bin spycatcher-harness -- verify
+```
 
+For replay and verify mode, ensure the cassette file already exists at the
+configured `cassette_dir/cassette_name` path and was created by a compatible
+`format_version`.
 # Verify with layered configuration. This currently validates cassette loading,
 # then exits with ModeNotYetImplemented.
 cargo run --bin spycatcher-harness -- verify

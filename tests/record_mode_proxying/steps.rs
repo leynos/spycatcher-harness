@@ -18,7 +18,7 @@ use crate::record_mode_proxying::world::ProxyWorld;
 
 const NON_STREAM_REQUEST: &[u8] =
     br#"{"model":"gpt-test","messages":[{"role":"user","content":"hi"}]}"#;
-const STREAMING_REQUEST: &[u8] =
+pub(crate) const STREAMING_REQUEST: &[u8] =
     br#"{"model":"gpt-test","stream":true,"messages":[{"role":"user","content":"hi"}]}"#;
 
 #[given("a stub upstream that returns a successful chat completion")]
@@ -113,13 +113,6 @@ fn a_non_stream_chat_completions_request_with_authorization_is_sent_to_the_harne
         NON_STREAM_REQUEST,
         &[("authorization", "Bearer downstream-secret")],
     )
-}
-
-#[when("a streaming chat completions request is sent to the harness")]
-fn a_streaming_chat_completions_request_is_sent_to_the_harness(
-    proxy_world: &ProxyWorld,
-) -> Result<(), Box<dyn Error>> {
-    send_request_to_harness(proxy_world, STREAMING_REQUEST, &[])
 }
 
 #[then("the client receives the upstream response unchanged")]
@@ -237,13 +230,6 @@ fn assert_cassette_request_omits_header(
     Ok(())
 }
 
-#[then("the harness rejects the request as unsupported streaming")]
-fn the_harness_rejects_the_request_as_unsupported_streaming(
-    proxy_world: &ProxyWorld,
-) -> Result<(), Box<dyn Error>> {
-    assert_response_status(proxy_world, 501)
-}
-
 #[then("the harness returns a bad gateway error")]
 fn the_harness_returns_a_bad_gateway_error(proxy_world: &ProxyWorld) -> Result<(), Box<dyn Error>> {
     assert_response_status(proxy_world, 502)
@@ -290,7 +276,7 @@ fn the_background_services_shut_down_cleanly(
     Ok(())
 }
 
-fn send_request_to_harness(
+pub(crate) fn send_request_to_harness(
     proxy_world: &ProxyWorld,
     body: &[u8],
     extra_headers: &[(&str, &str)],
@@ -356,7 +342,7 @@ fn configure_harness_with_proxy_world_upstream(
     Ok(())
 }
 
-fn cassette_from_world(
+pub(crate) fn cassette_from_world(
     proxy_world: &ProxyWorld,
 ) -> Result<spycatcher_harness::cassette::Cassette, Box<dyn Error>> {
     let cassette_path = proxy_world
@@ -366,7 +352,9 @@ fn cassette_from_world(
     load_cassette(&cassette_path)
 }
 
-fn first_upstream_request(proxy_world: &ProxyWorld) -> Result<CapturedRequest, Box<dyn Error>> {
+pub(crate) fn first_upstream_request(
+    proxy_world: &ProxyWorld,
+) -> Result<CapturedRequest, Box<dyn Error>> {
     let requests = proxy_world
         .upstream
         .with_ref(StubUpstream::captured_requests)

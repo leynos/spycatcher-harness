@@ -14,7 +14,7 @@ use serde_json::json;
 use tracing::{debug, info};
 
 use crate::http_exchange::{
-    ObservedRequest, ProxyResponse, parse_json_bytes, selected_forward_headers,
+    ObservedRequest, ProxyBody, ProxyResponse, parse_json_bytes, selected_forward_headers,
     selected_request_headers,
 };
 use crate::protocol::CHAT_COMPLETIONS_PATH;
@@ -73,10 +73,6 @@ fn build_error_response(error: &RecordError) -> Response<axum::body::Body> {
 
 const fn record_error_http_mapping(error: &RecordError) -> (StatusCode, &'static str) {
     match error {
-        RecordError::UnsupportedStream => (
-            StatusCode::NOT_IMPLEMENTED,
-            "streaming chat completions are not implemented yet",
-        ),
         RecordError::MissingApiKeyNotConfigured => (
             StatusCode::BAD_GATEWAY,
             "upstream credentials are not configured",
@@ -86,7 +82,11 @@ const fn record_error_http_mapping(error: &RecordError) -> (StatusCode, &'static
 }
 
 fn build_proxy_response(response: ProxyResponse) -> Response<axum::body::Body> {
-    let mut built = Response::new(axum::body::Body::from(response.body));
+    let body = match response.body {
+        ProxyBody::Buffered(bytes) => axum::body::Body::from(bytes),
+        ProxyBody::Stream(stream) => axum::body::Body::from_stream(stream),
+    };
+    let mut built = Response::new(body);
     *built.status_mut() = proxy_status_code(response.status);
     for (name, value) in response.headers {
         match (
@@ -131,7 +131,7 @@ mod tests {
         let proxy = ProxyResponse {
             status: 201,
             headers: vec![],
-            body: b"hello".to_vec(),
+            body: ProxyBody::Buffered(b"hello".to_vec()),
         };
 
         let response = build_proxy_response(proxy);
@@ -149,7 +149,7 @@ mod tests {
         let proxy = ProxyResponse {
             status: 200,
             headers: vec![("content-type".to_owned(), b"application/json".to_vec())],
-            body: b"{}".to_vec(),
+            body: ProxyBody::Buffered(b"{}".to_vec()),
         };
 
         let response = build_proxy_response(proxy);
@@ -169,7 +169,7 @@ mod tests {
         let proxy = ProxyResponse {
             status: 999,
             headers: vec![],
-            body: vec![],
+            body: ProxyBody::Buffered(vec![]),
         };
 
         let response = build_proxy_response(proxy);

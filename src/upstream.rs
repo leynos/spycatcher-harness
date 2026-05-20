@@ -5,6 +5,8 @@
 //! client-library types into cassette logic.
 
 use axum::http::{HeaderName, HeaderValue};
+use futures_util::StreamExt;
+use futures_util::stream::BoxStream;
 use reqwest::{Client, Url};
 
 use crate::config::UpstreamConfig;
@@ -57,6 +59,13 @@ pub(crate) trait ChatCompletionsUpstream {
         &self,
         request: ChatCompletionsRequest<'_>,
     ) -> HarnessResult<ObservedResponse>;
+
+    /// Forwards one streaming chat completions request to the configured
+    /// upstream.
+    async fn stream_chat_completions(
+        &self,
+        request: ChatCompletionsRequest<'_>,
+    ) -> HarnessResult<StreamingObservedResponse>;
 }
 
 /// Outbound request data for one chat completions proxy call.
@@ -72,6 +81,18 @@ pub(crate) struct ChatCompletionsRequest<'a> {
     pub body: &'a [u8],
     /// Raw query string from the inbound request.
     pub query: &'a str,
+}
+
+/// Captured metadata and byte stream for one upstream streaming response.
+pub(crate) struct StreamingObservedResponse {
+    /// HTTP status code.
+    pub status: u16,
+    /// Selected headers in observed order for cassette persistence.
+    pub headers: Vec<(String, String)>,
+    /// Selected headers as raw bytes for downstream proxying.
+    pub proxy_headers: Vec<(String, Vec<u8>)>,
+    /// Upstream response body bytes as received from reqwest.
+    pub body: BoxStream<'static, HarnessResult<axum::body::Bytes>>,
 }
 
 /// Reqwest-backed upstream adapter for record mode.
@@ -197,6 +218,44 @@ impl ChatCompletionsUpstream for ReqwestUpstreamClient {
             proxy_headers,
             parsed_json: parse_json_bytes(&response_body),
             body: response_body,
+        })
+    }
+
+    async fn stream_chat_completions(
+        &self,
+        request: ChatCompletionsRequest<'_>,
+    ) -> HarnessResult<StreamingObservedResponse> {
+        let url = chat_completions_url(&request.config.base_url, request.query)?;
+        let authed_builder = self.client.post(url).bearer_auth(request.api_key);
+        let forwarded_builder = apply_forwarded_headers(authed_builder, request.headers)?;
+        let extra_builder = apply_extra_headers(forwarded_builder, &request.config.extra_headers)?;
+
+        let upstream_response = extra_builder
+            .body(request.body.to_vec())
+            .send()
+            .await
+            .map_err(|source| HarnessError::UpstreamRequestFailed {
+                source: source.into(),
+            })?;
+        let status = upstream_response.status().as_u16();
+        let selected_headers = selected_response_headers(upstream_response.headers());
+        let proxy_headers = selected_response_proxy_headers(upstream_response.headers());
+        let body = futures_util::stream::try_unfold(upstream_response, |mut streamed| async move {
+            streamed
+                .chunk()
+                .await
+                .map(|maybe_chunk| maybe_chunk.map(|chunk| (chunk, streamed)))
+                .map_err(|source| HarnessError::UpstreamRequestFailed {
+                    source: source.into(),
+                })
+        })
+        .boxed();
+
+        Ok(StreamingObservedResponse {
+            status,
+            headers: selected_headers,
+            proxy_headers,
+            body,
         })
     }
 }

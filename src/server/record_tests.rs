@@ -1,8 +1,8 @@
 //! Unit tests for record-mode orchestration.
 use super::*;
 use camino::{Utf8Path, Utf8PathBuf};
+use futures_util::StreamExt;
 use rstest::rstest;
-use serde_json::json;
 use std::sync::atomic::AtomicU64;
 use std::time::{Duration, Instant};
 
@@ -13,6 +13,7 @@ use crate::config::UpstreamKind;
 use crate::http_exchange::{ObservedResponse, parse_json_bytes};
 use crate::protocol::CHAT_COMPLETIONS_PATH;
 use crate::server::record_metadata::{Clock, MetadataFactory, SessionMetadata, SystemClock};
+use crate::upstream::StreamingObservedResponse;
 #[derive(Debug, Clone)]
 struct FakeEnvProvider(Option<String>);
 
@@ -63,6 +64,33 @@ impl ChatCompletionsUpstream for FakeUpstream {
             |response| Ok(response.clone()),
         )
     }
+
+    async fn stream_chat_completions(
+        &self,
+        _request: ChatCompletionsRequest<'_>,
+    ) -> HarnessResult<StreamingObservedResponse> {
+        self.response.as_ref().map_or_else(
+            |()| {
+                Err(HarnessError::UpstreamRequestFailed {
+                    source: Box::new(std::io::Error::new(
+                        std::io::ErrorKind::ConnectionRefused,
+                        "stub failure",
+                    )),
+                })
+            },
+            |response| {
+                Ok(StreamingObservedResponse {
+                    status: response.status,
+                    headers: response.headers.clone(),
+                    proxy_headers: response.proxy_headers.clone(),
+                    body: futures_util::stream::iter(vec![Ok(axum::body::Bytes::from(
+                        response.body.clone(),
+                    ))])
+                    .boxed(),
+                })
+            },
+        )
+    }
 }
 async fn assert_error_does_not_append(
     slug: &str,
@@ -89,17 +117,6 @@ async fn assert_error_does_not_append(
 }
 #[rstest]
 #[tokio::test]
-async fn unsupported_stream_requests_do_not_append() {
-    assert_error_does_not_append(
-        "stream",
-        FakeEnvProvider(Some("token".to_owned())),
-        sample_request(Some(json!({"stream": true}))),
-        |error| assert_eq!(error, RecordError::UnsupportedStream),
-    )
-    .await;
-}
-#[rstest]
-#[tokio::test]
 async fn missing_api_key_does_not_append() {
     assert_error_does_not_append(
         "missing-key",
@@ -108,26 +125,6 @@ async fn missing_api_key_does_not_append() {
         |error| assert_eq!(error, RecordError::MissingApiKeyNotConfigured),
     )
     .await;
-}
-#[rstest]
-fn check_not_streaming_rejects_streaming_request() {
-    let request = sample_request(parse_json_bytes(
-        br#"{"model":"gpt-test","messages":[],"stream":true}"#,
-    ));
-    let fixture = service_fixture_ephemeral(FakeEnvProvider(Some("token".to_owned())));
-
-    let result = fixture.service.check_not_streaming(&request);
-
-    assert_eq!(result, Err(RecordError::UnsupportedStream));
-}
-#[rstest]
-fn check_not_streaming_allows_non_streaming_request() {
-    let request = sample_request(parse_json_bytes(
-        br#"{"model":"gpt-test","messages":[],"stream":false}"#,
-    ));
-    let fixture = service_fixture_ephemeral(FakeEnvProvider(Some("token".to_owned())));
-
-    assert!(fixture.service.check_not_streaming(&request).is_ok());
 }
 #[rstest]
 fn resolve_api_key_returns_key_when_present() {
@@ -226,7 +223,10 @@ async fn invalid_json_response_keeps_exact_bytes() {
         .await
         .expect("request should succeed");
 
-    assert_eq!(proxied.body, br#"{"broken": true"#.to_vec());
+    let ProxyBody::Buffered(proxied_body) = proxied.body else {
+        panic!("expected buffered response");
+    };
+    assert_eq!(proxied_body, br#"{"broken": true"#.to_vec());
     let persisted = load_cassette(&cassette.path);
     let interaction = persisted
         .interactions

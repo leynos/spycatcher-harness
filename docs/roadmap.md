@@ -147,14 +147,14 @@ units with explicit dependencies and completion criteria.
 
 ### 2.1. OpenAI and OpenRouter streaming support
 
-- [ ] 2.1.1. Add SSE parser and recorder for OpenAI-style `data:` streams.
+- [x] 2.1.1. Add SSE parser and recorder for OpenAI-style `data:` streams.
   - Depends on: 1.3.1.
   - Success criteria:
-    - [ ] Recorder captures parsed stream events and raw transcript bytes for
+    - [x] Recorder captures parsed stream events and raw transcript bytes for
           every streamed interaction.
-    - [ ] Parser handles completion chunks, usage-including final chunks, and
+    - [x] Parser handles completion chunks, usage-including final chunks, and
           end markers.
-    - [ ] Unit tests cover fragmented frame boundaries and malformed event
+    - [x] Unit tests cover fragmented frame boundaries and malformed event
           handling.
   - Design references:
     [Streaming capture and replay](spycatcher-harness-design.md#streaming-capture-and-replay).

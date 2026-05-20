@@ -2464,6 +2464,7 @@ dependencies = [
  "cap-std",
  "clap",
  "eyre",
+ "futures-util",
  "i18n-embed",
  "insta",
  "log",

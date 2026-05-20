@@ -16,7 +16,7 @@ use crate::cassette::{
     filesystem::FilesystemCassetteStore,
 };
 use crate::config::{HarnessConfig, RedactionConfig, UpstreamConfig};
-use crate::http_exchange::{ObservedRequest, ProxyResponse, redact_headers};
+use crate::http_exchange::{ObservedRequest, ProxyBody, ProxyResponse, redact_headers};
 use crate::protocol::{
     CHAT_COMPLETIONS_PROTOCOL_ID, is_streaming_chat_completions_request, upstream_id,
 };
@@ -28,6 +28,9 @@ use crate::upstream::{
 use crate::{HarnessError, HarnessResult};
 
 type SharedCassetteStore = Arc<Mutex<FilesystemCassetteStore>>;
+
+#[path = "record_stream.rs"]
+mod record_stream;
 
 /// Shared record-mode application state for the inbound server.
 #[derive(Debug, Clone)]
@@ -86,7 +89,6 @@ pub(crate) struct RecordService<U, E, M> {
 /// Request-level record-mode failures reported to the HTTP adapter.
 #[derive(Debug, PartialEq)]
 pub(crate) enum RecordError {
-    UnsupportedStream,
     MissingApiKeyNotConfigured,
     Internal,
 }
@@ -103,21 +105,6 @@ where
     E: EnvProvider + Clone + Send + Sync + 'static,
     M: MetadataFactory,
 {
-    fn check_not_streaming(&self, request: &ObservedRequest) -> Result<(), RecordError> {
-        if is_streaming_chat_completions_request(request.parsed_json.as_ref()) {
-            warn!(
-                target: "spycatcher.harness.record",
-                "streaming request rejected path={path} mode=record \
-                 protocol={protocol} cassette={cassette}",
-                path = request.path,
-                protocol = CHAT_COMPLETIONS_PROTOCOL_ID,
-                cassette = upstream_id(self.upstream.kind),
-            );
-            return Err(RecordError::UnsupportedStream);
-        }
-        Ok(())
-    }
-
     fn resolve_api_key(&self) -> Result<String, RecordError> {
         self.env_provider
             .read(&self.upstream.api_key_env)
@@ -146,7 +133,11 @@ where
     ) -> Result<ProxyResponse, RecordError> {
         let interaction_start = Instant::now();
 
-        self.check_not_streaming(&request)?;
+        if is_streaming_chat_completions_request(request.parsed_json.as_ref()) {
+            return self
+                .handle_streaming_chat_completions(request, interaction_start)
+                .await;
+        }
         let api_key = self.resolve_api_key()?;
 
         let interaction_id = format!(
@@ -207,7 +198,7 @@ where
         Ok(ProxyResponse {
             status: upstream_response.status,
             headers: upstream_response.proxy_headers,
-            body: upstream_response.body,
+            body: ProxyBody::Buffered(upstream_response.body),
         })
     }
 

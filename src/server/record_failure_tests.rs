@@ -2,6 +2,7 @@
 
 use super::*;
 use camino::Utf8PathBuf;
+use futures_util::StreamExt;
 use rstest::rstest;
 use std::sync::atomic::AtomicU64;
 
@@ -9,6 +10,7 @@ use crate::cassette::{InteractionMetadata, filesystem::FilesystemCassetteStore};
 use crate::http_exchange::{ObservedResponse, parse_json_bytes};
 use crate::protocol::CHAT_COMPLETIONS_PATH;
 use crate::server::record_metadata::MetadataFactory;
+use crate::upstream::StreamingObservedResponse;
 
 #[derive(Debug, Clone)]
 struct FakeEnvProvider(Option<String>);
@@ -30,6 +32,21 @@ impl ChatCompletionsUpstream for FakeUpstream {
         _request: ChatCompletionsRequest<'_>,
     ) -> HarnessResult<ObservedResponse> {
         Ok(self.response.clone())
+    }
+
+    async fn stream_chat_completions(
+        &self,
+        _request: ChatCompletionsRequest<'_>,
+    ) -> HarnessResult<StreamingObservedResponse> {
+        Ok(StreamingObservedResponse {
+            status: self.response.status,
+            headers: self.response.headers.clone(),
+            proxy_headers: self.response.proxy_headers.clone(),
+            body: futures_util::stream::iter(vec![Ok(axum::body::Bytes::from(
+                self.response.body.clone(),
+            ))])
+            .boxed(),
+        })
     }
 }
 
@@ -73,7 +90,10 @@ async fn recording_failure_still_returns_upstream_response() {
         .expect("upstream response should be returned despite recording failure");
 
     assert_eq!(proxied.status, 200);
-    assert_eq!(proxied.body, br#"{"id":"ok"}"#.to_vec());
+    let ProxyBody::Buffered(body) = proxied.body else {
+        panic!("expected buffered response");
+    };
+    assert_eq!(body, br#"{"id":"ok"}"#.to_vec());
     assert_eq!(failure_count.load(Ordering::Relaxed), 1);
 }
 
