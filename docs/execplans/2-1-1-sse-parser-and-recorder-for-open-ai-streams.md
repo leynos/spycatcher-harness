@@ -277,7 +277,8 @@ Skills to apply during implementation:
 - [x] 2026-05-20 17:35 CEST - Ran final `coderabbit review --agent`; it
       returned zero findings.
 - [x] Confirm roadmap task `2.1.1` remains marked done after final gates pass.
-- [ ] Commit the completed, gated change.
+- [x] 2026-05-20 17:45 CEST - Committed the completed, gated change as
+      `81ec812` (`Record OpenAI-style SSE streams`).
 
 ## Surprises & Discoveries
 
