@@ -51,7 +51,7 @@ enum Subcommand {
 }
 
 impl Subcommand {
-    fn as_str(self) -> &'static str {
+    const fn as_str(self) -> &'static str {
         match self {
             Self::Record => "record",
             Self::Replay => "replay",
@@ -67,7 +67,7 @@ enum CliFlag {
 }
 
 impl CliFlag {
-    fn as_str(self) -> &'static str {
+    const fn as_str(self) -> &'static str {
         match self {
             Self::CassetteName => "--cassette-name",
             Self::Locale => "--locale",
@@ -115,12 +115,12 @@ fn expect_loaded_config(cli_layering_world: &CliLayeringWorld, context: &str) ->
 
 #[given("a replay command with cassette name {cassette_name}")]
 fn replay_command_with_cassette_name(cli_layering_world: &CliLayeringWorld, cassette_name: String) {
-    let cassette_name = trim_surrounding_quotes(&cassette_name);
+    let trimmed_cassette_name = trim_surrounding_quotes(&cassette_name);
     set_flag_command(
         cli_layering_world,
         Subcommand::Replay,
         CliFlag::CassetteName,
-        &cassette_name,
+        &trimmed_cassette_name,
     );
 }
 
@@ -131,12 +131,12 @@ fn replay_command_with_no_cli_overrides(cli_layering_world: &CliLayeringWorld) {
 
 #[given("a replay command with locale {locale}")]
 fn replay_command_with_locale(cli_layering_world: &CliLayeringWorld, locale: String) {
-    let locale = trim_surrounding_quotes(&locale);
+    let trimmed_locale = trim_surrounding_quotes(&locale);
     set_flag_command(
         cli_layering_world,
         Subcommand::Replay,
         CliFlag::Locale,
-        &locale,
+        &trimmed_locale,
     );
 }
 
