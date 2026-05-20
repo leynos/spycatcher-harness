@@ -244,7 +244,7 @@ Skills to apply during implementation:
 - [x] 2026-05-20 14:35 CEST - Re-read this plan, `AGENTS.md`, and relevant
       skills at implementation
       start.
-- [ ] Establish failing tests for parser and record-mode streaming behaviour.
+- [x] Establish failing tests for parser and record-mode streaming behaviour.
 - [x] 2026-05-20 15:25 CEST - Added and passed focused parser tests covering
       JSON data events, multiline data, comments, `[DONE]`, usage chunks,
       line-ending variants, fragmented boundaries, invalid UTF-8, incomplete
@@ -269,7 +269,7 @@ Skills to apply during implementation:
       design document, and roadmap to describe shipped stream recording and
       the still-unsupported stream replay boundary.
 - [x] Run CodeRabbit review and clear all actionable concerns.
-- [ ] Run `make check-fmt`, `make lint`, and `make test` sequentially with
+- [x] Run `make check-fmt`, `make lint`, and `make test` sequentially with
       `/tmp` `tee` logs.
 - [x] 2026-05-20 17:20 CEST - Ran final gates successfully:
       `make check-fmt`, `make lint`, `make test`, `make markdownlint`, and

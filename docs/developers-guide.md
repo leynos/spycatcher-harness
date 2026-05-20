@@ -150,9 +150,10 @@ Do not replace those fixtures with fixed paths. A future in-memory cassette
 store can remove this temporary filesystem dependency once `RecordService`
 accepts cassette reader/appender traits generically.
 
-## Internal module layout
+## Module layout
 
-The library crate (`src/lib.rs`) exposes the following public modules:
+The library crate (`src/lib.rs`) contains the following top-level public and
+internal modules:
 
 | Module     | Purpose                                                                    |
 | ---------- | -------------------------------------------------------------------------- |

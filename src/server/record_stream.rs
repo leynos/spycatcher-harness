@@ -101,6 +101,7 @@ where
             events: Vec::new(),
             chunk_offsets_ms: Vec::new(),
             ttft_ms: None,
+            recording_failed: false,
         };
         stream::try_unfold(state, process_stream_chunk).boxed()
     }
@@ -181,6 +182,7 @@ struct StreamRecordingState<U, E, M> {
     events: Vec<StreamEvent>,
     chunk_offsets_ms: Vec<u64>,
     ttft_ms: Option<u64>,
+    recording_failed: bool,
 }
 
 async fn process_stream_chunk<U, E, M>(
@@ -206,7 +208,7 @@ where
             upstream_id(state.service.upstream.kind),
         );
     })?;
-    state.observe_chunk(&chunk)?;
+    state.observe_chunk(&chunk);
     Ok(Some((chunk, state)))
 }
 
@@ -216,18 +218,39 @@ where
     E: EnvProvider + Clone + Send + Sync + 'static,
     M: MetadataFactory,
 {
-    fn observe_chunk(&mut self, chunk: &Bytes) -> HarnessResult<()> {
+    fn observe_chunk(&mut self, chunk: &Bytes) {
+        if self.recording_failed {
+            return;
+        }
         let elapsed = millis_u64(self.upstream_start.elapsed().as_millis());
         self.ttft_ms.get_or_insert(elapsed);
         self.raw_transcript.extend_from_slice(chunk);
-        let new_events = self.parser.feed(chunk).map_err(stream_parse_failure)?;
+        let new_events = match self.parser.feed(chunk) {
+            Ok(events) => events,
+            Err(parse_error) => {
+                self.recording_failed = true;
+                self.service.failure_count.fetch_add(1, Ordering::Relaxed);
+                let error = stream_parse_failure(parse_error);
+                error!(
+                    target: "spycatcher.harness.record",
+                    "upstream stream parse failed interaction_id={} mode=record \
+                     protocol={} outcome=parse_failed cassette={} error={error}",
+                    self.interaction_id,
+                    CHAT_COMPLETIONS_PROTOCOL_ID,
+                    upstream_id(self.service.upstream.kind),
+                );
+                return;
+            }
+        };
         self.chunk_offsets_ms
             .extend(std::iter::repeat_n(elapsed, new_events.len()));
         self.events.extend(new_events);
-        Ok(())
     }
 
     async fn finish_recording(self) {
+        if self.recording_failed {
+            return;
+        }
         if let Err(error) = self.parser.finish().map_err(stream_parse_failure) {
             self.service.failure_count.fetch_add(1, Ordering::Relaxed);
             error!(

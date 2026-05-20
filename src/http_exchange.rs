@@ -75,10 +75,15 @@ pub(crate) struct ProxyResponse {
 
 impl fmt::Debug for ProxyResponse {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let header_names = self
+            .headers
+            .iter()
+            .map(|(name, _)| name.as_str())
+            .collect::<Vec<_>>();
         formatter
             .debug_struct("ProxyResponse")
             .field("status", &self.status)
-            .field("headers", &self.headers)
+            .field("headers", &header_names)
             .field("body", &self.body)
             .finish()
     }
