@@ -268,12 +268,10 @@ impl ChatCompletionsUpstream for ReqwestUpstreamClient {
 ///
 /// # Errors
 ///
-/// Returns [`HarnessError::InvalidConfig`] when the base URL is not a valid
-/// absolute URL.
-pub(crate) fn chat_completions_url(base_url: &str, query: &str) -> HarnessResult<Url> {
-    let mut url = Url::parse(base_url).map_err(|error| HarnessError::InvalidConfig {
-        message: format!("invalid upstream base URL {base_url:?}: {error}"),
-    })?;
+/// Returns [`HarnessError::InvalidConfig`] when the base URL cannot be used
+/// as a base (i.e. is cannot-be-a-base).
+pub(crate) fn chat_completions_url(base_url: &Url, query: &str) -> HarnessResult<Url> {
+    let mut url = base_url.clone();
     {
         let mut segments = url
             .path_segments_mut()

@@ -414,7 +414,7 @@ fn record_supports_cmds_namespace_for_nested_upstream_values() {
         .expect("record config should contain upstream values");
     assert_eq!(loaded.cassette_name, "cassette_a");
     assert_eq!(loaded.mode, config::Mode::Record);
-    assert_eq!(upstream.base_url, "https://example.invalid/api");
+    assert_eq!(upstream.base_url.as_str(), "https://example.invalid/api");
     assert_eq!(upstream.api_key_env, "TEST_API_KEY");
 }
 

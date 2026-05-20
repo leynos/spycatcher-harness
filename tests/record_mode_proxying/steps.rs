@@ -5,6 +5,7 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 
 use rstest_bdd_macros::{given, then, when};
+use url::Url;
 
 use spycatcher_harness::config::{ListenAddr, Mode, RedactionConfig, UpstreamConfig, UpstreamKind};
 use spycatcher_harness::{HarnessConfig, start_harness};
@@ -58,12 +59,14 @@ fn a_record_mode_harness_configured_with_an_unavailable_upstream(
     proxy_world: &ProxyWorld,
 ) -> Result<(), Box<dyn Error>> {
     let cassette_path = unique_cassette_path("failure");
+    let base_url = Url::parse("http://127.0.0.1:1/api/v1")
+        .map_err(|error| std::io::Error::other(format!("test fixture URL is invalid: {error}")))?;
     proxy_world.cassette_path.set(cassette_path.clone());
     proxy_world.config.set(make_record_config(
         &cassette_path,
         UpstreamConfig {
             kind: UpstreamKind::OpenRouter,
-            base_url: "http://127.0.0.1:1/api/v1".to_owned(),
+            base_url,
             api_key_env: present_env_name()?.to_owned(),
             extra_headers: std::collections::BTreeMap::new(),
         },

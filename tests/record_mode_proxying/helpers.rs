@@ -13,6 +13,7 @@ use futures_util::stream;
 use serde_json::{Value, json};
 use tokio::net::TcpListener;
 use tokio::sync::oneshot;
+use url::Url;
 
 use spycatcher_harness::cassette::Cassette;
 
@@ -105,8 +106,11 @@ impl StubUpstream {
         })
     }
 
-    pub(crate) fn base_url(&self) -> String {
-        format!("http://{}/api/v1", self.addr)
+    pub(crate) fn base_url(&self) -> Url {
+        match Url::parse(&format!("http://{}/api/v1", self.addr)) {
+            Ok(url) => url,
+            Err(error) => panic!("test fixture URL is invalid: {error}"),
+        }
     }
 
     pub(crate) fn captured_requests(&self) -> Result<Vec<CapturedRequest>, Box<dyn Error>> {
