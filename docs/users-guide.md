@@ -410,8 +410,6 @@ SPYCATCHER_HARNESS_CMDS_REPLAY_LOCALIZATION__FALLBACK_LOCALE=en-US
 Nested environment keys use a double underscore between path segments. For
 example, `LOCALIZATION__LOCALE` maps to `cmds.<subcommand>.localization.locale`.
 
-Nested keys use double underscores (`__`).
-
 ### CLI usage examples
 
 ```sh
