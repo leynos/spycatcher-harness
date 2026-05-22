@@ -1,4 +1,14 @@
-//! Long-form CLI help text.
+//! Long-form CLI help text constants for the `spycatcher-harness` binary.
+//!
+//! This module contains static string constants that are injected into the
+//! `clap` argument parser as after-help text. [`CLI_MERGE_HELP`] documents the
+//! layered configuration precedence model (CLI > env > config files > defaults)
+//! and illustrates the `cmds.<subcommand>` TOML namespace and the double-underscore
+//! convention for nested environment keys such as
+//! `SPYCATCHER_HARNESS_CMDS_RECORD_UPSTREAM__BASE_URL`.
+//!
+//! Keep this module free of logic; its sole responsibility is to hold
+//! user-facing documentation strings.
 
 pub(super) const CLI_MERGE_HELP: &str = concat!(
     "Configuration precedence: CLI > env > config files > defaults.\n",

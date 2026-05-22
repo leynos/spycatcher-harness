@@ -1,4 +1,21 @@
 //! Unit tests for CLI layered configuration loading.
+//!
+//! This suite exercises [`spycatcher_harness::cli::load_subcommand_config_from_iter`]
+//! in isolation using `figment::Jail` to control the filesystem and environment.
+//! It covers:
+//!
+//! - Cassette-name precedence (CLI > env > config file > default) for `replay`.
+//! - Localisation-field precedence for `locale` and `fallback_locale` across all
+//!   three subcommands (`record`, `replay`, `verify`).
+//! - Property-based validation that arbitrary syntactically valid BCP 47 language
+//!   identifiers are accepted without error.
+//! - Snapshot tests for `InvalidLocale` error messages produced when
+//!   `--locale` or `--fallback-locale` receives a non-BCP 47 value.
+//!
+//! Related suites:
+//! - `tests/harness_cli_layering_bdd.rs` — BDD scenarios for the same surface.
+//! - `src/bin/spycatcher_harness.rs` (inline tests) — startup locale-plan and
+//!   loader construction unit tests.
 
 use std::cell::RefCell;
 

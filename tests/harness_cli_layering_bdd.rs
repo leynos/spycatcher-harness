@@ -1,4 +1,23 @@
-//! Behavioural tests for layered CLI configuration loading.
+//! Behavioural (BDD) tests for layered CLI configuration loading.
+//!
+//! This module implements rstest-bdd step functions and scenario runners for the
+//! Gherkin feature file at `tests/features/harness_cli_layering.feature`. It
+//! verifies user-visible configuration-precedence behaviour end-to-end via the
+//! [`spycatcher_harness::cli::load_subcommand_config_from_iter`] entry point,
+//! using `figment::Jail` to isolate filesystem and environment state.
+//!
+//! Covered scenarios:
+//! - Cassette-name CLI precedence over env and file for `replay`.
+//! - Upstream URL merging from `cmds.record` TOML namespace.
+//! - Cassette merging from `cmds.verify` TOML namespace.
+//! - Invalid environment value rejection.
+//! - Locale CLI precedence over env and file for `replay`.
+//! - Fallback-locale selection when no explicit locale is configured.
+//! - Invalid locale configuration failure.
+//!
+//! Related suites:
+//! - `tests/cli_layering_unit.rs` — rstest unit coverage for the same surface.
+//! - `src/bin/spycatcher_harness.rs` (inline tests) — binary startup unit tests.
 
 use std::cell::RefCell;
 
