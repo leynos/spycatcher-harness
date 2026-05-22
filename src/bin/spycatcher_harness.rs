@@ -226,40 +226,39 @@ mod tests {
     }
 
     #[rstest]
-    fn plan_locale_selection_rejects_invalid_locale_without_fallback() {
+    #[case(
+        Some(String::from("not_a_locale")),
+        String::from("en-US"),
+        "locale",
+        "invalid localization field `locale` value `not_a_locale`: Parser error: Invalid subtag"
+    )]
+    #[case(
+        Some(String::from("en-GB")),
+        String::from("not_a_locale"),
+        "fallback_locale",
+        "invalid localization field `fallback_locale` value `not_a_locale`: Parser error: Invalid subtag"
+    )]
+    fn plan_locale_selection_rejects_invalid_field(
+        #[case] locale: Option<String>,
+        #[case] fallback_locale: String,
+        #[case] expected_field: &str,
+        #[case] expected_message: &str,
+    ) {
         let localization = LocalizationConfig {
-            locale: Some(String::from("not_a_locale")),
-            fallback_locale: String::from("en-US"),
+            locale,
+            fallback_locale,
         };
-
         let error = plan_locale_selection(&localization).expect_err("invalid locale should fail");
         let message = error.to_string();
-
-        insta::assert_snapshot!(
-            message,
-            @"invalid localization field `locale` value `not_a_locale`: Parser error: Invalid subtag"
+        assert_eq!(message, expected_message);
+        assert!(
+            message.contains(expected_field),
+            "expected field name `{expected_field}` in error: {message}"
         );
-        assert!(message.contains("locale"));
-        assert!(message.contains("not_a_locale"));
-    }
-
-    #[rstest]
-    fn plan_locale_selection_rejects_invalid_fallback_locale() {
-        let localization = LocalizationConfig {
-            locale: Some(String::from("en-GB")),
-            fallback_locale: String::from("not_a_locale"),
-        };
-
-        let error =
-            plan_locale_selection(&localization).expect_err("invalid fallback locale should fail");
-        let message = error.to_string();
-
-        insta::assert_snapshot!(
-            message,
-            @"invalid localization field `fallback_locale` value `not_a_locale`: Parser error: Invalid subtag"
+        assert!(
+            message.contains("not_a_locale"),
+            "expected invalid value `not_a_locale` in error: {message}"
         );
-        assert!(message.contains("fallback_locale"));
-        assert!(message.contains("not_a_locale"));
     }
 
     #[rstest]
