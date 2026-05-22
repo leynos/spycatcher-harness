@@ -1,14 +1,16 @@
 //! `spycatcher-harness` CLI binary entry point.
 //!
-//! Delegates all startup and shutdown behaviour to the
+//! The binary owns process-level concerns: layered configuration loading,
+//! startup locale negotiation, construction of the Fluent language loader, and
+//! rendering localized harness errors before handing semantic work to the
 //! [`spycatcher_harness`] library.
 
-use eyre::WrapErr;
+use eyre::{WrapErr, eyre};
 use i18n_embed::fluent::FluentLanguageLoader;
 use i18n_embed::unic_langid::LanguageIdentifier;
 use spycatcher_harness::cli::{CliConfigError, load_subcommand_config};
 use spycatcher_harness::config::LocalizationConfig;
-use spycatcher_harness::i18n::HarnessLocalizations;
+use spycatcher_harness::i18n::{HarnessLocalizations, localize_harness_error};
 use spycatcher_harness::start_harness;
 use std::io::Write;
 use thiserror::Error;
@@ -107,15 +109,20 @@ fn parse_language_identifier(
 
 async fn run_harness(
     config: spycatcher_harness::HarnessConfig,
-    _language_loader: &FluentLanguageLoader,
+    language_loader: &FluentLanguageLoader,
 ) -> eyre::Result<()> {
-    let harness = start_harness(config)
-        .await
-        .wrap_err("failed to start harness")?;
-    harness
-        .shutdown()
-        .await
-        .wrap_err("failed to shut down harness")
+    let harness = start_harness(config).await.map_err(|error| {
+        eyre!(
+            "failed to start harness: {}",
+            localize_harness_error(language_loader, &error)
+        )
+    })?;
+    harness.shutdown().await.map_err(|error| {
+        eyre!(
+            "failed to shut down harness: {}",
+            localize_harness_error(language_loader, &error)
+        )
+    })
 }
 
 #[cfg(test)]
@@ -165,9 +172,14 @@ mod tests {
         };
 
         let error = plan_locale_selection(&localization).expect_err("invalid locale should fail");
+        let message = error.to_string();
 
-        assert!(error.to_string().contains("locale"));
-        assert!(error.to_string().contains("not_a_locale"));
+        insta::assert_snapshot!(
+            message,
+            @"invalid localization field `locale` value `not_a_locale`: Parser error: Invalid subtag"
+        );
+        assert!(message.contains("locale"));
+        assert!(message.contains("not_a_locale"));
     }
 
     #[rstest]
@@ -179,9 +191,14 @@ mod tests {
 
         let error =
             plan_locale_selection(&localization).expect_err("invalid fallback locale should fail");
+        let message = error.to_string();
 
-        assert!(error.to_string().contains("fallback_locale"));
-        assert!(error.to_string().contains("not_a_locale"));
+        insta::assert_snapshot!(
+            message,
+            @"invalid localization field `fallback_locale` value `not_a_locale`: Parser error: Invalid subtag"
+        );
+        assert!(message.contains("fallback_locale"));
+        assert!(message.contains("not_a_locale"));
     }
 
     #[rstest]
@@ -202,6 +219,26 @@ mod tests {
         assert_eq!(
             rendered,
             "invalid configuration: \u{2068}missing upstream\u{2069}"
+        );
+    }
+
+    #[tokio::test]
+    async fn run_harness_renders_startup_errors_with_language_loader() {
+        let localization = LocalizationConfig::default();
+        let loader = build_language_loader(&localization).expect("loader should build");
+        let mut config = spycatcher_harness::HarnessConfig::default();
+        config.cassette_name.clear();
+
+        let error = run_harness(config, &loader)
+            .await
+            .expect_err("invalid config should fail startup");
+
+        let message = error.to_string();
+        assert!(
+            message.contains("failed to start harness")
+                && message.contains("invalid configuration")
+                && message.contains("cassette name must not be empty"),
+            "expected localized startup error, got: {message}",
         );
     }
 }

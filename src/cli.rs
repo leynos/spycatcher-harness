@@ -178,17 +178,17 @@ fn load_command_config(
 
 fn load_record_config(prefix: &Prefix, args: &RecordArgs) -> Result<HarnessConfig, CliConfigError> {
     let merged_args: RecordArgs = merge_subcommand_config(prefix, args, "record")?;
-    to_record_config(&merged_args)
+    to_record_config(args, &merged_args)
 }
 
 fn load_replay_config(prefix: &Prefix, args: &ReplayArgs) -> Result<HarnessConfig, CliConfigError> {
     let merged_args: ReplayArgs = merge_subcommand_config(prefix, args, "replay")?;
-    to_replay_config(&merged_args)
+    to_replay_config(args, &merged_args)
 }
 
 fn load_verify_config(prefix: &Prefix, args: &VerifyArgs) -> Result<HarnessConfig, CliConfigError> {
     let merged_args: VerifyArgs = merge_subcommand_config(prefix, args, "verify")?;
-    to_verify_config(&merged_args)
+    to_verify_config(args, &merged_args)
 }
 
 #[derive(Debug, Clone, Parser, Serialize, Deserialize, Default, PartialEq)]
@@ -276,20 +276,20 @@ struct CommonOverrides<'a> {
 macro_rules! impl_common_overrides {
     ($($T:ty),+ $(,)?) => {
         $(
-            impl<'a> From<&'a $T> for CommonOverrides<'a> {
-                fn from(args: &'a $T) -> Self {
+            impl<'a> From<(&'a $T, &'a $T)> for CommonOverrides<'a> {
+                fn from((cli_args, merged_args): (&'a $T, &'a $T)) -> Self {
                     Self {
-                        listen: args.listen,
-                        cassette_dir: args.cassette_dir.as_deref(),
-                        cassette_name: args.cassette_name.as_deref(),
-                        locale: args
+                        listen: merged_args.listen,
+                        cassette_dir: merged_args.cassette_dir.as_deref(),
+                        cassette_name: merged_args.cassette_name.as_deref(),
+                        locale: cli_args
                             .locale
                             .as_deref()
-                            .or(args.localization.locale.as_deref()),
-                        fallback_locale: args
+                            .or(merged_args.localization.locale.as_deref()),
+                        fallback_locale: cli_args
                             .fallback_locale
                             .as_deref()
-                            .or(args.localization.fallback_locale.as_deref()),
+                            .or(merged_args.localization.fallback_locale.as_deref()),
                     }
                 }
             }
@@ -311,20 +311,29 @@ fn build_config(
     Ok(config)
 }
 
-fn to_record_config(args: &RecordArgs) -> Result<HarnessConfig, CliConfigError> {
+fn to_record_config(
+    cli_args: &RecordArgs,
+    merged_args: &RecordArgs,
+) -> Result<HarnessConfig, CliConfigError> {
     build_config(
-        args.into(),
+        (cli_args, merged_args).into(),
         config::Mode::Record,
-        args.upstream.clone().map(Into::into),
+        merged_args.upstream.clone().map(Into::into),
     )
 }
 
-fn to_replay_config(args: &ReplayArgs) -> Result<HarnessConfig, CliConfigError> {
-    build_config(args.into(), config::Mode::Replay, None)
+fn to_replay_config(
+    cli_args: &ReplayArgs,
+    merged_args: &ReplayArgs,
+) -> Result<HarnessConfig, CliConfigError> {
+    build_config((cli_args, merged_args).into(), config::Mode::Replay, None)
 }
 
-fn to_verify_config(args: &VerifyArgs) -> Result<HarnessConfig, CliConfigError> {
-    build_config(args.into(), config::Mode::Verify, None)
+fn to_verify_config(
+    cli_args: &VerifyArgs,
+    merged_args: &VerifyArgs,
+) -> Result<HarnessConfig, CliConfigError> {
+    build_config((cli_args, merged_args).into(), config::Mode::Verify, None)
 }
 
 fn apply_overrides(

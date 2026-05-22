@@ -146,6 +146,62 @@ fn replay_localization_precedence(
 }
 
 #[rstest]
+fn env_nested_locale_wins_over_file_only_cli_alias() {
+    let config = concat!(
+        "[cmds.replay]\n",
+        "locale = \"en-GB\"\n",
+        "fallback_locale = \"en-GB\"\n",
+    );
+    let loaded = load_with_jail(
+        &["spycatcher-harness", "replay"],
+        Some(config),
+        &[
+            (
+                "SPYCATCHER_HARNESS_CMDS_REPLAY_LOCALIZATION__LOCALE",
+                "en-AU",
+            ),
+            (
+                "SPYCATCHER_HARNESS_CMDS_REPLAY_LOCALIZATION__FALLBACK_LOCALE",
+                "en-US",
+            ),
+        ],
+    )
+    .expect("config should load");
+
+    assert_eq!(loaded.localization.locale.as_deref(), Some("en-AU"));
+    assert_eq!(loaded.localization.fallback_locale, "en-US");
+}
+
+#[rstest]
+fn cli_locale_alias_wins_over_env_nested_locale() {
+    let loaded = load_with_jail(
+        &[
+            "spycatcher-harness",
+            "replay",
+            "--locale",
+            "en-CA",
+            "--fallback-locale",
+            "en-US",
+        ],
+        None,
+        &[
+            (
+                "SPYCATCHER_HARNESS_CMDS_REPLAY_LOCALIZATION__LOCALE",
+                "en-AU",
+            ),
+            (
+                "SPYCATCHER_HARNESS_CMDS_REPLAY_LOCALIZATION__FALLBACK_LOCALE",
+                "en-GB",
+            ),
+        ],
+    )
+    .expect("config should load");
+
+    assert_eq!(loaded.localization.locale.as_deref(), Some("en-CA"));
+    assert_eq!(loaded.localization.fallback_locale, "en-US");
+}
+
+#[rstest]
 #[case("record", config::Mode::Record)]
 #[case("replay", config::Mode::Replay)]
 #[case("verify", config::Mode::Verify)]
@@ -181,6 +237,10 @@ fn invalid_cli_locale_fails_loading() {
     .expect_err("invalid locale should fail loading");
     let message = error.to_string();
 
+    insta::assert_snapshot!(
+        message,
+        @"invalid localization field `locale` value `not_a_locale`: Parser error: Invalid subtag"
+    );
     assert!(
         message.contains("locale") && message.contains("not_a_locale"),
         "expected error about invalid locale, got: {message}",
