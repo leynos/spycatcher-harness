@@ -4,6 +4,7 @@ use std::cell::RefCell;
 
 use eyre::{Result, eyre};
 use ortho_config::figment;
+use proptest::prelude::*;
 use rstest::rstest;
 
 use spycatcher_harness::cli::load_subcommand_config_from_iter;
@@ -45,6 +46,50 @@ const REPLAY_LOCALIZATION_FILE_CONFIG: &str = concat!(
     "locale = \"en-GB\"\n",
     "fallback_locale = \"en-US\"\n",
 );
+
+fn language_subtag() -> impl Strategy<Value = String> {
+    proptest::collection::vec(b'a'..=b'z', 2..=3)
+        .prop_map(|bytes| bytes.into_iter().map(char::from).collect())
+}
+
+fn region_subtag() -> impl Strategy<Value = String> {
+    proptest::collection::vec(b'A'..=b'Z', 2)
+        .prop_map(|bytes| bytes.into_iter().map(char::from).collect())
+}
+
+fn valid_locale_text() -> impl Strategy<Value = String> {
+    (language_subtag(), proptest::option::of(region_subtag())).prop_map(|(language, region)| {
+        match region {
+            Some(region_text) => format!("{language}-{region_text}"),
+            None => language,
+        }
+    })
+}
+
+proptest! {
+    #[test]
+    fn cli_locale_validation_accepts_generated_valid_language_identifiers(
+        locale in valid_locale_text(),
+        fallback_locale in valid_locale_text(),
+    ) {
+        let loaded = load_with_jail(
+            &[
+                "spycatcher-harness",
+                "replay",
+                "--locale",
+                locale.as_str(),
+                "--fallback-locale",
+                fallback_locale.as_str(),
+            ],
+            None,
+            &[],
+        )
+        .map_err(|error| TestCaseError::fail(error.to_string()))?;
+
+        prop_assert_eq!(loaded.localization.locale.as_deref(), Some(locale.as_str()));
+        prop_assert_eq!(loaded.localization.fallback_locale, fallback_locale);
+    }
+}
 
 #[rstest]
 #[case(

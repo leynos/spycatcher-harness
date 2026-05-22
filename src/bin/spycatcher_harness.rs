@@ -72,13 +72,20 @@ fn write_display_output(output: &str) -> std::io::Result<()> {
 fn build_language_loader(
     localization: &LocalizationConfig,
 ) -> Result<FluentLanguageLoader, StartupLocalizationError> {
+    tracing::debug!(
+        locale = localization.locale.as_deref(),
+        fallback_locale = %localization.fallback_locale,
+        "planning startup locale selection"
+    );
     let locale_plan = plan_locale_selection(localization)?;
+    tracing::debug!(?locale_plan, "selected startup locale plan");
     let fallback_locale = locale_plan
         .last()
         .cloned()
         .ok_or(StartupLocalizationError::EmptyLocalePlan)?;
     let loader = FluentLanguageLoader::new("spycatcher-harness", fallback_locale);
     i18n_embed::select(&loader, &HarnessLocalizations, &locale_plan)?;
+    tracing::info!("constructed startup language loader");
     Ok(loader)
 }
 
@@ -98,13 +105,14 @@ fn parse_language_identifier(
     field: &'static str,
     value: &str,
 ) -> Result<LanguageIdentifier, StartupLocalizationError> {
-    value
-        .parse()
-        .map_err(|source| StartupLocalizationError::InvalidLocale {
+    value.parse().map_err(|source| {
+        tracing::warn!(field, value, %source, "invalid startup locale value");
+        StartupLocalizationError::InvalidLocale {
             field,
             value: value.to_owned(),
             source,
-        })
+        }
+    })
 }
 
 async fn run_harness(
@@ -129,11 +137,64 @@ async fn run_harness(
 mod tests {
     //! Tests for binary-owned startup localization.
 
+    use proptest::prelude::*;
     use rstest::rstest;
     use spycatcher_harness::HarnessError;
     use spycatcher_harness::i18n::localize_harness_error;
 
     use super::*;
+
+    fn language_subtag() -> impl Strategy<Value = String> {
+        proptest::collection::vec(b'a'..=b'z', 2..=3)
+            .prop_map(|bytes| bytes.into_iter().map(char::from).collect())
+    }
+
+    fn region_subtag() -> impl Strategy<Value = String> {
+        proptest::collection::vec(b'A'..=b'Z', 2)
+            .prop_map(|bytes| bytes.into_iter().map(char::from).collect())
+    }
+
+    fn valid_locale_text() -> impl Strategy<Value = String> {
+        (language_subtag(), proptest::option::of(region_subtag())).prop_map(|(language, region)| {
+            match region {
+                Some(region_text) => format!("{language}-{region_text}"),
+                None => language,
+            }
+        })
+    }
+
+    proptest! {
+        #[test]
+        fn plan_locale_selection_accepts_generated_valid_language_identifiers(
+            locale in valid_locale_text(),
+            fallback_locale in valid_locale_text(),
+        ) {
+            let localization = LocalizationConfig {
+                locale: Some(locale.clone()),
+                fallback_locale: fallback_locale.clone(),
+            };
+
+            let locale_plan = plan_locale_selection(&localization)?;
+            let rendered: Vec<String> = locale_plan.iter().map(ToString::to_string).collect();
+
+            prop_assert_eq!(rendered, vec![locale, fallback_locale]);
+        }
+
+        #[test]
+        fn plan_locale_selection_accepts_generated_valid_fallback_identifiers(
+            fallback_locale in valid_locale_text(),
+        ) {
+            let localization = LocalizationConfig {
+                locale: None,
+                fallback_locale: fallback_locale.clone(),
+            };
+
+            let locale_plan = plan_locale_selection(&localization)?;
+            let rendered: Vec<String> = locale_plan.iter().map(ToString::to_string).collect();
+
+            prop_assert_eq!(rendered, vec![fallback_locale]);
+        }
+    }
 
     #[rstest]
     fn plan_locale_selection_uses_fallback_when_locale_is_unset() {

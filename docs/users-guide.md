@@ -1,8 +1,10 @@
 # Spycatcher harness user's guide
 
 This guide documents the public API surface and usage patterns for the
-Spycatcher harness. The harness records and replays LLM API interactions for
-deterministic regression testing.
+Spycatcher harness. The harness records LLM API interactions for deterministic
+regression testing. Replay and verify configuration surfaces are available, but
+their runtime modes currently fail fast until replay serving and verification
+execution land.
 
 > **Breaking changes:** record-mode proxying changed raw header handling and
 > redaction defaults before the 0.1.0 release. See
@@ -19,9 +21,9 @@ lifecycle management.
 Call `start_harness` with a `HarnessConfig` to validate configuration and
 prepare the harness for operation. In record mode, startup now binds a real
 local HTTP listener and returns the actual bound socket address in
-`RunningHarness.addr`. In replay mode, startup opens the configured cassette
-file read-only and validates its `format_version` before returning a
-`RunningHarness`:
+`RunningHarness.addr`. In replay and verify modes, startup opens the configured
+cassette file read-only, validates its `format_version`, and then returns
+`HarnessError::ModeNotYetImplemented`.
 
 ```rust,no_run
 use spycatcher_harness::{start_harness, HarnessConfig};
@@ -29,7 +31,7 @@ use spycatcher_harness::{start_harness, HarnessConfig};
 # async fn example() -> spycatcher_harness::HarnessResult<()> {
 let cfg = HarnessConfig::default();
 let harness = start_harness(cfg).await?;
-// The harness is now running.
+// In record mode, the harness is now running.
 // harness.addr contains the listen address.
 // harness.cassette_path contains the cassette file path.
 harness.shutdown().await?;
@@ -305,6 +307,8 @@ each failure mode:
   fields.
 - `UnsupportedCassetteFormatVersion` — cassette schema version is not supported
   during cassette loading or startup (includes replay and verify modes).
+- `ModeNotYetImplemented` — the selected operating mode is configured but does
+  not yet start a running harness.
 - `RequestMismatch` — a replayed request did not match the expected
   interaction.
 - `UpstreamRequestFailed` — a request to the upstream provider failed.
@@ -414,10 +418,12 @@ Nested keys use double underscores (`__`).
 # Record using layered defaults and an explicit cassette name override.
 cargo run --bin spycatcher-harness -- record --cassette-name cli_record
 
-# Replay with layered configuration.
+# Replay with layered configuration. This currently validates cassette loading,
+# then exits with ModeNotYetImplemented.
 cargo run --bin spycatcher-harness -- replay
 
-# Verify with layered configuration.
+# Verify with layered configuration. This currently validates cassette loading,
+# then exits with ModeNotYetImplemented.
 cargo run --bin spycatcher-harness -- verify
 ```
 
