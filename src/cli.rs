@@ -8,7 +8,6 @@
 use camino::Utf8PathBuf;
 use clap::error::ErrorKind;
 use clap::{CommandFactory, Parser, Subcommand};
-use i18n_embed::unic_langid::LanguageIdentifier;
 use ortho_config::load_and_merge_subcommand;
 use ortho_config::subcommand::Prefix;
 use serde::{Deserialize, Serialize};
@@ -20,9 +19,12 @@ use crate::{HarnessConfig, config};
 mod cli_args;
 #[path = "cli_help.rs"]
 mod cli_help;
+#[path = "cli/localization.rs"]
+mod localization;
 
 use cli_args::{LocalizationArgs, RecordUpstreamArgs};
 use cli_help::CLI_MERGE_HELP;
+use localization::{select_localization_override, validate_language_identifier};
 
 /// Errors returned while loading merged command configuration.
 #[derive(Debug, Error)]
@@ -282,14 +284,16 @@ macro_rules! impl_common_overrides {
                         listen: merged_args.listen,
                         cassette_dir: merged_args.cassette_dir.as_deref(),
                         cassette_name: merged_args.cassette_name.as_deref(),
-                        locale: cli_args
-                            .locale
-                            .as_deref()
-                            .or(merged_args.localization.locale.as_deref()),
-                        fallback_locale: cli_args
-                            .fallback_locale
-                            .as_deref()
-                            .or(merged_args.localization.fallback_locale.as_deref()),
+                        locale: select_localization_override(
+                            "locale",
+                            cli_args.locale.as_deref(),
+                            merged_args.localization.locale.as_deref(),
+                        ),
+                        fallback_locale: select_localization_override(
+                            "fallback_locale",
+                            cli_args.fallback_locale.as_deref(),
+                            merged_args.localization.fallback_locale.as_deref(),
+                        ),
                     }
                 }
             }
@@ -350,24 +354,23 @@ fn apply_overrides(
         cassette_name_override.clone_into(&mut config.cassette_name);
     }
     if let Some(locale_override) = overrides.locale {
+        tracing::debug!(
+            field = "locale",
+            value = locale_override,
+            "applying locale override"
+        );
         validate_language_identifier("locale", locale_override)?;
         config.localization.locale = Some(locale_override.to_owned());
     }
     if let Some(fallback_locale_override) = overrides.fallback_locale {
+        tracing::debug!(
+            field = "fallback_locale",
+            value = fallback_locale_override,
+            "applying locale override"
+        );
         validate_language_identifier("fallback_locale", fallback_locale_override)?;
         fallback_locale_override.clone_into(&mut config.localization.fallback_locale);
     }
     validate_language_identifier("fallback_locale", &config.localization.fallback_locale)?;
     Ok(())
-}
-
-fn validate_language_identifier(field: &'static str, value: &str) -> Result<(), CliConfigError> {
-    value
-        .parse::<LanguageIdentifier>()
-        .map(|_| ())
-        .map_err(|source| CliConfigError::InvalidLocale {
-            field,
-            value: value.to_owned(),
-            source,
-        })
 }

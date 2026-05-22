@@ -294,11 +294,9 @@ mod tests {
             .expect_err("invalid config should fail startup");
 
         let message = error.to_string();
-        assert!(
-            message.contains("failed to start harness")
-                && message.contains("invalid configuration")
-                && message.contains("cassette name must not be empty"),
-            "expected localized startup error, got: {message}",
+        insta::assert_snapshot!(
+            message,
+            @"failed to start harness: invalid configuration: \u{2068}cassette name must not be empty\u{2069}"
         );
     }
 }

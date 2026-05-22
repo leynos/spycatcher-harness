@@ -170,6 +170,15 @@ review, and commit gates are complete.
   `make test`, `make markdownlint`, and `make nixie` passed.
 - [x] 2026-05-18: Marked roadmap item `1.4.2` and its success criteria done.
 - [x] 2026-05-18: Ran final CodeRabbit review; it reported zero findings.
+- [x] 2026-05-22: Rechecked review warnings with Wyvern and Scribe agents.
+  Added binary-level locale flag coverage, converted startup error rendering
+  to an `insta` snapshot, and added debug/warn tracing around CLI localization
+  override selection and invalid identifier rejection.
+- [x] 2026-05-22: Revalidated with `cargo test --test
+  binary_localization_e2e`, `cargo test --bin spycatcher-harness`, `cargo
+  test --test cli_layering_unit`, `make check-fmt`, `make lint`, and
+  `make test`; all passed. `coderabbit review --agent` could not complete
+  because the service returned a recoverable rate-limit error.
 - [x] Implement the plan milestone by milestone.
 - [x] After implementation, mark roadmap item `1.4.2` done.
 
@@ -203,6 +212,10 @@ review, and commit gates are complete.
   even though most localized boundary rendering belongs to roadmap item
   `1.4.3`. Passing the loader into `run_harness` makes that ownership visible
   without introducing process-global state.
+- Exact CLI/env/file provenance for localization values is not exposed by the
+  current OrthoConfig adapter boundary. The follow-up tracing therefore records
+  explicit CLI overrides versus merged non-CLI values, plus application of the
+  selected override and invalid language identifier rejection.
 
 ## Decision Log
 
@@ -247,6 +260,12 @@ Validation passed for code formatting, linting, full tests, Markdown linting,
 diagram validation, and CodeRabbit review. The only residual tooling caveat is
 that `make fmt` still reports unrelated pre-existing line-length errors from
 the legacy Markdown fixer, even though `make markdownlint` passes.
+
+Post-review validation on 2026-05-22 added process-level binary coverage for
+`--locale` and `--fallback-locale`, snapshot coverage for startup-localized
+error rendering, and narrow localization tracing in the CLI adapter. A fresh
+CodeRabbit run was attempted but blocked by service rate limiting rather than
+by a reported code concern.
 
 ## Relevant documentation and skills
 
