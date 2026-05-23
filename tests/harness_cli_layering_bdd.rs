@@ -29,6 +29,11 @@ use rstest_bdd_macros::{ScenarioState, given, scenario, then, when};
 use spycatcher_harness::cli::load_subcommand_config_from_iter;
 use spycatcher_harness::{HarnessConfig, config};
 
+#[path = "harness_cli_layering_bdd/cli_layering_helpers.rs"]
+mod cli_layering_helpers;
+
+use cli_layering_helpers::*;
+
 #[derive(Default, ScenarioState)]
 struct CliLayeringWorld {
     argv: Slot<Vec<String>>,
@@ -42,126 +47,13 @@ fn cli_layering_world() -> CliLayeringWorld {
     CliLayeringWorld::default()
 }
 
-/// Replaces the current command argv with `args`.
-fn set_command(cli_layering_world: &CliLayeringWorld, args: Vec<String>) {
-    cli_layering_world.argv.set(args);
-}
-
-/// Appends a TOML configuration `fragment` to the scenario config file.
-fn append_config(cli_layering_world: &CliLayeringWorld, fragment: &str) {
-    let mut current = cli_layering_world.config_file.take().unwrap_or_default();
-    current.push_str(fragment);
-    cli_layering_world.config_file.set(current);
-}
-
-/// Appends a `[cmds.replay.localization]` TOML fragment setting `field` to `value`.
-fn append_replay_localization_field(
-    cli_layering_world: &CliLayeringWorld,
-    field: &str,
-    value: &str,
-) {
-    append_config(
-        cli_layering_world,
-        &format!("[cmds.replay.localization]\n{field} = \"{value}\"\n"),
-    );
-}
-
-/// Adds an environment variable key/value pair to the scenario environment.
-fn push_env(cli_layering_world: &CliLayeringWorld, key: &str, value: &str) {
-    let mut vars = cli_layering_world.env_vars.take().unwrap_or_default();
-    vars.push((String::from(key), String::from(value)));
-    cli_layering_world.env_vars.set(vars);
-}
-
-/// Trims leading and trailing double quotes from `value` into an owned string.
-fn trim_surrounding_quotes(value: &str) -> String {
-    value.trim_matches('"').to_owned()
-}
-
-/// Supported subcommands used by BDD command-builder helpers.
-#[derive(Clone, Copy)]
-enum Subcommand {
-    Record,
-    Replay,
-    Verify,
-}
-
-impl Subcommand {
-    const fn as_str(self) -> &'static str {
-        match self {
-            Self::Record => "record",
-            Self::Replay => "replay",
-            Self::Verify => "verify",
-        }
-    }
-}
-
-/// Supported CLI flags used by BDD command-builder helpers.
-#[derive(Clone, Copy)]
-enum CliFlag {
-    CassetteName,
-    FallbackLocale,
-    Locale,
-}
-
-impl CliFlag {
-    const fn as_str(self) -> &'static str {
-        match self {
-            Self::CassetteName => "--cassette-name",
-            Self::FallbackLocale => "--fallback-locale",
-            Self::Locale => "--locale",
-        }
-    }
-}
-
-/// Builds a command containing `subcommand`, `flag`, and `value`.
-fn set_flag_command(
-    cli_layering_world: &CliLayeringWorld,
-    subcommand: Subcommand,
-    flag: CliFlag,
-    value: &str,
-) {
-    set_command(
-        cli_layering_world,
-        vec![
-            String::from("spycatcher-harness"),
-            String::from(subcommand.as_str()),
-            String::from(flag.as_str()),
-            String::from(value),
-        ],
-    );
-}
-
-/// Sets argv to the binary name and `subcommand` only.
-fn set_subcommand_only(cli_layering_world: &CliLayeringWorld, subcommand: Subcommand) {
-    set_command(
-        cli_layering_world,
-        vec![
-            String::from("spycatcher-harness"),
-            String::from(subcommand.as_str()),
-        ],
-    );
-}
-
-/// Returns the loaded config, or panics with `context` if loading failed.
-fn expect_loaded_config(cli_layering_world: &CliLayeringWorld, context: &str) -> HarnessConfig {
-    let outcome = cli_layering_world
-        .result
-        .with_ref(Clone::clone)
-        .unwrap_or_else(|| Err(String::from("result slot missing")));
-    match outcome {
-        Ok(config) => config,
-        Err(error) => panic!("expected {context} configuration, load failed: {error}"),
-    }
-}
-
 #[given("a replay command with cassette name {cassette_name}")]
 fn replay_command_with_cassette_name(cli_layering_world: &CliLayeringWorld, cassette_name: String) {
     set_flag_command(
         cli_layering_world,
         Subcommand::Replay,
         CliFlag::CassetteName,
-        cassette_name.trim_matches('"'),
+        &trim_surrounding_quotes(&cassette_name),
     );
 }
 
@@ -176,7 +68,7 @@ fn replay_command_with_locale(cli_layering_world: &CliLayeringWorld, locale: Str
         cli_layering_world,
         Subcommand::Replay,
         CliFlag::Locale,
-        locale.trim_matches('"'),
+        &trim_surrounding_quotes(&locale),
     );
 }
 
@@ -189,7 +81,7 @@ fn replay_command_with_fallback_locale(
         cli_layering_world,
         Subcommand::Replay,
         CliFlag::FallbackLocale,
-        fallback_locale.trim_matches('"'),
+        &trim_surrounding_quotes(&fallback_locale),
     );
 }
 
@@ -214,7 +106,11 @@ fn config_sets_replay_cassette_name(cli_layering_world: &CliLayeringWorld, casse
 
 #[given("config file sets replay locale to {locale}")]
 fn config_sets_replay_locale(cli_layering_world: &CliLayeringWorld, locale: String) {
-    append_replay_localization_field(cli_layering_world, "locale", locale.trim_matches('"'));
+    append_replay_localization_field(
+        cli_layering_world,
+        "locale",
+        &trim_surrounding_quotes(&locale),
+    );
 }
 
 #[given("config file sets replay fallback locale to {fallback_locale}")]
@@ -225,7 +121,7 @@ fn config_sets_replay_fallback_locale(
     append_replay_localization_field(
         cli_layering_world,
         "fallback_locale",
-        fallback_locale.trim_matches('"'),
+        &trim_surrounding_quotes(&fallback_locale),
     );
 }
 
