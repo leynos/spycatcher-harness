@@ -20,12 +20,12 @@ fn binary_uses_locale_flags_for_startup_error_rendering() {
         "record mode without upstream should fail startup"
     );
     let stderr = String::from_utf8(output.stderr).expect("stderr should be UTF-8");
-    let first_line = stderr
+    let error_line = stderr
         .lines()
-        .next()
-        .expect("stderr should contain an error line");
+        .find(|line| line.starts_with("Error:"))
+        .expect("stderr should contain an Error: line");
     insta::assert_snapshot!(
-        first_line,
+        error_line,
         @"Error: failed to start harness: invalid configuration: \u{2068}upstream configuration is required for record mode\u{2069}"
     );
 }

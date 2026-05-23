@@ -42,26 +42,31 @@ fn cli_layering_world() -> CliLayeringWorld {
     CliLayeringWorld::default()
 }
 
+/// Replaces the current command argv with `args`.
 fn set_command(cli_layering_world: &CliLayeringWorld, args: Vec<String>) {
     cli_layering_world.argv.set(args);
 }
 
+/// Appends a TOML configuration `fragment` to the scenario config file.
 fn append_config(cli_layering_world: &CliLayeringWorld, fragment: &str) {
     let mut current = cli_layering_world.config_file.take().unwrap_or_default();
     current.push_str(fragment);
     cli_layering_world.config_file.set(current);
 }
 
+/// Adds an environment variable key/value pair to the scenario environment.
 fn push_env(cli_layering_world: &CliLayeringWorld, key: &str, value: &str) {
     let mut vars = cli_layering_world.env_vars.take().unwrap_or_default();
     vars.push((String::from(key), String::from(value)));
     cli_layering_world.env_vars.set(vars);
 }
 
+/// Trims leading and trailing double quotes from `value` into an owned string.
 fn trim_surrounding_quotes(value: &str) -> String {
     value.trim_matches('"').to_owned()
 }
 
+/// Supported subcommands used by BDD command-builder helpers.
 #[derive(Clone, Copy)]
 enum Subcommand {
     Record,
@@ -79,9 +84,11 @@ impl Subcommand {
     }
 }
 
+/// Supported CLI flags used by BDD command-builder helpers.
 #[derive(Clone, Copy)]
 enum CliFlag {
     CassetteName,
+    FallbackLocale,
     Locale,
 }
 
@@ -89,11 +96,13 @@ impl CliFlag {
     const fn as_str(self) -> &'static str {
         match self {
             Self::CassetteName => "--cassette-name",
+            Self::FallbackLocale => "--fallback-locale",
             Self::Locale => "--locale",
         }
     }
 }
 
+/// Builds a command containing `subcommand`, `flag`, and `value`.
 fn set_flag_command(
     cli_layering_world: &CliLayeringWorld,
     subcommand: Subcommand,
@@ -111,6 +120,7 @@ fn set_flag_command(
     );
 }
 
+/// Sets argv to the binary name and `subcommand` only.
 fn set_subcommand_only(cli_layering_world: &CliLayeringWorld, subcommand: Subcommand) {
     set_command(
         cli_layering_world,
@@ -121,6 +131,7 @@ fn set_subcommand_only(cli_layering_world: &CliLayeringWorld, subcommand: Subcom
     );
 }
 
+/// Returns the loaded config, or panics with `context` if loading failed.
 fn expect_loaded_config(cli_layering_world: &CliLayeringWorld, context: &str) -> HarnessConfig {
     let outcome = cli_layering_world
         .result
@@ -156,6 +167,20 @@ fn replay_command_with_locale(cli_layering_world: &CliLayeringWorld, locale: Str
         Subcommand::Replay,
         CliFlag::Locale,
         &trimmed_locale,
+    );
+}
+
+#[given("a replay command with fallback locale {fallback_locale}")]
+fn replay_command_with_fallback_locale(
+    cli_layering_world: &CliLayeringWorld,
+    fallback_locale: String,
+) {
+    let trimmed_fallback_locale = trim_surrounding_quotes(&fallback_locale);
+    set_flag_command(
+        cli_layering_world,
+        Subcommand::Replay,
+        CliFlag::FallbackLocale,
+        &trimmed_fallback_locale,
     );
 }
 
@@ -241,6 +266,16 @@ fn env_sets_replay_locale(cli_layering_world: &CliLayeringWorld, locale: String)
         cli_layering_world,
         "SPYCATCHER_HARNESS_CMDS_REPLAY_LOCALIZATION__LOCALE",
         &locale_value,
+    );
+}
+
+#[given("environment sets replay fallback locale to {fallback_locale}")]
+fn env_sets_replay_fallback_locale(cli_layering_world: &CliLayeringWorld, fallback_locale: String) {
+    let fallback_locale_value = trim_surrounding_quotes(&fallback_locale);
+    push_env(
+        cli_layering_world,
+        "SPYCATCHER_HARNESS_CMDS_REPLAY_LOCALIZATION__FALLBACK_LOCALE",
+        &fallback_locale_value,
     );
 }
 
@@ -412,6 +447,16 @@ fn replay_locale_precedence_favours_cli_over_env_and_file(cli_layering_world: Cl
     name = "Fallback locale is used when no explicit locale is configured"
 )]
 fn fallback_locale_is_used_when_no_explicit_locale_is_configured(
+    cli_layering_world: CliLayeringWorld,
+) {
+    let _ = cli_layering_world;
+}
+
+#[scenario(
+    path = "tests/features/harness_cli_layering.feature",
+    name = "Replay fallback locale precedence favours CLI over env and file"
+)]
+fn replay_fallback_locale_precedence_favours_cli_over_env_and_file(
     cli_layering_world: CliLayeringWorld,
 ) {
     let _ = cli_layering_world;

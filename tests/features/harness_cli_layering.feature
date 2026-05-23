@@ -39,6 +39,13 @@ Feature: Harness CLI layered configuration
     Then replay locale is unset
     And fallback locale is en-GB
 
+  Scenario: Replay fallback locale precedence favours CLI over env and file
+    Given a replay command with fallback locale en-CA
+    And config file sets replay fallback locale to en-GB
+    And environment sets replay fallback locale to en-AU
+    When the layered command configuration is loaded
+    Then fallback locale is en-CA
+
   Scenario: Invalid locale configuration fails loading
     Given a replay command with no CLI overrides
     And environment sets replay locale to not_a_locale

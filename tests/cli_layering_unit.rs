@@ -27,6 +27,9 @@ use rstest::rstest;
 use spycatcher_harness::cli::load_subcommand_config_from_iter;
 use spycatcher_harness::{HarnessConfig, config};
 
+/// Loads a [`HarnessConfig`] under `figment::Jail` using `argv`, optional
+/// `config_file` contents, and `env_vars`, returning the loaded config or
+/// conversion error.
 #[expect(
     clippy::result_large_err,
     reason = "figment::Jail callback requires figment::error::Result"
@@ -64,16 +67,19 @@ const REPLAY_LOCALIZATION_FILE_CONFIG: &str = concat!(
     "fallback_locale = \"en-US\"\n",
 );
 
+/// Generates lowercase two- or three-letter language subtags as a strategy.
 fn language_subtag() -> impl Strategy<Value = String> {
     proptest::collection::vec(b'a'..=b'z', 2..=3)
         .prop_map(|bytes| bytes.into_iter().map(char::from).collect())
 }
 
+/// Generates uppercase two-letter region subtags as a strategy.
 fn region_subtag() -> impl Strategy<Value = String> {
     proptest::collection::vec(b'A'..=b'Z', 2)
         .prop_map(|bytes| bytes.into_iter().map(char::from).collect())
 }
 
+/// Generates valid locale text such as `xx` or `xx-YY` as a strategy.
 fn valid_locale_text() -> impl Strategy<Value = String> {
     (language_subtag(), proptest::option::of(region_subtag())).prop_map(|(language, region)| {
         match region {
