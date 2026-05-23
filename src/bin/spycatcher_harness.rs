@@ -52,6 +52,13 @@ fn main() -> eyre::Result<()> {
     rt.block_on(run_harness(config, &language_loader))
 }
 
+/// Loads merged subcommand configuration, or writes help/version output to
+/// stdout and exits cleanly if clap requests it.
+///
+/// # Errors
+///
+/// Returns an error if configuration loading fails for any reason other than a
+/// help or version display request.
 fn load_config_or_display_output() -> eyre::Result<spycatcher_harness::HarnessConfig> {
     match load_subcommand_config() {
         Ok(config) => Ok(config),
@@ -63,12 +70,29 @@ fn load_config_or_display_output() -> eyre::Result<spycatcher_harness::HarnessCo
     }
 }
 
+/// Writes `output` to stdout and flushes the handle.
+///
+/// # Errors
+///
+/// Returns an error if the write or flush fails.
 fn write_display_output(output: &str) -> std::io::Result<()> {
     let mut stdout = std::io::stdout().lock();
     stdout.write_all(output.as_bytes())?;
     stdout.flush()
 }
 
+/// Constructs a [`FluentLanguageLoader`] from layered localisation
+/// configuration.
+///
+/// Computes a locale plan (requested locale then fallback, or fallback-only
+/// when `locale` is unset), selects embedded harness localisations via
+/// [`i18n_embed::select`], and uses the last entry in the plan as the Fluent
+/// fallback locale.
+///
+/// # Errors
+///
+/// Returns [`StartupLocalizationError`] if any locale value fails BCP 47
+/// parsing or if the embedded catalogue cannot be loaded.
 fn build_language_loader(
     localization: &LocalizationConfig,
 ) -> Result<FluentLanguageLoader, StartupLocalizationError> {
@@ -89,6 +113,16 @@ fn build_language_loader(
     Ok(loader)
 }
 
+/// Produces an ordered list of [`LanguageIdentifier`]s to attempt during
+/// locale selection.
+///
+/// When `localization.locale` is set the plan is
+/// `[requested_locale, fallback_locale]`; otherwise it is `[fallback_locale]`.
+///
+/// # Errors
+///
+/// Returns [`StartupLocalizationError::InvalidLocale`] if either identifier
+/// fails BCP 47 parsing.
 fn plan_locale_selection(
     localization: &LocalizationConfig,
 ) -> Result<Vec<LanguageIdentifier>, StartupLocalizationError> {
@@ -101,6 +135,15 @@ fn plan_locale_selection(
     Ok(vec![requested_locale, fallback_locale])
 }
 
+/// Parses `value` as a BCP 47 [`LanguageIdentifier`].
+///
+/// Emits a `tracing::warn!` and returns
+/// [`StartupLocalizationError::InvalidLocale`] if parsing fails, including
+/// `field` and `value` in both the log event and the error.
+///
+/// # Errors
+///
+/// Returns [`StartupLocalizationError::InvalidLocale`] on parse failure.
 fn parse_language_identifier(
     field: &'static str,
     value: &str,
@@ -115,6 +158,13 @@ fn parse_language_identifier(
     })
 }
 
+/// Starts the harness with `config`, awaits shutdown, and renders any
+/// [`spycatcher_harness::HarnessError`] through `language_loader` before
+/// wrapping it in an [`eyre::Report`].
+///
+/// # Errors
+///
+/// Returns an error if `start_harness` or `shutdown` fails.
 async fn run_harness(
     config: spycatcher_harness::HarnessConfig,
     language_loader: &FluentLanguageLoader,

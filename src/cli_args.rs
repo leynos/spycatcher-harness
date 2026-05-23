@@ -11,12 +11,15 @@ use serde::{Deserialize, Serialize};
 use crate::config;
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+/// Serialisable locale and fallback-locale fields threaded through `OrthoConfig`
+/// subcommand merging.
 pub(super) struct LocalizationArgs {
     pub(super) locale: Option<String>,
     pub(super) fallback_locale: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+/// Serialisable upstream configuration fields for the `record` subcommand.
 pub(super) struct RecordUpstreamArgs {
     #[serde(default)]
     kind: RecordUpstreamKind,
@@ -36,10 +39,13 @@ enum RecordUpstreamKind {
     OpenRouter,
 }
 
+/// Returns the default `OpenRouter` API base URL.
 fn default_record_base_url() -> String {
     String::from("https://openrouter.ai/api/v1")
 }
 
+/// Returns the default environment variable name used to supply the `OpenRouter`
+/// API key.
 fn default_record_api_key_env() -> String {
     String::from("OPENROUTER_API_KEY")
 }
