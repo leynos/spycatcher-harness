@@ -54,6 +54,18 @@ fn append_config(cli_layering_world: &CliLayeringWorld, fragment: &str) {
     cli_layering_world.config_file.set(current);
 }
 
+/// Appends a `[cmds.replay.localization]` TOML fragment setting `field` to `value`.
+fn append_replay_localization_field(
+    cli_layering_world: &CliLayeringWorld,
+    field: &str,
+    value: &str,
+) {
+    append_config(
+        cli_layering_world,
+        &format!("[cmds.replay.localization]\n{field} = \"{value}\"\n"),
+    );
+}
+
 /// Adds an environment variable key/value pair to the scenario environment.
 fn push_env(cli_layering_world: &CliLayeringWorld, key: &str, value: &str) {
     let mut vars = cli_layering_world.env_vars.take().unwrap_or_default();
@@ -145,12 +157,11 @@ fn expect_loaded_config(cli_layering_world: &CliLayeringWorld, context: &str) ->
 
 #[given("a replay command with cassette name {cassette_name}")]
 fn replay_command_with_cassette_name(cli_layering_world: &CliLayeringWorld, cassette_name: String) {
-    let trimmed_cassette_name = trim_surrounding_quotes(&cassette_name);
     set_flag_command(
         cli_layering_world,
         Subcommand::Replay,
         CliFlag::CassetteName,
-        &trimmed_cassette_name,
+        cassette_name.trim_matches('"'),
     );
 }
 
@@ -161,12 +172,11 @@ fn replay_command_with_no_cli_overrides(cli_layering_world: &CliLayeringWorld) {
 
 #[given("a replay command with locale {locale}")]
 fn replay_command_with_locale(cli_layering_world: &CliLayeringWorld, locale: String) {
-    let trimmed_locale = trim_surrounding_quotes(&locale);
     set_flag_command(
         cli_layering_world,
         Subcommand::Replay,
         CliFlag::Locale,
-        &trimmed_locale,
+        locale.trim_matches('"'),
     );
 }
 
@@ -175,12 +185,11 @@ fn replay_command_with_fallback_locale(
     cli_layering_world: &CliLayeringWorld,
     fallback_locale: String,
 ) {
-    let trimmed_fallback_locale = trim_surrounding_quotes(&fallback_locale);
     set_flag_command(
         cli_layering_world,
         Subcommand::Replay,
         CliFlag::FallbackLocale,
-        &trimmed_fallback_locale,
+        fallback_locale.trim_matches('"'),
     );
 }
 
@@ -205,11 +214,7 @@ fn config_sets_replay_cassette_name(cli_layering_world: &CliLayeringWorld, casse
 
 #[given("config file sets replay locale to {locale}")]
 fn config_sets_replay_locale(cli_layering_world: &CliLayeringWorld, locale: String) {
-    let locale_value = trim_surrounding_quotes(&locale);
-    append_config(
-        cli_layering_world,
-        &format!("[cmds.replay.localization]\nlocale = \"{locale_value}\"\n"),
-    );
+    append_replay_localization_field(cli_layering_world, "locale", locale.trim_matches('"'));
 }
 
 #[given("config file sets replay fallback locale to {fallback_locale}")]
@@ -217,10 +222,10 @@ fn config_sets_replay_fallback_locale(
     cli_layering_world: &CliLayeringWorld,
     fallback_locale: String,
 ) {
-    let fallback_locale_value = trim_surrounding_quotes(&fallback_locale);
-    append_config(
+    append_replay_localization_field(
         cli_layering_world,
-        &format!("[cmds.replay.localization]\nfallback_locale = \"{fallback_locale_value}\"\n"),
+        "fallback_locale",
+        fallback_locale.trim_matches('"'),
     );
 }
 
