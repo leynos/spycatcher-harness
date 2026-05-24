@@ -89,6 +89,10 @@ fn valid_locale_text() -> impl Strategy<Value = String> {
     })
 }
 
+fn optional_locale_text() -> impl Strategy<Value = Option<String>> {
+    proptest::option::of(valid_locale_text())
+}
+
 proptest! {
     #[test]
     fn cli_locale_validation_accepts_generated_valid_language_identifiers(
@@ -111,6 +115,59 @@ proptest! {
 
         prop_assert_eq!(loaded.localization.locale.as_deref(), Some(locale.as_str()));
         prop_assert_eq!(loaded.localization.fallback_locale, fallback_locale);
+    }
+
+    #[test]
+    fn replay_localization_layering_preserves_precedence_and_fallback(
+        file_locale in optional_locale_text(),
+        env_locale in optional_locale_text(),
+        cli_locale in optional_locale_text(),
+        file_fallback_locale in valid_locale_text(),
+        env_fallback_locale in optional_locale_text(),
+        cli_fallback_locale in optional_locale_text(),
+    ) {
+        let config_file = format!(
+            "[cmds.replay.localization]\nlocale = \"{}\"\nfallback_locale = \"{}\"\n",
+            file_locale.as_deref().unwrap_or("en-GB"),
+            file_fallback_locale
+        );
+        let mut argv = vec!["spycatcher-harness", "replay"];
+        if let Some(locale) = cli_locale.as_deref() {
+            argv.extend(["--locale", locale]);
+        }
+        if let Some(fallback_locale) = cli_fallback_locale.as_deref() {
+            argv.extend(["--fallback-locale", fallback_locale]);
+        }
+
+        let mut env_vars = Vec::new();
+        if let Some(locale) = env_locale.as_deref() {
+            env_vars.push(("SPYCATCHER_HARNESS_CMDS_REPLAY_LOCALIZATION__LOCALE", locale));
+        }
+        if let Some(fallback_locale) = env_fallback_locale.as_deref() {
+            env_vars.push((
+                "SPYCATCHER_HARNESS_CMDS_REPLAY_LOCALIZATION__FALLBACK_LOCALE",
+                fallback_locale,
+            ));
+        }
+
+        let loaded = load_with_jail(&argv, Some(config_file.as_str()), &env_vars)
+            .map_err(|error| TestCaseError::fail(error.to_string()))?;
+        let expected_locale = cli_locale
+            .as_deref()
+            .or(env_locale.as_deref())
+            .or(file_locale.as_deref())
+            .or(Some("en-GB"));
+        let expected_fallback_locale = cli_fallback_locale
+            .as_deref()
+            .or(env_fallback_locale.as_deref())
+            .unwrap_or(file_fallback_locale.as_str());
+
+        prop_assert_eq!(loaded.localization.locale.as_deref(), expected_locale);
+        prop_assert_eq!(
+            loaded.localization.fallback_locale.as_str(),
+            expected_fallback_locale
+        );
+        prop_assert!(!loaded.localization.fallback_locale.is_empty());
     }
 }
 

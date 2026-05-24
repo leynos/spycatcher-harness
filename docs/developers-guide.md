@@ -164,6 +164,21 @@ The crate root re-exports the public entry point `start_harness`, the
 `HarnessResult`. Shutdown is exposed as the `RunningHarness::shutdown` method,
 not as a standalone crate-root function.
 
+The `cli` module is split into small private support modules to keep
+`src/cli.rs` focused on adapter flow: parse the command line, call
+`OrthoConfig`, validate localization, and translate the result into
+`HarnessConfig`. Keep new CLI-only serialisation shapes, help text, and
+localization selection policy in these support modules rather than growing
+`src/cli.rs`.
+
+| Internal CLI module       | Purpose                                                                   |
+| ------------------------- | ------------------------------------------------------------------------- |
+| `src/cli_args.rs`         | `LocalizationArgs` and `RecordUpstreamArgs` serialisable merge shapes     |
+| `src/cli_help.rs`         | Long-form `CLI_MERGE_HELP` text injected into `clap` after-help output    |
+| `src/cli/localization.rs` | Localization override selection and BCP 47 language identifier validation |
+
+_Table 2: Private CLI support modules._
+
 The `i18n` module owns the library Fluent assets at
 `i18n/en-US/spycatcher-harness.ftl`, exposes `HarnessLocalizations` for
 application loaders, and renders `HarnessError` values through
@@ -190,7 +205,7 @@ The `cassette` module contains several submodules:
 | `filesystem` | `FilesystemCassetteStore` (reader/appender) |
 | `matching`   | `ReplayMatchEngine` and match outcome types |
 
-_Table 2: Cassette submodules._
+_Table 3: Cassette submodules._
 
 The binary crate (`src/bin/spycatcher_harness.rs`) delegates all behaviour to
 the library entry points. It owns application startup localization: after

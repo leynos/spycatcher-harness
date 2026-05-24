@@ -24,7 +24,7 @@ mod localization;
 
 use cli_args::{LocalizationArgs, RecordUpstreamArgs};
 use cli_help::CLI_MERGE_HELP;
-use localization::{select_localization_override, validate_language_identifier};
+use localization::{CommonOverrides, validate_language_identifier};
 
 /// Errors returned while loading merged command configuration.
 #[derive(Debug, Error)]
@@ -140,10 +140,16 @@ fn merge_subcommand_config<T>(
 where
     T: serde::de::DeserializeOwned + Serialize + Default + CommandFactory,
 {
-    load_and_merge_subcommand(prefix, args).map_err(|error| CliConfigError::Merge {
-        subcommand,
-        message: error.to_string(),
-    })
+    tracing::debug!(subcommand, "merging layered subcommand configuration");
+    let merged_args = load_and_merge_subcommand(prefix, args).map_err(|error| {
+        tracing::warn!(subcommand, %error, "failed to merge layered subcommand configuration");
+        CliConfigError::Merge {
+            subcommand,
+            message: error.to_string(),
+        }
+    })?;
+    tracing::debug!(subcommand, "merged layered subcommand configuration");
+    Ok(merged_args)
 }
 
 #[derive(Debug, Parser)]
@@ -277,44 +283,6 @@ struct VerifyArgs {
     localization: LocalizationArgs,
 }
 
-/// Common field overrides shared by every subcommand.
-#[derive(Clone, Copy)]
-struct CommonOverrides<'a> {
-    listen: Option<std::net::SocketAddr>,
-    cassette_dir: Option<&'a str>,
-    cassette_name: Option<&'a str>,
-    locale: Option<&'a str>,
-    fallback_locale: Option<&'a str>,
-}
-
-macro_rules! impl_common_overrides {
-    ($($T:ty),+ $(,)?) => {
-        $(
-            impl<'a> From<(&'a $T, &'a $T)> for CommonOverrides<'a> {
-                fn from((cli_args, merged_args): (&'a $T, &'a $T)) -> Self {
-                    Self {
-                        listen: merged_args.listen,
-                        cassette_dir: merged_args.cassette_dir.as_deref(),
-                        cassette_name: merged_args.cassette_name.as_deref(),
-                        locale: select_localization_override(
-                            "locale",
-                            cli_args.locale.as_deref(),
-                            merged_args.localization.locale.as_deref(),
-                        ),
-                        fallback_locale: select_localization_override(
-                            "fallback_locale",
-                            cli_args.fallback_locale.as_deref(),
-                            merged_args.localization.fallback_locale.as_deref(),
-                        ),
-                    }
-                }
-            }
-        )+
-    };
-}
-
-impl_common_overrides!(RecordArgs, ReplayArgs, VerifyArgs);
-
 /// Builds [`HarnessConfig`] from common overrides, `mode`, and optional upstream.
 /// Errors if locale validation inside `apply_overrides` fails.
 fn build_config(
@@ -326,6 +294,12 @@ fn build_config(
     apply_overrides(&mut config, overrides)?;
     config.mode = mode;
     config.upstream = upstream;
+    tracing::debug!(
+        mode = ?config.mode,
+        locale = config.localization.locale.as_deref(),
+        fallback_locale = config.localization.fallback_locale.as_str(),
+        "built harness configuration from layered CLI input"
+    );
     Ok(config)
 }
 
@@ -394,6 +368,12 @@ fn apply_overrides(
         );
         validate_language_identifier("fallback_locale", fallback_locale_override)?;
         fallback_locale_override.clone_into(&mut config.localization.fallback_locale);
+    } else {
+        tracing::debug!(
+            field = "fallback_locale",
+            value = config.localization.fallback_locale.as_str(),
+            "using default fallback locale"
+        );
     }
     validate_language_identifier("fallback_locale", &config.localization.fallback_locale)?;
     Ok(())
