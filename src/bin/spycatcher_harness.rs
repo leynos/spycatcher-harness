@@ -204,13 +204,34 @@ mod tests {
             .prop_map(|bytes| bytes.into_iter().map(char::from).collect())
     }
 
+    fn script_subtag() -> impl Strategy<Value = String> {
+        (b'A'..=b'Z', proptest::collection::vec(b'a'..=b'z', 3))
+            .prop_map(|(first, rest)| std::iter::once(first).chain(rest).map(char::from).collect())
+    }
+
+    fn variant_subtag() -> impl Strategy<Value = String> {
+        prop_oneof![
+            Just(String::from("valencia")),
+            proptest::collection::vec(b'a'..=b'z', 5..=8)
+                .prop_map(|bytes| bytes.into_iter().map(char::from).collect()),
+        ]
+    }
+
     fn valid_locale_text() -> impl Strategy<Value = String> {
-        (language_subtag(), proptest::option::of(region_subtag())).prop_map(|(language, region)| {
-            match region {
-                Some(region_text) => format!("{language}-{region_text}"),
-                None => language,
-            }
-        })
+        (
+            language_subtag(),
+            proptest::option::of(script_subtag()),
+            proptest::option::of(region_subtag()),
+            proptest::option::of(variant_subtag()),
+        )
+            .prop_map(|(language, script, region, variant)| {
+                let mut locale = language;
+                for subtag in [script, region, variant].into_iter().flatten() {
+                    locale.push('-');
+                    locale.push_str(&subtag);
+                }
+                locale
+            })
     }
 
     proptest! {
