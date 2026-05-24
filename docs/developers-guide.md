@@ -167,13 +167,13 @@ not as a standalone crate-root function.
 The `cli` module is split into small private support modules to keep
 `src/cli.rs` focused on adapter flow: parse the command line, call
 `OrthoConfig`, validate localization, and translate the result into
-`HarnessConfig`. Keep new CLI-only serialisation shapes, help text, and
+`HarnessConfig`. Keep new CLI-only serialization shapes, help text, and
 localization selection policy in these support modules rather than growing
 `src/cli.rs`.
 
 | Internal CLI module       | Purpose                                                                   |
 | ------------------------- | ------------------------------------------------------------------------- |
-| `src/cli_args.rs`         | `LocalizationArgs` and `RecordUpstreamArgs` serialisable merge shapes     |
+| `src/cli_args.rs`         | `LocalizationArgs` and `RecordUpstreamArgs` serializable merge shapes     |
 | `src/cli_help.rs`         | Long-form `CLI_MERGE_HELP` text injected into `clap` after-help output    |
 | `src/cli/localization.rs` | Localization override selection and BCP 47 language identifier validation |
 
