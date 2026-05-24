@@ -13,7 +13,7 @@ use ortho_config::subcommand::Prefix;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-use crate::{config, HarnessConfig};
+use crate::{HarnessConfig, config};
 
 #[path = "cli_args.rs"]
 mod cli_args;
