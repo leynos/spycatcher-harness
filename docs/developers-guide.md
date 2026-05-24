@@ -58,7 +58,6 @@ record-mode request events. `record_chat_completions_handler` calls
 strings are intentionally excluded, so credentials passed in query parameters
 do not enter request logs.
 
-
 ### `futures-util` — streaming response adapters
 
 `futures-util` is a direct dependency because record mode turns upstream
@@ -278,7 +277,6 @@ stream calls. `ReqwestUpstreamClient` is the production implementation; use
 `ReqwestUpstreamClient::with_client(client)` in tests to inject a client with
 custom timeout or intercept behaviour. Tests inject `FakeUpstream`, which
 returns hard-coded responses or errors.
-
 
 ### SSE parser and stream recorder
 

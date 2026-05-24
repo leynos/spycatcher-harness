@@ -419,24 +419,10 @@ example, `LOCALIZATION__LOCALE` maps to `cmds.<subcommand>.localization.locale`.
 # Record using layered defaults and an explicit cassette name override.
 cargo run --bin spycatcher-harness -- record --cassette-name cli_record
 
+# Replay with layered configuration.
+cargo run --bin spycatcher-harness -- replay
 
-# then exits with ModeNotYetImplemented.
-cargo run --bin spycatcher-harness -- verify
-```
-
-For replay and verify mode, ensure the cassette file already exists at the
-configured `cassette_dir/cassette_name` path and was created by a compatible
-`format_version`.
-# Replay with layered configuration. This currently validates cassette loading,
-# then exits with ModeNotYetImplemented.
-cargo run --bin spycatcher-harness -- verify
-```
-
-For replay and verify mode, ensure the cassette file already exists at the
-configured `cassette_dir/cassette_name` path and was created by a compatible
-`format_version`.
-# Verify with layered configuration. This currently validates cassette loading,
-# then exits with ModeNotYetImplemented.
+# Verify with layered configuration.
 cargo run --bin spycatcher-harness -- verify
 ```
 
