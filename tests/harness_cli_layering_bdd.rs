@@ -1,4 +1,23 @@
-//! Behavioural tests for layered CLI configuration loading.
+//! Behavioural (BDD) tests for layered CLI configuration loading.
+//!
+//! This module implements rstest-bdd step functions and scenario runners for the
+//! Gherkin feature file at `tests/features/harness_cli_layering.feature`. It
+//! verifies user-visible configuration-precedence behaviour end-to-end via the
+//! [`spycatcher_harness::cli::load_subcommand_config_from_iter`] entry point,
+//! using `figment::Jail` to isolate filesystem and environment state.
+//!
+//! Covered scenarios:
+//! - Cassette-name CLI precedence over env and file for `replay`.
+//! - Upstream URL merging from `cmds.record` TOML namespace.
+//! - Cassette merging from `cmds.verify` TOML namespace.
+//! - Invalid environment value rejection.
+//! - Locale CLI precedence over env and file for `replay`.
+//! - Fallback-locale selection when no explicit locale is configured.
+//! - Invalid locale configuration failure.
+//!
+//! Related suites:
+//! - `tests/cli_layering_unit.rs` — rstest unit coverage for the same surface.
+//! - `src/bin/spycatcher_harness.rs` (inline tests) — binary startup unit tests.
 
 use std::cell::RefCell;
 
@@ -9,6 +28,11 @@ use rstest_bdd_macros::{ScenarioState, given, scenario, then, when};
 
 use spycatcher_harness::cli::load_subcommand_config_from_iter;
 use spycatcher_harness::{HarnessConfig, config};
+
+#[path = "harness_cli_layering_bdd/cli_layering_helpers.rs"]
+mod cli_layering_helpers;
+
+use cli_layering_helpers::*;
 
 #[derive(Default, ScenarioState)]
 struct CliLayeringWorld {
@@ -23,62 +47,52 @@ fn cli_layering_world() -> CliLayeringWorld {
     CliLayeringWorld::default()
 }
 
-fn set_command(cli_layering_world: &CliLayeringWorld, args: Vec<String>) {
-    cli_layering_world.argv.set(args);
-}
-
-fn append_config(cli_layering_world: &CliLayeringWorld, fragment: &str) {
-    let mut current = cli_layering_world.config_file.take().unwrap_or_default();
-    current.push_str(fragment);
-    cli_layering_world.config_file.set(current);
-}
-
-fn push_env(cli_layering_world: &CliLayeringWorld, key: &str, value: &str) {
-    let mut vars = cli_layering_world.env_vars.take().unwrap_or_default();
-    vars.push((String::from(key), String::from(value)));
-    cli_layering_world.env_vars.set(vars);
-}
-
-fn trim_surrounding_quotes(value: &str) -> String {
-    value.trim_matches('"').to_owned()
-}
-
 #[given("a replay command with cassette name {cassette_name}")]
 fn replay_command_with_cassette_name(cli_layering_world: &CliLayeringWorld, cassette_name: String) {
-    let cassette_name_value = trim_surrounding_quotes(&cassette_name);
-    set_command(
+    set_flag_command(
         cli_layering_world,
-        vec![
-            String::from("spycatcher-harness"),
-            String::from("replay"),
-            String::from("--cassette-name"),
-            cassette_name_value,
-        ],
+        Subcommand::Replay,
+        CliFlag::CassetteName,
+        &trim_surrounding_quotes(&cassette_name),
     );
 }
 
 #[given("a replay command with no CLI overrides")]
 fn replay_command_with_no_cli_overrides(cli_layering_world: &CliLayeringWorld) {
-    set_command(
+    set_subcommand_only(cli_layering_world, Subcommand::Replay);
+}
+
+#[given("a replay command with locale {locale}")]
+fn replay_command_with_locale(cli_layering_world: &CliLayeringWorld, locale: String) {
+    set_flag_command(
         cli_layering_world,
-        vec![String::from("spycatcher-harness"), String::from("replay")],
+        Subcommand::Replay,
+        CliFlag::Locale,
+        &trim_surrounding_quotes(&locale),
+    );
+}
+
+#[given("a replay command with fallback locale {fallback_locale}")]
+fn replay_command_with_fallback_locale(
+    cli_layering_world: &CliLayeringWorld,
+    fallback_locale: String,
+) {
+    set_flag_command(
+        cli_layering_world,
+        Subcommand::Replay,
+        CliFlag::FallbackLocale,
+        &trim_surrounding_quotes(&fallback_locale),
     );
 }
 
 #[given("a record command with no CLI overrides")]
 fn record_command_with_no_cli_overrides(cli_layering_world: &CliLayeringWorld) {
-    set_command(
-        cli_layering_world,
-        vec![String::from("spycatcher-harness"), String::from("record")],
-    );
+    set_subcommand_only(cli_layering_world, Subcommand::Record);
 }
 
 #[given("a verify command with no CLI overrides")]
 fn verify_command_with_no_cli_overrides(cli_layering_world: &CliLayeringWorld) {
-    set_command(
-        cli_layering_world,
-        vec![String::from("spycatcher-harness"), String::from("verify")],
-    );
+    set_subcommand_only(cli_layering_world, Subcommand::Verify);
 }
 
 #[given("config file sets replay cassette name to {cassette_name}")]
@@ -87,6 +101,27 @@ fn config_sets_replay_cassette_name(cli_layering_world: &CliLayeringWorld, casse
     append_config(
         cli_layering_world,
         &format!("[cmds.replay]\ncassette_name = \"{cassette_name_value}\"\n"),
+    );
+}
+
+#[given("config file sets replay locale to {locale}")]
+fn config_sets_replay_locale(cli_layering_world: &CliLayeringWorld, locale: String) {
+    append_replay_localization_field(
+        cli_layering_world,
+        "locale",
+        &trim_surrounding_quotes(&locale),
+    );
+}
+
+#[given("config file sets replay fallback locale to {fallback_locale}")]
+fn config_sets_replay_fallback_locale(
+    cli_layering_world: &CliLayeringWorld,
+    fallback_locale: String,
+) {
+    append_replay_localization_field(
+        cli_layering_world,
+        "fallback_locale",
+        &trim_surrounding_quotes(&fallback_locale),
     );
 }
 
@@ -122,6 +157,26 @@ fn env_sets_replay_cassette_name(cli_layering_world: &CliLayeringWorld, cassette
         cli_layering_world,
         "SPYCATCHER_HARNESS_CMDS_REPLAY_CASSETTE_NAME",
         &cassette_name_value,
+    );
+}
+
+#[given("environment sets replay locale to {locale}")]
+fn env_sets_replay_locale(cli_layering_world: &CliLayeringWorld, locale: String) {
+    let locale_value = trim_surrounding_quotes(&locale);
+    push_env(
+        cli_layering_world,
+        "SPYCATCHER_HARNESS_CMDS_REPLAY_LOCALIZATION__LOCALE",
+        &locale_value,
+    );
+}
+
+#[given("environment sets replay fallback locale to {fallback_locale}")]
+fn env_sets_replay_fallback_locale(cli_layering_world: &CliLayeringWorld, fallback_locale: String) {
+    let fallback_locale_value = trim_surrounding_quotes(&fallback_locale);
+    push_env(
+        cli_layering_world,
+        "SPYCATCHER_HARNESS_CMDS_REPLAY_LOCALIZATION__FALLBACK_LOCALE",
+        &fallback_locale_value,
     );
 }
 
@@ -173,50 +228,62 @@ fn load_layered_config(cli_layering_world: &CliLayeringWorld) {
 
 #[then("replay cassette name is {cassette_name}")]
 fn replay_cassette_name_is(cli_layering_world: &CliLayeringWorld, cassette_name: String) {
-    let cassette_name_value = trim_surrounding_quotes(&cassette_name);
-    let outcome = cli_layering_world
-        .result
-        .with_ref(Clone::clone)
-        .unwrap_or_else(|| Err(String::from("result slot missing")));
-    let loaded_config = match outcome {
-        Ok(config) => config,
-        Err(error) => panic!("expected replay configuration, load failed: {error}"),
-    };
-    assert_eq!(loaded_config.cassette_name, cassette_name_value);
+    let loaded_config = expect_loaded_config(cli_layering_world, "replay");
+    assert_eq!(
+        loaded_config.cassette_name,
+        trim_surrounding_quotes(&cassette_name)
+    );
     assert_eq!(loaded_config.mode, config::Mode::Replay);
 }
 
 #[then("verify cassette name is {cassette_name}")]
 fn verify_cassette_name_is(cli_layering_world: &CliLayeringWorld, cassette_name: String) {
-    let cassette_name_value = trim_surrounding_quotes(&cassette_name);
-    let outcome = cli_layering_world
-        .result
-        .with_ref(Clone::clone)
-        .unwrap_or_else(|| Err(String::from("result slot missing")));
-    let loaded_config = match outcome {
-        Ok(config) => config,
-        Err(error) => panic!("expected verify configuration, load failed: {error}"),
-    };
-    assert_eq!(loaded_config.cassette_name, cassette_name_value);
+    let loaded_config = expect_loaded_config(cli_layering_world, "verify");
+    assert_eq!(
+        loaded_config.cassette_name,
+        trim_surrounding_quotes(&cassette_name)
+    );
     assert_eq!(loaded_config.mode, config::Mode::Verify);
 }
 
 #[then("record upstream base URL is {base_url}")]
 fn record_upstream_base_url_is(cli_layering_world: &CliLayeringWorld, base_url: String) {
-    let base_url_value = trim_surrounding_quotes(&base_url);
-    let outcome = cli_layering_world
-        .result
-        .with_ref(Clone::clone)
-        .unwrap_or_else(|| Err(String::from("result slot missing")));
-    let loaded_config = match outcome {
-        Ok(config) => config,
-        Err(error) => panic!("expected record configuration, load failed: {error}"),
-    };
+    let loaded_config = expect_loaded_config(cli_layering_world, "record");
     let Some(upstream) = loaded_config.upstream else {
         panic!("expected record upstream");
     };
     assert_eq!(loaded_config.mode, config::Mode::Record);
-    assert_eq!(upstream.base_url, base_url_value);
+    assert_eq!(upstream.base_url, trim_surrounding_quotes(&base_url));
+}
+
+#[then("replay locale is {locale}")]
+fn replay_locale_is(cli_layering_world: &CliLayeringWorld, locale: String) {
+    let locale_value = trim_surrounding_quotes(&locale);
+    let loaded_config = expect_loaded_config(cli_layering_world, "replay");
+
+    assert_eq!(
+        loaded_config.localization.locale.as_deref(),
+        Some(locale_value.as_str())
+    );
+    assert_eq!(loaded_config.mode, config::Mode::Replay);
+}
+
+#[then("replay locale is unset")]
+fn replay_locale_is_unset(cli_layering_world: &CliLayeringWorld) {
+    let loaded_config = expect_loaded_config(cli_layering_world, "replay");
+
+    assert_eq!(loaded_config.localization.locale, None);
+    assert_eq!(loaded_config.mode, config::Mode::Replay);
+}
+
+#[then("fallback locale is {fallback_locale}")]
+fn fallback_locale_is(cli_layering_world: &CliLayeringWorld, fallback_locale: String) {
+    let loaded_config = expect_loaded_config(cli_layering_world, "configuration");
+
+    assert_eq!(
+        loaded_config.localization.fallback_locale,
+        trim_surrounding_quotes(&fallback_locale)
+    );
 }
 
 #[then("command configuration loading fails with error containing {error_marker}")]
@@ -265,5 +332,41 @@ fn verify_command_merges_cmds_verify_cassette_value(cli_layering_world: CliLayer
     name = "Invalid environment value fails loading"
 )]
 fn invalid_environment_value_fails_loading(cli_layering_world: CliLayeringWorld) {
+    let _ = cli_layering_world;
+}
+
+#[scenario(
+    path = "tests/features/harness_cli_layering.feature",
+    name = "Replay locale precedence favours CLI over env and file"
+)]
+fn replay_locale_precedence_favours_cli_over_env_and_file(cli_layering_world: CliLayeringWorld) {
+    let _ = cli_layering_world;
+}
+
+#[scenario(
+    path = "tests/features/harness_cli_layering.feature",
+    name = "Fallback locale is used when no explicit locale is configured"
+)]
+fn fallback_locale_is_used_when_no_explicit_locale_is_configured(
+    cli_layering_world: CliLayeringWorld,
+) {
+    let _ = cli_layering_world;
+}
+
+#[scenario(
+    path = "tests/features/harness_cli_layering.feature",
+    name = "Replay fallback locale precedence favours CLI over env and file"
+)]
+fn replay_fallback_locale_precedence_favours_cli_over_env_and_file(
+    cli_layering_world: CliLayeringWorld,
+) {
+    let _ = cli_layering_world;
+}
+
+#[scenario(
+    path = "tests/features/harness_cli_layering.feature",
+    name = "Invalid locale configuration fails loading"
+)]
+fn invalid_locale_configuration_fails_loading(cli_layering_world: CliLayeringWorld) {
     let _ = cli_layering_world;
 }
