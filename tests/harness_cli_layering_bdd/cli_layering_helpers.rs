@@ -9,11 +9,25 @@ use spycatcher_harness::HarnessConfig;
 use super::CliLayeringWorld;
 
 /// Replaces the current command argv with `args`.
+///
+/// # Example
+///
+/// ```ignore
+/// set_command(&world, vec!["spycatcher-harness".into(), "replay".into()]);
+/// // Replaces argv with the provided command vector.
+/// ```
 pub(super) fn set_command(cli_layering_world: &CliLayeringWorld, args: Vec<String>) {
     cli_layering_world.argv.set(args);
 }
 
 /// Appends a TOML configuration `fragment` to the scenario config file.
+///
+/// # Example
+///
+/// ```ignore
+/// append_config(&world, "[cmds.replay]\ncassette_name = \"demo\"\n");
+/// // Appends the fragment to config_file.
+/// ```
 pub(super) fn append_config(cli_layering_world: &CliLayeringWorld, fragment: &str) {
     let mut current = cli_layering_world.config_file.take().unwrap_or_default();
     current.push_str(fragment);
@@ -42,6 +56,13 @@ pub(super) fn append_replay_localization_field(
 }
 
 /// Adds an environment variable key/value pair to the scenario environment.
+///
+/// # Example
+///
+/// ```ignore
+/// push_env(&world, "KEY", "value");
+/// // Adds ("KEY", "value") to env_vars.
+/// ```
 pub(super) fn push_env(cli_layering_world: &CliLayeringWorld, key: &str, value: &str) {
     let mut vars = cli_layering_world.env_vars.take().unwrap_or_default();
     vars.push((String::from(key), String::from(value)));
@@ -49,6 +70,13 @@ pub(super) fn push_env(cli_layering_world: &CliLayeringWorld, key: &str, value: 
 }
 
 /// Trims leading and trailing double quotes from `value` into an owned string.
+///
+/// # Example
+///
+/// ```ignore
+/// let t = trim_surrounding_quotes("\"en-GB\"");
+/// assert_eq!(t, "en-GB");
+/// ```
 pub(super) fn trim_surrounding_quotes(value: &str) -> String {
     value.trim_matches('"').to_owned()
 }
@@ -89,6 +117,13 @@ impl CliFlag {
     }
 }
 
+fn base_argv(subcommand: Subcommand) -> Vec<String> {
+    vec![
+        String::from("spycatcher-harness"),
+        String::from(subcommand.as_str()),
+    ]
+}
+
 /// Builds a command containing `subcommand`, `flag`, and `value`.
 ///
 /// # Example
@@ -104,15 +139,10 @@ pub(super) fn set_flag_command(
     flag: CliFlag,
     value: &str,
 ) {
-    set_command(
-        cli_layering_world,
-        vec![
-            String::from("spycatcher-harness"),
-            String::from(subcommand.as_str()),
-            String::from(flag.as_str()),
-            String::from(value),
-        ],
-    );
+    let mut argv = base_argv(subcommand);
+    argv.push(String::from(flag.as_str()));
+    argv.push(String::from(value));
+    set_command(cli_layering_world, argv);
 }
 
 /// Sets argv to the binary name and `subcommand` only.
@@ -125,13 +155,7 @@ pub(super) fn set_flag_command(
 /// // ["spycatcher-harness", "replay"]
 /// ```
 pub(super) fn set_subcommand_only(cli_layering_world: &CliLayeringWorld, subcommand: Subcommand) {
-    set_command(
-        cli_layering_world,
-        vec![
-            String::from("spycatcher-harness"),
-            String::from(subcommand.as_str()),
-        ],
-    );
+    set_command(cli_layering_world, base_argv(subcommand));
 }
 
 /// Returns the loaded config, or panics with `context` if loading failed.
