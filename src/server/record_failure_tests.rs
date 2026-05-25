@@ -132,17 +132,20 @@ async fn recording_failure_still_returns_upstream_response() {
 }
 
 #[rstest]
+#[case::invalid_utf8(vec![b"data: \xff\n\n".to_vec()], b"data: \xff\n\n".to_vec())]
+#[case::incomplete_final_event(vec![b"data: unfinished".to_vec()], b"data: unfinished".to_vec())]
 #[tokio::test]
-async fn stream_parse_failure_still_returns_upstream_chunks_without_recording() {
+async fn stream_parse_failure_still_returns_upstream_chunks_without_recording(
+    #[case] chunks: Vec<Vec<u8>>,
+    #[case] expected_streamed: Vec<u8>,
+) {
     let cassette = cassette_fixture("stream-parse-fail");
     let cassette_store = FilesystemCassetteStore::open_or_create_for_record(&cassette.path)
         .expect("cassette should open");
     let failure_count = Arc::new(AtomicU64::new(0));
     let service = RecordService {
         cassette_store: Arc::new(Mutex::new(cassette_store)),
-        upstream_client: MalformedStreamUpstream {
-            chunks: vec![b"data: \xff\n\n".to_vec()],
-        },
+        upstream_client: MalformedStreamUpstream { chunks },
         env_provider: FakeEnvProvider(Some("token".to_owned())),
         metadata: FixedMetadataFactory,
         upstream: UpstreamConfig::default(),
@@ -167,7 +170,7 @@ async fn stream_parse_failure_still_returns_upstream_chunks_without_recording() 
         streamed.extend_from_slice(&chunk.expect("upstream chunk should be forwarded"));
     }
 
-    assert_eq!(streamed, b"data: \xff\n\n".to_vec());
+    assert_eq!(streamed, expected_streamed);
     assert_eq!(failure_count.load(Ordering::Relaxed), 1);
     assert!(load_cassette(&cassette.path).interactions.is_empty());
 }

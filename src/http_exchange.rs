@@ -224,6 +224,10 @@ fn should_persist_header(name: &str, redaction: &RedactionConfig) -> bool {
 }
 
 #[cfg(test)]
+#[path = "http_exchange_debug_tests.rs"]
+mod debug_tests;
+
+#[cfg(test)]
 mod tests {
     //! Unit tests for header filtering and JSON parsing helpers.
 
