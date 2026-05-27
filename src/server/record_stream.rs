@@ -247,23 +247,31 @@ where
         self.events.extend(new_events);
     }
 
-    async fn finish_recording(self) {
+    async fn finish_recording(mut self) {
         if self.recording_failed {
             return;
         }
-        if let Err(error) = self.parser.finish().map_err(stream_parse_failure) {
-            self.service.failure_count.fetch_add(1, Ordering::Relaxed);
-            error!(
-                target: "spycatcher.harness.record",
-                "upstream stream parse failed interaction_id={} mode=record \
-                 protocol={} outcome=parse_failed cassette={} error={error}",
-                self.interaction_id,
-                CHAT_COMPLETIONS_PROTOCOL_ID,
-                upstream_id(self.service.upstream.kind),
-            );
-            return;
+        match self.parser.finish() {
+            Ok(new_events) => {
+                let elapsed = millis_u64(self.upstream_start.elapsed().as_millis());
+                self.chunk_offsets_ms
+                    .extend(std::iter::repeat_n(elapsed, new_events.len()));
+                self.events.extend(new_events);
+                self.append_completed_recording().await;
+            }
+            Err(parse_error) => {
+                self.service.failure_count.fetch_add(1, Ordering::Relaxed);
+                let error = stream_parse_failure(parse_error);
+                error!(
+                    target: "spycatcher.harness.record",
+                    "upstream stream parse failed interaction_id={} mode=record \
+                     protocol={} outcome=parse_failed cassette={} error={error}",
+                    self.interaction_id,
+                    CHAT_COMPLETIONS_PROTOCOL_ID,
+                    upstream_id(self.service.upstream.kind),
+                );
+            }
         }
-        self.append_completed_recording().await;
     }
 
     async fn append_completed_recording(mut self) {

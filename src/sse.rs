@@ -46,13 +46,20 @@ impl SseParser {
 
     /// Completes parsing after upstream EOF.
     ///
+    /// Returns any events held back by a deferred trailing carriage return.
+    ///
     /// # Errors
     ///
     /// Returns [`SseParseError::IncompleteEvent`] if bytes or data fields were
     /// left pending without a blank-line dispatch.
-    pub(crate) const fn finish(&self) -> Result<(), SseParseError> {
+    pub(crate) fn finish(&mut self) -> Result<Vec<StreamEvent>, SseParseError> {
+        let mut events = Vec::new();
+        if self.buffer.as_slice() == [b'\r'] {
+            self.buffer.clear();
+            self.dispatch_event(&mut events);
+        }
         if self.buffer.is_empty() && self.data_lines.is_empty() {
-            Ok(())
+            Ok(events)
         } else {
             Err(SseParseError::IncompleteEvent)
         }
@@ -109,12 +116,12 @@ fn line_bounds(buffer: &[u8]) -> Option<(usize, usize)> {
             b'\n' => return Some((index, index + 1)),
             b'\r' => {
                 let next = index + 1;
-                let drain_to = if buffer.get(next) == Some(&b'\n') {
-                    index + 2
-                } else {
-                    index + 1
+                return match buffer.get(next) {
+                    Some(&b'\n') => Some((index, index + 2)),
+                    Some(_) => Some((index, index + 1)),
+                    // A trailing CR may be the first half of CRLF split across chunks.
+                    None => None,
                 };
-                return Some((index, drain_to));
             }
             _ => index += 1,
         }
@@ -185,9 +192,8 @@ mod tests {
     fn parser_handles_common_events(#[case] transcript: &[u8], #[case] expected: Vec<StreamEvent>) {
         let mut parser = SseParser::default();
 
-        let events = parser.feed(transcript).expect("transcript should parse");
-
-        parser.finish().expect("transcript should be complete");
+        let mut events = parser.feed(transcript).expect("transcript should parse");
+        events.extend(parser.finish().expect("transcript should be complete"));
         assert_eq!(events, expected);
     }
 
@@ -198,14 +204,38 @@ mod tests {
     fn parser_handles_line_endings(#[case] transcript: &[u8]) {
         let mut parser = SseParser::default();
 
-        let events = parser.feed(transcript).expect("line ending should parse");
-
-        parser.finish().expect("transcript should be complete");
+        let mut events = parser.feed(transcript).expect("line ending should parse");
+        events.extend(parser.finish().expect("transcript should be complete"));
         assert_eq!(
             events,
             vec![StreamEvent::Data {
                 raw: "one".to_owned(),
                 parsed_json: None,
+            }],
+        );
+    }
+
+    #[rstest]
+    fn parser_defers_trailing_cr_until_next_chunk() {
+        let mut parser = SseParser::default();
+
+        let first = parser
+            .feed(b"data: {\"id\":\"chunk\"}\r")
+            .expect("first fragment should wait for CRLF completion");
+        assert!(first.is_empty());
+
+        let second = parser
+            .feed(b"\n\n")
+            .expect("second fragment should complete the event");
+        let mut events = first;
+        events.extend(second);
+        events.extend(parser.finish().expect("transcript should be complete"));
+
+        assert_eq!(
+            events,
+            vec![StreamEvent::Data {
+                raw: "{\"id\":\"chunk\"}".to_owned(),
+                parsed_json: Some(json!({"id": "chunk"})),
             }],
         );
     }
@@ -220,7 +250,23 @@ mod tests {
             let second = transcript.get(split..).expect("split is in bounds");
             let mut events = parser.feed(first).expect("first fragment should parse");
             events.extend(parser.feed(second).expect("second fragment should parse"));
-            parser.finish().expect("split transcript should complete");
+            events.extend(parser.finish().expect("split transcript should complete"));
+            assert_eq!(events, expected, "split at byte {split}");
+        }
+    }
+
+    #[rstest]
+    fn parser_handles_crlf_frames_split_across_every_boundary() {
+        let transcript =
+            b": OPENROUTER PROCESSING\r\n\r\ndata: {\"id\":\"chunk\"}\r\n\r\ndata: [DONE]\r\n\r\n";
+        let expected = parse_all(transcript).expect("baseline parse should succeed");
+        for split in 0..=transcript.len() {
+            let mut parser = SseParser::default();
+            let first = transcript.get(..split).expect("split is in bounds");
+            let second = transcript.get(split..).expect("split is in bounds");
+            let mut events = parser.feed(first).expect("first fragment should parse");
+            events.extend(parser.feed(second).expect("second fragment should parse"));
+            events.extend(parser.finish().expect("split transcript should complete"));
             assert_eq!(events, expected, "split at byte {split}");
         }
     }
@@ -291,7 +337,7 @@ mod tests {
             }
             let remainder = transcript.get(cursor..).unwrap_or_default();
             events.extend(parser.feed(remainder)?);
-            parser.finish()?;
+            events.extend(parser.finish()?);
 
             prop_assert_eq!(events, expected);
         }
@@ -299,8 +345,8 @@ mod tests {
 
     fn parse_all(transcript: &[u8]) -> Result<Vec<StreamEvent>, SseParseError> {
         let mut parser = SseParser::default();
-        let events = parser.feed(transcript)?;
-        parser.finish()?;
+        let mut events = parser.feed(transcript)?;
+        events.extend(parser.finish()?);
         Ok(events)
     }
 
