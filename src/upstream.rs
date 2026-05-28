@@ -22,6 +22,12 @@ use std::time::Duration;
 /// indefinite upstream hangs.
 pub(crate) const UPSTREAM_TIMEOUT: Duration = Duration::from_secs(30);
 
+/// Connect timeout for upstream HTTP connections.
+///
+/// Ten seconds is long enough to cover normal network latency while
+/// preventing indefinite hangs on connection establishment.
+pub(crate) const UPSTREAM_CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
+
 const FORBIDDEN_EXTRA_HEADERS: &[&str] = &[
     "host",
     "connection",
@@ -111,7 +117,11 @@ impl ReqwestUpstreamClient {
     /// constructed.
     pub(crate) fn new() -> HarnessResult<Self> {
         let client = build_reqwest_client(base_client_builder().timeout(UPSTREAM_TIMEOUT))?;
-        let stream_client = build_reqwest_client(base_client_builder())?;
+        let stream_client = build_reqwest_client(
+            base_client_builder()
+                .connect_timeout(UPSTREAM_CONNECT_TIMEOUT)
+                .read_timeout(UPSTREAM_TIMEOUT),
+        )?;
         Ok(Self {
             client,
             stream_client,

@@ -595,7 +595,7 @@ pub struct HarnessConfig {
 #[derive(Debug, Clone, Deserialize)]
 pub struct UpstreamConfig {
     pub kind: UpstreamKind,         // openrouter initially
-    pub base_url: String,           // e.g. https://openrouter.ai/api/v1
+    pub base_url: Url,              // e.g. https://openrouter.ai/api/v1
     pub api_key_env: String,        // env var name, not the key itself
     pub extra_headers: BTreeMap<String, String>, // header name -> value
 }
@@ -663,7 +663,7 @@ classDiagram
 
   class UpstreamConfig {
     +UpstreamKind kind
-    +String base_url
+    +Url base_url
     +String api_key_env
     +BTreeMap~String,String~ extra_headers
   }

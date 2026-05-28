@@ -331,5 +331,13 @@ where
 mod failure_tests;
 
 #[cfg(test)]
+#[path = "record_tests_helpers.rs"]
+pub(crate) mod record_tests_helpers;
+
+#[cfg(test)]
+#[path = "record_concurrent_tests.rs"]
+mod concurrent_tests;
+
+#[cfg(test)]
 #[path = "record_tests.rs"]
 mod tests;
