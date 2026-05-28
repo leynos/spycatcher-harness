@@ -118,8 +118,8 @@ impl ReqwestUpstreamClient {
         })
     }
 
-    /// Creates an upstream client with a custom pre-built reqwest client.
-    /// Intended for tests that need to control timeout or TLS behaviour.
+    /// Constructs a client using a pre-built [`reqwest::Client`].
+    /// Used in tests to inject a mock or pre-configured client.
     #[cfg(test)]
     pub(crate) fn with_client(client: Client) -> Self {
         Self {

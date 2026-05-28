@@ -30,6 +30,17 @@ where
     E: EnvProvider + Clone + Send + Sync + 'static,
     M: MetadataFactory,
 {
+    /// Handles a streaming chat-completions request in record mode.
+    ///
+    /// Calls the upstream streaming endpoint, proxies the SSE byte stream
+    /// back to the client via a [`ProxyBody::Stream`], and, once the stream
+    /// completes cleanly, persists the captured events and raw transcript to
+    /// the cassette store.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`RecordError`] if the API key cannot be resolved or if the
+    /// upstream request cannot be initiated.
     pub(super) async fn handle_streaming_chat_completions(
         &self,
         request: ObservedRequest,

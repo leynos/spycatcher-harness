@@ -2,9 +2,12 @@
 
 This guide documents the public API surface and usage patterns for the
 Spycatcher harness. The harness records LLM API interactions for deterministic
-regression testing. Replay and verify configuration surfaces are available, but
-their runtime modes currently fail fast until replay serving and verification
-execution land.
+regression testing. In record mode, both non-streaming and streaming
+(`"stream": true`) Chat Completions requests are proxied upstream and persisted
+to cassette. Replay mode does not yet support streaming
+interactions---matched `"stream": true` requests return HTTP `501 Not
+Implemented`; full replay serving and verify execution are not yet
+implemented.
 
 > **Breaking changes:** record-mode proxying changed raw header handling and
 > redaction defaults before the 0.1.0 release. See
