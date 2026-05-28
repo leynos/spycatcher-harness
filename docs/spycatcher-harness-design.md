@@ -21,8 +21,8 @@ diagnostics. The harness must:
   DeepSeek-compatible APIs over time. [^5][^6][^7]
 - Provide a Rust library API and a CLI.
 - Load configuration via OrthoConfig’s layered precedence model (CLI > env >
-  config files > defaults), including subcommand configuration merging.
-  [^8][^9][^10]
+  config files > defaults), including subcommand configuration merging. [^8][^9]
+  [^10]
 - Integrate with VidaiMock for replay realism where it improves test coverage
   (latency/time-to-first-token (TTFT)/jitter, chaos primitives), while keeping
   an early shippable vertical slice that does not depend on undocumented
@@ -151,10 +151,13 @@ Key architectural points:
   - Response persistence excludes hop-by-hop headers and `content-length`.
   - Configured redaction removes matching header names case-insensitively
     immediately before cassette persistence.
-- **Streaming guardrail**:
-  - `stream: true` is rejected with an explicit "not implemented yet"
-    response in record and replay mode, and the harness does not append a
-    cassette entry for that request.
+- **Streaming boundary**:
+  - Record mode supports OpenAI-style `data:` SSE streams by proxying upstream
+    byte chunks downstream while recording raw transcript bytes, parsed stream
+    events, and timing metadata.
+  - Replay mode still rejects `stream: true` requests and matched stream
+    cassette responses with an explicit "not implemented yet" response until
+    streaming replay lands.
 - **Replay no-network boundary**:
   - Replay application state owns a `ReplayMatchEngine` only. It does not hold
     `UpstreamConfig`, environment-variable readers, `ReqwestUpstreamClient`,
@@ -229,12 +232,12 @@ harness does not append an implicit `.json` suffix. Each interaction contains:
   - Upstream identifier (`openrouter`).
   - Timestamps (recorded and relative offsets).
 
-For the shipped `1.3.1` and `1.3.2` slices, "selected headers" means the
-inbound request-header subset after hop-by-hop and framing removal, with
-persistence redaction applied case-insensitively just before writing the
-cassette. The recorded request intentionally reflects what the client sent to
-the harness, not the enriched outbound upstream request after bearer-token
-injection and configured `extra_headers`.
+For the shipped record and replay slices, "selected headers" means the inbound
+request-header subset after hop-by-hop and framing removal, with persistence
+redaction applied case-insensitively just before writing the cassette. The
+recorded request intentionally reflects what the client sent to the harness,
+not the enriched outbound upstream request after bearer-token injection and
+configured `extra_headers`.
 
 Replay of non-stream chat completions reconstructs exactly the HTTP data that
 the cassette persisted: the recorded status when it is a valid HTTP status
@@ -248,6 +251,8 @@ returns `409 Conflict` with `request_mismatch` diagnostics derived from
 otherwise give different malformed byte sequences the same replay key. If a
 request asks for `stream: true`, or a manually authored cassette contains a
 stream response for a matched request, replay returns `501 Not Implemented`.
+Record mode accepts `stream: true` and stores a `RecordedResponse::Stream`
+after a clean upstream SSE completion.
 
 ### Matching modes
 
@@ -391,22 +396,34 @@ OpenAI’s Chat Completions API streams “chat completion chunk” objects via 
 when `stream: true`, and supports `stream_options.include_usage` producing an
 additional final chunk with usage. [^4]
 
-Recording strategy for OpenAI-style SSE:
+Implemented recording strategy for OpenAI-style SSE:
 
-- Implement a streaming proxy:
+- Streaming proxy:
   - Read upstream bytes incrementally.
   - Parse SSE frames into event records:
     - `comment` frames (leading `:`) recorded as `comment` type.
     - `data:` frames captured as raw string and, when JSON, parsed into `Value`.
-  - Forward frames to the downstream client as bytes _without re-chunking_
-    where possible (preserves client edge cases).
+    - `data: [DONE]` retained as a terminal data event with no parsed JSON.
+  - Forward received upstream byte chunks to the downstream client without
+    reserializing SSE frames.
 - Store both:
   - The parsed event list (for deterministic replay), and
   - The raw byte transcript (for fidelity/debugging).
+- Store coarse timing metadata:
+  - Time to first upstream byte chunk (`ttft_ms`).
+  - One relative offset for each parsed event (`chunk_offsets_ms`).
+- Malformed stream policy:
+  - Invalid UTF-8 or an incomplete final event is treated as a stream parse
+    failure.
+  - Bytes already received from upstream may already have been forwarded to the
+    client, but the recorder does not append a successful cassette entry for
+    the malformed stream.
 
 Replay strategy:
 
-- Emit SSE frames from the recorded transcript.
+- Not yet implemented for streams. Record-mode stream cassettes intentionally
+  return `501 Not Implemented` in replay until roadmap task `2.1.3`.
+- Later work should emit SSE frames from the recorded transcript.
 - Provide a configuration flag to apply “physics” timing:
   - TTFT delay before first token.
   - Inter-chunk spacing (fixed or recorded).
@@ -504,8 +521,8 @@ Library responsibilities:
 - Embed library-owned Fluent Translation List (FTL) resources under `i18n/`.
   The initial library asset path is `i18n/en-US/spycatcher-harness.ftl`.
 - Expose localized rendering APIs that accept an application-provided
-  `FluentLanguageLoader` via dependency injection. The initial public surface
-  is `HarnessLocalizations` plus
+  `FluentLanguageLoader` via dependency injection. The initial public surface is
+   `HarnessLocalizations` plus
   `localize_harness_error(&FluentLanguageLoader, &HarnessError)`.
 - Keep domain-facing APIs semantic by returning typed errors with stable message
   IDs, rather than preformatted user-facing strings. Harness error messages use
@@ -541,8 +558,8 @@ precedence rules where command-line arguments have the highest precedence,
 environment variables next, then configuration files, with default attribute
 values at the lowest. [^8]
 
-OrthoConfig also supports subcommand configuration merging
-(`load_and_merge_subcommand_for` / `SubcmdConfigMerge`) that reads per-command
+OrthoConfig also supports subcommand configuration merging (
+`load_and_merge_subcommand_for` / `SubcmdConfigMerge`) that reads per-command
 defaults from configuration under a `cmds` namespace and merges them beneath
 CLI args. [^9]
 
@@ -578,7 +595,7 @@ pub struct HarnessConfig {
 #[derive(Debug, Clone, Deserialize)]
 pub struct UpstreamConfig {
     pub kind: UpstreamKind,         // openrouter initially
-    pub base_url: String,           // e.g. https://openrouter.ai/api/v1
+    pub base_url: Url,              // e.g. https://openrouter.ai/api/v1
     pub api_key_env: String,        // env var name, not the key itself
     pub extra_headers: BTreeMap<String, String>, // header name -> value
 }
@@ -646,7 +663,7 @@ classDiagram
 
   class UpstreamConfig {
     +UpstreamKind kind
-    +String base_url
+    +Url base_url
     +String api_key_env
     +BTreeMap~String,String~ extra_headers
   }
@@ -1070,8 +1087,8 @@ Decisions recorded during implementation that refine or clarify the design.
 
 ### Path types (task 1.1.1)
 
-The library uses `camino::Utf8PathBuf` for all path fields
-(`HarnessConfig.cassette_dir`, `RunningHarness.cassette_path`) rather than
+The library uses `camino::Utf8PathBuf` for all path fields (
+`HarnessConfig.cassette_dir`, `RunningHarness.cassette_path`) rather than
 `std::path::PathBuf`. This follows the project coding standard in `AGENTS.md`
 which mandates `camino` over `std::path` for enhanced cross-platform support
 and UTF-8 path guarantees.
@@ -1097,8 +1114,8 @@ annotation documenting this rationale.
 ### Layered subcommand loading scope (task 1.1.2)
 
 Task 1.1.2 implements layered loading with OrthoConfig's subcommand merge
-helpers (`load_and_merge_subcommand`) in a dedicated CLI adapter module
-(`src/cli.rs`). The implementation currently scopes file loading to the
+helpers (`load_and_merge_subcommand`) in a dedicated CLI adapter module (
+`src/cli.rs`). The implementation currently scopes file loading to the
 `cmds.<subcommand>` namespace plus subcommand-specific environment variables:
 
 - `SPYCATCHER_HARNESS_CMDS_RECORD_*`

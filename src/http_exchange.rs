@@ -5,11 +5,14 @@
 //! persisted.
 
 use std::collections::HashSet;
+use std::fmt;
 
 use axum::http::HeaderMap;
+use futures_util::stream::BoxStream;
 use percent_encoding::{NON_ALPHANUMERIC, percent_encode};
 use serde_json::Value;
 
+use crate::HarnessResult;
 use crate::config::RedactionConfig;
 
 const HOP_BY_HOP_HEADERS: &[&str] = &[
@@ -61,14 +64,49 @@ pub(crate) struct ObservedResponse {
 }
 
 /// Response data returned from the service to the inbound adapter.
-#[derive(Debug, Clone, PartialEq)]
 pub(crate) struct ProxyResponse {
     /// HTTP status code.
     pub status: u16,
     /// Selected headers as raw bytes in observed order.
     pub headers: Vec<(String, Vec<u8>)>,
-    /// Raw body bytes.
-    pub body: Vec<u8>,
+    /// Response body for downstream proxying.
+    pub body: ProxyBody,
+}
+
+impl fmt::Debug for ProxyResponse {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let header_names = self
+            .headers
+            .iter()
+            .map(|(name, _)| name.as_str())
+            .collect::<Vec<_>>();
+        formatter
+            .debug_struct("ProxyResponse")
+            .field("status", &self.status)
+            .field("headers", &header_names)
+            .field("body", &self.body)
+            .finish()
+    }
+}
+
+/// Body data returned to the inbound HTTP adapter.
+pub(crate) enum ProxyBody {
+    /// A fully buffered response body.
+    Buffered(Vec<u8>),
+    /// A streaming response body.
+    Stream(BoxStream<'static, HarnessResult<axum::body::Bytes>>),
+}
+
+impl fmt::Debug for ProxyBody {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Buffered(bytes) => formatter
+                .debug_tuple("Buffered")
+                .field(&bytes.len())
+                .finish(),
+            Self::Stream(_) => formatter.write_str("Stream"),
+        }
+    }
 }
 
 /// Parses bytes as JSON, returning `None` when parsing fails.
@@ -184,6 +222,10 @@ fn should_persist_header(name: &str, redaction: &RedactionConfig) -> bool {
         .iter()
         .any(|candidate| candidate.eq_ignore_ascii_case(name))
 }
+
+#[cfg(test)]
+#[path = "http_exchange_debug_tests.rs"]
+mod debug_tests;
 
 #[cfg(test)]
 mod tests {
@@ -352,20 +394,6 @@ mod tests {
                     .expect("selected headers should contain x-custom");
                 let expected = percent_encode(&suffix, NON_ALPHANUMERIC).to_string();
                 prop_assert_eq!(value, &expected);
-            }
-        }
-
-        proptest! {
-            #[test]
-            fn percent_round_trip_is_identity(
-                bytes in proptest::collection::vec(0x80u8..=0xFFu8, 1..32),
-            ) {
-                use percent_encoding::percent_decode_str;
-
-                let encoded = percent_encode(&bytes, NON_ALPHANUMERIC).to_string();
-                let decoded = percent_decode_str(&encoded).collect::<Vec<_>>();
-
-                prop_assert_eq!(decoded, bytes);
             }
         }
     }

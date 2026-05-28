@@ -29,7 +29,8 @@ fn chat_completions_url_appends_endpoint_path(
     #[case] query: &str,
     #[case] expected: &str,
 ) {
-    let actual = chat_completions_url(base_url, query).expect("base URL should parse");
+    let parsed = test_url(base_url);
+    let actual = chat_completions_url(&parsed, query).expect("URL construction must succeed");
     assert_eq!(actual.as_str(), expected);
 }
 
@@ -200,8 +201,9 @@ fn spawn_capturing_server() -> (std::net::SocketAddr, CapturedRequest, CaptureTh
 }
 
 fn auth_test_config(addr: std::net::SocketAddr) -> UpstreamConfig {
+    let base_url = test_url(&format!("http://{addr}"));
     UpstreamConfig {
-        base_url: format!("http://{addr}"),
+        base_url,
         extra_headers: [("Authorization".to_owned(), "Bearer extra-secret".to_owned())].into(),
         ..UpstreamConfig::default()
     }
@@ -277,13 +279,20 @@ mod prop_tests {
     proptest! {
         #[test]
         fn url_query_string_is_preserved(query in "[a-z0-9=&]{0,40}") {
-            let base = "https://example.invalid/v1";
-            let url = chat_completions_url(base, &query).expect("URL must build");
+            let base = test_url("https://example.invalid/v1");
+            let url = chat_completions_url(&base, &query).expect("URL must build");
             if query.is_empty() {
                 prop_assert!(url.query().is_none());
             } else {
                 prop_assert_eq!(url.query(), Some(query.as_str()));
             }
         }
+    }
+}
+
+fn test_url(value: &str) -> Url {
+    match Url::parse(value) {
+        Ok(url) => url,
+        Err(error) => panic!("test fixture URL is invalid: {error}"),
     }
 }

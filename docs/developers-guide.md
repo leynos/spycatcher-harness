@@ -15,8 +15,8 @@ enabled:
 serde_json = { version = "1.0.143", features = ["preserve_order"] }
 ```
 
-This feature causes `serde_json::Map` to use an insertion-ordered map
-(`IndexMap`) instead of a `BTreeMap`. It is **required** for two reasons:
+This feature causes `serde_json::Map` to use an insertion-ordered map (
+`IndexMap`) instead of a `BTreeMap`. It is **required** for two reasons:
 
 1. **Deterministic canonical hashing.** The canonical request module
    normalizes JSON objects before hashing. Without `preserve_order`,
@@ -57,6 +57,14 @@ record-mode request events. `record_chat_completions_handler` calls
 `log_chat_request`, which records the HTTP method and `uri.path()` only. Query
 strings are intentionally excluded, so credentials passed in query parameters
 do not enter request logs.
+
+### `futures-util` — streaming response adapters
+
+`futures-util` is a direct dependency because record mode turns upstream
+`reqwest::Response::chunk()` polling into an Axum-compatible `TryStream`. The
+crate was already present transitively; depending on it directly avoids
+enabling reqwest's broader `stream` feature while keeping the response body
+adapter explicit in `src/server/record_stream.rs`.
 
 ## Dev-dependencies
 
@@ -141,9 +149,10 @@ Do not replace those fixtures with fixed paths. A future in-memory cassette
 store can remove this temporary filesystem dependency once `RecordService`
 accepts cassette reader/appender traits generically.
 
-## Internal module layout
+## Module layout
 
-The library crate (`src/lib.rs`) exposes the following public modules:
+The library crate (`src/lib.rs`) contains the following top-level public and
+internal modules:
 
 | Module     | Purpose                                                                    |
 | ---------- | -------------------------------------------------------------------------- |
@@ -155,6 +164,7 @@ The library crate (`src/lib.rs`) exposes the following public modules:
 | `protocol` | Protocol identifiers and request-shape helpers                             |
 | `replay`   | Adapter-neutral replay service and replay error types                      |
 | `server`   | Axum HTTP servers: routing, handlers, state, graceful shutdown             |
+| `sse`      | Incremental Server-Sent Events parser used by stream recording             |
 | `upstream` | Outbound HTTP adapter: URL construction, secret resolution, reqwest client |
 
 _Table 1: Top-level library modules._
@@ -187,10 +197,13 @@ construction, locale detection, and process-global localization state out of
 library modules; callers inject a configured loader when they need localized
 text.
 
-The upstream adapter returns `ObservedResponse` values carrying the HTTP status
-code, raw header byte pairs for proxying as `Vec<(String, Vec<u8>)>`, and exact
-response body bytes. Header value percent-encoding happens only at the
-persistence boundary when cassette-safe string headers are derived.
+The upstream adapter returns `ObservedResponse` values for non-stream responses
+and `StreamingObservedResponse` values for streamed responses. Non-stream
+responses carry the HTTP status code, raw header byte pairs for proxying as
+`Vec<(String, Vec<u8>)>`, and exact response body bytes. Streaming responses
+carry the same status and header selections plus a boxed byte stream. Header
+value percent-encoding happens only at the persistence boundary when
+cassette-safe string headers are derived.
 
 Header selection and hop-by-hop filtering live in `src/http_exchange.rs`, not
 `src/protocol.rs`. Use that module when changing which headers are forwarded,
@@ -257,12 +270,34 @@ API keys without mutating process state.
 
 ### `ChatCompletionsUpstream` and `ReqwestUpstreamClient` (`src/upstream.rs`)
 
-`ChatCompletionsUpstream` is a one-method async trait that forwards a
-`ChatCompletionsRequest` to an upstream provider and returns an
-`ObservedResponse`. `ReqwestUpstreamClient` is the production implementation;
-use `ReqwestUpstreamClient::with_client(client)` in tests to inject a client
-with custom timeout or intercept behaviour. Tests inject `FakeUpstream`, which
-returns a hard-coded `ObservedResponse` or an error.
+`ChatCompletionsUpstream` is a two-method async trait that forwards a
+`ChatCompletionsRequest` to an upstream provider and returns either an
+`ObservedResponse` for non-stream calls or a `StreamingObservedResponse` for
+stream calls. `ReqwestUpstreamClient` is the production implementation; use
+`ReqwestUpstreamClient::with_client(client)` in tests to inject a client with
+custom timeout or intercept behaviour. Tests inject `FakeUpstream`, which
+returns hard-coded responses or errors.
+
+### SSE parser and stream recorder
+
+`src/sse.rs` owns adapter-neutral SSE framing policy. It accepts arbitrary byte
+fragments, emits completed `StreamEvent` values, parses valid JSON `data:`
+payloads, preserves `[DONE]` as a raw data event, and reports invalid UTF-8 or
+incomplete final events as typed parser errors. It does not know about Axum,
+reqwest, cassette files, or process state.
+
+`src/server/record_stream.rs` owns record-mode streaming orchestration. It
+resolves the API key through the same `EnvProvider` path as non-stream
+recording, forwards the request through `ChatCompletionsUpstream`, streams
+upstream byte chunks to the downstream client, feeds those bytes to
+`SseParser`, and appends a `RecordedResponse::Stream` only after the upstream
+stream finishes cleanly. Do not hold the cassette-store mutex across `.await`;
+use the existing `append_interaction` boundary so filesystem writes stay inside
+`spawn_blocking`.
+
+Future streaming protocol work should keep this split: parser state and
+protocol event classification stay outside HTTP adapters, while Axum response
+body construction and reqwest polling stay in server/upstream adapters.
 
 #### Request timeout
 
@@ -434,8 +469,8 @@ Each BDD test suite has:
 2. An entrypoint `*_bdd.rs` file in `tests/` that wires the feature
    file to step definitions.
 3. Optional subdirectory (e.g. `tests/replay_matching_modes/`) holding
-   step definitions (`steps.rs`), a world struct (`world.rs`), fixtures
-   (`fixtures.rs`), and helpers (`helpers.rs`).
+   step definitions (`steps.rs`), a world struct (`world.rs`), fixtures (
+   `fixtures.rs`), and helpers (`helpers.rs`).
 
 ### Running tests
 
@@ -539,8 +574,8 @@ field:
 `MismatchDiagnostic` is a domain-internal type that does not leave the
 `cassette` module boundary as an error. The adapter layer (HTTP server) maps a
 `MatchOutcome::Mismatch` into a `HarnessError::RequestMismatch` when surfacing
-the failure to callers. `RequestMismatch` mirrors the diagnostic fields
-(`interaction_id`, `expected_hash`, `observed_hash`, `diff_summary`) so the
+the failure to callers. `RequestMismatch` mirrors the diagnostic fields (
+`interaction_id`, `expected_hash`, `observed_hash`, `diff_summary`) so the
 error can be formatted for logging and HTTP responses without re-importing
 matching internals.
 
@@ -548,8 +583,8 @@ matching internals.
 
 The `diff` module (`cassette::diff`) provides `canonical_diff_summary`, which
 compares two `serde_json::Value` trees and produces a human-readable summary of
-field-level differences. The matching engine calls this function when building
-a `MismatchDiagnostic` to populate the `diff_summary` field. Output format uses
+field-level differences. The matching engine calls this function when building a
+ `MismatchDiagnostic` to populate the `diff_summary` field. Output format uses
 newline-separated change lines:
 
 - `added: <path>: <value>` — field present in observed but not expected.

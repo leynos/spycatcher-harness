@@ -5,6 +5,8 @@
 //! client-library types into cassette logic.
 
 use axum::http::{HeaderName, HeaderValue};
+use futures_util::StreamExt;
+use futures_util::stream::BoxStream;
 use reqwest::{Client, Url};
 
 use crate::config::UpstreamConfig;
@@ -19,6 +21,12 @@ use std::time::Duration;
 /// Thirty seconds bounds non-stream LLM completions without allowing
 /// indefinite upstream hangs.
 pub(crate) const UPSTREAM_TIMEOUT: Duration = Duration::from_secs(30);
+
+/// Connect timeout for upstream HTTP connections.
+///
+/// Ten seconds is long enough to cover normal network latency while
+/// preventing indefinite hangs on connection establishment.
+pub(crate) const UPSTREAM_CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 
 const FORBIDDEN_EXTRA_HEADERS: &[&str] = &[
     "host",
@@ -57,6 +65,13 @@ pub(crate) trait ChatCompletionsUpstream {
         &self,
         request: ChatCompletionsRequest<'_>,
     ) -> HarnessResult<ObservedResponse>;
+
+    /// Forwards one streaming chat completions request to the configured
+    /// upstream.
+    async fn stream_chat_completions(
+        &self,
+        request: ChatCompletionsRequest<'_>,
+    ) -> HarnessResult<StreamingObservedResponse>;
 }
 
 /// Outbound request data for one chat completions proxy call.
@@ -74,10 +89,23 @@ pub(crate) struct ChatCompletionsRequest<'a> {
     pub query: &'a str,
 }
 
+/// Captured metadata and byte stream for one upstream streaming response.
+pub(crate) struct StreamingObservedResponse {
+    /// HTTP status code.
+    pub status: u16,
+    /// Selected headers in observed order for cassette persistence.
+    pub headers: Vec<(String, String)>,
+    /// Selected headers as raw bytes for downstream proxying.
+    pub proxy_headers: Vec<(String, Vec<u8>)>,
+    /// Upstream response body bytes as received from reqwest.
+    pub body: BoxStream<'static, HarnessResult<axum::body::Bytes>>,
+}
+
 /// Reqwest-backed upstream adapter for record mode.
 #[derive(Debug, Clone)]
 pub(crate) struct ReqwestUpstreamClient {
     client: Client,
+    stream_client: Client,
 }
 
 impl ReqwestUpstreamClient {
@@ -88,24 +116,86 @@ impl ReqwestUpstreamClient {
     /// Returns [`HarnessError::InvalidConfig`] when the client cannot be
     /// constructed.
     pub(crate) fn new() -> HarnessResult<Self> {
-        let client = Client::builder()
-            .no_gzip()
-            .no_brotli()
-            .no_deflate()
-            .no_zstd()
-            .timeout(UPSTREAM_TIMEOUT)
-            .build()
-            .map_err(|error| HarnessError::InvalidConfig {
-                message: format!("failed to construct upstream client: {error}"),
-            })?;
-        Ok(Self::with_client(client))
+        let client = build_reqwest_client(base_client_builder().timeout(UPSTREAM_TIMEOUT))?;
+        let stream_client = build_reqwest_client(
+            base_client_builder()
+                .connect_timeout(UPSTREAM_CONNECT_TIMEOUT)
+                .read_timeout(UPSTREAM_TIMEOUT),
+        )?;
+        Ok(Self {
+            client,
+            stream_client,
+        })
     }
 
-    /// Creates an upstream client with a custom pre-built reqwest client.
-    /// Intended for tests that need to control timeout or TLS behaviour.
-    pub(crate) const fn with_client(client: Client) -> Self {
-        Self { client }
+    /// Constructs a client using a pre-built [`reqwest::Client`].
+    /// Used in tests to inject a mock or pre-configured client.
+    #[cfg(test)]
+    pub(crate) fn with_client(client: Client) -> Self {
+        Self {
+            client: client.clone(),
+            stream_client: client,
+        }
     }
+
+    /// Sends one upstream chat completions request and extracts shared response
+    /// metadata before the caller chooses buffered or streaming body handling.
+    async fn execute_upstream_request(
+        &self,
+        request: ChatCompletionsRequest<'_>,
+    ) -> HarnessResult<(
+        u16,
+        Vec<(String, String)>,
+        Vec<(String, Vec<u8>)>,
+        reqwest::Response,
+    )> {
+        self.execute_upstream_request_with_client(&self.client, request)
+            .await
+    }
+
+    async fn execute_upstream_request_with_client(
+        &self,
+        client: &Client,
+        request: ChatCompletionsRequest<'_>,
+    ) -> HarnessResult<(
+        u16,
+        Vec<(String, String)>,
+        Vec<(String, Vec<u8>)>,
+        reqwest::Response,
+    )> {
+        let url = chat_completions_url(&request.config.base_url, request.query)?;
+        let authed_builder = client.post(url).bearer_auth(request.api_key);
+        let forwarded_builder = apply_forwarded_headers(authed_builder, request.headers)?;
+        let extra_builder = apply_extra_headers(forwarded_builder, &request.config.extra_headers)?;
+
+        let response = extra_builder
+            .body(request.body.to_vec())
+            .send()
+            .await
+            .map_err(|source| HarnessError::UpstreamRequestFailed {
+                source: source.into(),
+            })?;
+        let status = response.status().as_u16();
+        let selected_headers = selected_response_headers(response.headers());
+        let proxy_headers = selected_response_proxy_headers(response.headers());
+        Ok((status, selected_headers, proxy_headers, response))
+    }
+}
+
+fn base_client_builder() -> reqwest::ClientBuilder {
+    Client::builder()
+        .no_gzip()
+        .no_brotli()
+        .no_deflate()
+        .no_zstd()
+}
+
+fn build_reqwest_client(builder: reqwest::ClientBuilder) -> HarnessResult<Client> {
+    builder
+        .build()
+        .map_err(|error| HarnessError::InvalidConfig {
+            message: format!("failed to construct upstream client: {error}"),
+        })
 }
 
 fn to_outbound_header(name: &str, value: &[u8]) -> HarnessResult<(HeaderName, HeaderValue)> {
@@ -168,21 +258,8 @@ impl ChatCompletionsUpstream for ReqwestUpstreamClient {
         &self,
         request: ChatCompletionsRequest<'_>,
     ) -> HarnessResult<ObservedResponse> {
-        let url = chat_completions_url(&request.config.base_url, request.query)?;
-        let authed_builder = self.client.post(url).bearer_auth(request.api_key);
-        let forwarded_builder = apply_forwarded_headers(authed_builder, request.headers)?;
-        let extra_builder = apply_extra_headers(forwarded_builder, &request.config.extra_headers)?;
-
-        let response = extra_builder
-            .body(request.body.to_vec())
-            .send()
-            .await
-            .map_err(|source| HarnessError::UpstreamRequestFailed {
-                source: source.into(),
-            })?;
-        let status = response.status().as_u16();
-        let selected_headers = selected_response_headers(response.headers());
-        let proxy_headers = selected_response_proxy_headers(response.headers());
+        let (status, selected_headers, proxy_headers, response) =
+            self.execute_upstream_request(request).await?;
         let response_body = response
             .bytes()
             .await
@@ -199,6 +276,32 @@ impl ChatCompletionsUpstream for ReqwestUpstreamClient {
             body: response_body,
         })
     }
+
+    async fn stream_chat_completions(
+        &self,
+        request: ChatCompletionsRequest<'_>,
+    ) -> HarnessResult<StreamingObservedResponse> {
+        let (status, selected_headers, proxy_headers, upstream_response) = self
+            .execute_upstream_request_with_client(&self.stream_client, request)
+            .await?;
+        let body = futures_util::stream::try_unfold(upstream_response, |mut streamed| async move {
+            streamed
+                .chunk()
+                .await
+                .map(|maybe_chunk| maybe_chunk.map(|chunk| (chunk, streamed)))
+                .map_err(|source| HarnessError::UpstreamRequestFailed {
+                    source: source.into(),
+                })
+        })
+        .boxed();
+
+        Ok(StreamingObservedResponse {
+            status,
+            headers: selected_headers,
+            proxy_headers,
+            body,
+        })
+    }
 }
 
 /// Builds the upstream chat completions URL from the configured base URL and
@@ -206,12 +309,10 @@ impl ChatCompletionsUpstream for ReqwestUpstreamClient {
 ///
 /// # Errors
 ///
-/// Returns [`HarnessError::InvalidConfig`] when the base URL is not a valid
-/// absolute URL.
-pub(crate) fn chat_completions_url(base_url: &str, query: &str) -> HarnessResult<Url> {
-    let mut url = Url::parse(base_url).map_err(|error| HarnessError::InvalidConfig {
-        message: format!("invalid upstream base URL {base_url:?}: {error}"),
-    })?;
+/// Returns [`HarnessError::InvalidConfig`] when the base URL cannot be used
+/// as a base (i.e. is cannot-be-a-base).
+pub(crate) fn chat_completions_url(base_url: &Url, query: &str) -> HarnessResult<Url> {
+    let mut url = base_url.clone();
     {
         let mut segments = url
             .path_segments_mut()

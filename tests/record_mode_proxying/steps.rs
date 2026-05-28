@@ -5,6 +5,7 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 
 use rstest_bdd_macros::{given, then, when};
+use url::Url;
 
 use spycatcher_harness::config::{ListenAddr, Mode, RedactionConfig, UpstreamConfig, UpstreamKind};
 use spycatcher_harness::{HarnessConfig, start_harness};
@@ -18,7 +19,7 @@ use crate::record_mode_proxying::world::ProxyWorld;
 
 const NON_STREAM_REQUEST: &[u8] =
     br#"{"model":"gpt-test","messages":[{"role":"user","content":"hi"}]}"#;
-const STREAMING_REQUEST: &[u8] =
+pub(crate) const STREAMING_REQUEST: &[u8] =
     br#"{"model":"gpt-test","stream":true,"messages":[{"role":"user","content":"hi"}]}"#;
 
 #[given("a stub upstream that returns a successful chat completion")]
@@ -58,12 +59,14 @@ fn a_record_mode_harness_configured_with_an_unavailable_upstream(
     proxy_world: &ProxyWorld,
 ) -> Result<(), Box<dyn Error>> {
     let cassette_path = unique_cassette_path("failure");
+    let base_url = Url::parse("http://127.0.0.1:1/api/v1")
+        .map_err(|error| std::io::Error::other(format!("test fixture URL is invalid: {error}")))?;
     proxy_world.cassette_path.set(cassette_path.clone());
     proxy_world.config.set(make_record_config(
         &cassette_path,
         UpstreamConfig {
             kind: UpstreamKind::OpenRouter,
-            base_url: "http://127.0.0.1:1/api/v1".to_owned(),
+            base_url,
             api_key_env: present_env_name()?.to_owned(),
             extra_headers: std::collections::BTreeMap::new(),
         },
@@ -113,13 +116,6 @@ fn a_non_stream_chat_completions_request_with_authorization_is_sent_to_the_harne
         NON_STREAM_REQUEST,
         &[("authorization", "Bearer downstream-secret")],
     )
-}
-
-#[when("a streaming chat completions request is sent to the harness")]
-fn a_streaming_chat_completions_request_is_sent_to_the_harness(
-    proxy_world: &ProxyWorld,
-) -> Result<(), Box<dyn Error>> {
-    send_request_to_harness(proxy_world, STREAMING_REQUEST, &[])
 }
 
 #[then("the client receives the upstream response unchanged")]
@@ -237,13 +233,6 @@ fn assert_cassette_request_omits_header(
     Ok(())
 }
 
-#[then("the harness rejects the request as unsupported streaming")]
-fn the_harness_rejects_the_request_as_unsupported_streaming(
-    proxy_world: &ProxyWorld,
-) -> Result<(), Box<dyn Error>> {
-    assert_response_status(proxy_world, 501)
-}
-
 #[then("the harness returns a bad gateway error")]
 fn the_harness_returns_a_bad_gateway_error(proxy_world: &ProxyWorld) -> Result<(), Box<dyn Error>> {
     assert_response_status(proxy_world, 502)
@@ -290,7 +279,7 @@ fn the_background_services_shut_down_cleanly(
     Ok(())
 }
 
-fn send_request_to_harness(
+pub(crate) fn send_request_to_harness(
     proxy_world: &ProxyWorld,
     body: &[u8],
     extra_headers: &[(&str, &str)],
@@ -356,7 +345,7 @@ fn configure_harness_with_proxy_world_upstream(
     Ok(())
 }
 
-fn cassette_from_world(
+pub(crate) fn cassette_from_world(
     proxy_world: &ProxyWorld,
 ) -> Result<spycatcher_harness::cassette::Cassette, Box<dyn Error>> {
     let cassette_path = proxy_world
@@ -366,7 +355,9 @@ fn cassette_from_world(
     load_cassette(&cassette_path)
 }
 
-fn first_upstream_request(proxy_world: &ProxyWorld) -> Result<CapturedRequest, Box<dyn Error>> {
+pub(crate) fn first_upstream_request(
+    proxy_world: &ProxyWorld,
+) -> Result<CapturedRequest, Box<dyn Error>> {
     let requests = proxy_world
         .upstream
         .with_ref(StubUpstream::captured_requests)

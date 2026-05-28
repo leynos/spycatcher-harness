@@ -38,9 +38,9 @@ fn authorization_is_redacted_by_default(proxy_world: ProxyWorld) {
 
 #[scenario(
     path = "tests/features/record_mode_proxying.feature",
-    name = "Streaming requests are rejected until streaming support lands"
+    name = "Streaming proxying records one stream interaction"
 )]
-fn streaming_requests_are_rejected_until_streaming_support_lands(proxy_world: ProxyWorld) {
+fn streaming_proxying_records_one_stream_interaction(proxy_world: ProxyWorld) {
     let _ = proxy_world;
 }
 

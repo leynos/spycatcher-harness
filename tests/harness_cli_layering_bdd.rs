@@ -248,12 +248,20 @@ fn verify_cassette_name_is(cli_layering_world: &CliLayeringWorld, cassette_name:
 
 #[then("record upstream base URL is {base_url}")]
 fn record_upstream_base_url_is(cli_layering_world: &CliLayeringWorld, base_url: String) {
-    let loaded_config = expect_loaded_config(cli_layering_world, "record");
+    let base_url_value = trim_surrounding_quotes(&base_url);
+    let outcome = cli_layering_world
+        .result
+        .with_ref(Clone::clone)
+        .unwrap_or_else(|| Err(String::from("result slot missing")));
+    let loaded_config = match outcome {
+        Ok(config) => config,
+        Err(error) => panic!("expected record configuration, load failed: {error}"),
+    };
     let Some(upstream) = loaded_config.upstream else {
         panic!("expected record upstream");
     };
     assert_eq!(loaded_config.mode, config::Mode::Record);
-    assert_eq!(upstream.base_url, trim_surrounding_quotes(&base_url));
+    assert_eq!(upstream.base_url.as_str(), base_url_value);
 }
 
 #[then("replay locale is {locale}")]

@@ -9,6 +9,7 @@ use std::collections::BTreeMap;
 use std::net::SocketAddr;
 
 use camino::Utf8PathBuf;
+use url::Url;
 
 /// Top-level configuration for a harness session.
 ///
@@ -140,7 +141,7 @@ pub struct UpstreamConfig {
     /// Provider type.
     pub kind: UpstreamKind,
     /// Base URL for the upstream API.
-    pub base_url: String,
+    pub base_url: Url,
     /// Name of the environment variable containing the API key.
     pub api_key_env: String,
     /// Additional HTTP headers sent with every upstream request.
@@ -149,9 +150,13 @@ pub struct UpstreamConfig {
 
 impl Default for UpstreamConfig {
     fn default() -> Self {
+        let base_url = match Url::parse("https://openrouter.ai/api/v1") {
+            Ok(url) => url,
+            Err(error) => panic!("hardcoded base URL is invalid: {error}"),
+        };
         Self {
             kind: UpstreamKind::default(),
-            base_url: "https://openrouter.ai/api/v1".to_owned(),
+            base_url,
             api_key_env: "OPENROUTER_API_KEY".to_owned(),
             extra_headers: BTreeMap::new(),
         }

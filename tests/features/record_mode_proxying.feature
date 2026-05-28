@@ -31,13 +31,14 @@ Feature: Record mode proxying for chat completions
     And the cassette request headers omit Authorization
     And the background services shut down cleanly
 
-  Scenario: Streaming requests are rejected until streaming support lands
-    Given a stub upstream that returns a successful chat completion
+  Scenario: Streaming proxying records one stream interaction
+    Given a stub upstream that returns an OpenAI-style SSE stream
     And a record-mode harness configured for that upstream
     When the harness is started
     And a streaming chat completions request is sent to the harness
-    Then the harness rejects the request as unsupported streaming
-    And the cassette remains empty
+    Then the client receives the upstream stream transcript unchanged
+    And the upstream receives the streaming request body unchanged
+    And the cassette contains one recorded stream interaction
     And the background services shut down cleanly
 
   Scenario: Upstream transport failures do not write to the cassette

@@ -30,6 +30,7 @@ pub mod i18n;
 pub mod protocol;
 pub mod replay;
 pub mod server;
+mod sse;
 pub mod upstream;
 
 pub use config::HarnessConfig;

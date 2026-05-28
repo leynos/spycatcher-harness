@@ -2464,6 +2464,7 @@ dependencies = [
  "cap-std",
  "clap",
  "eyre",
+ "futures-util",
  "i18n-embed",
  "insta",
  "log",
@@ -2484,6 +2485,7 @@ dependencies = [
  "tokio",
  "tracing",
  "tracing-test",
+ "url",
  "uuid",
 ]
 
@@ -3119,6 +3121,7 @@ dependencies = [
  "idna",
  "percent-encoding",
  "serde",
+ "serde_derive",
 ]
 
 [[package]]

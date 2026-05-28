@@ -3,15 +3,17 @@
 use std::error::Error;
 use std::sync::{Arc, Mutex};
 
-use axum::body::Bytes;
+use axum::body::{Body, Bytes};
 use axum::extract::State;
-use axum::http::{HeaderMap, HeaderValue, StatusCode};
+use axum::http::{HeaderMap, HeaderValue, Response, StatusCode};
 use axum::{Json, Router, routing::post};
 use camino::{Utf8Path, Utf8PathBuf};
 use cap_std::{ambient_authority, fs_utf8::Dir};
+use futures_util::stream;
 use serde_json::{Value, json};
 use tokio::net::TcpListener;
 use tokio::sync::oneshot;
+use url::Url;
 
 use spycatcher_harness::cassette::Cassette;
 
@@ -45,10 +47,25 @@ impl StubUpstream {
         runtime: &tokio::runtime::Runtime,
         response_body: Value,
     ) -> Result<Self, Box<dyn Error>> {
+        Self::start_with_response(runtime, StubResponse::Json(response_body))
+    }
+
+    /// Starts a stub upstream returning an SSE byte transcript.
+    pub(crate) fn start_stream(
+        runtime: &tokio::runtime::Runtime,
+        transcript: Vec<u8>,
+    ) -> Result<Self, Box<dyn Error>> {
+        Self::start_with_response(runtime, StubResponse::Stream(transcript))
+    }
+
+    fn start_with_response(
+        runtime: &tokio::runtime::Runtime,
+        response: StubResponse,
+    ) -> Result<Self, Box<dyn std::error::Error>> {
         runtime.block_on(async move {
             let seen_requests = Arc::new(Mutex::new(Vec::new()));
             let state = StubState {
-                response_body,
+                response,
                 seen_requests: Arc::clone(&seen_requests),
             };
             let router = Router::new()
@@ -72,8 +89,11 @@ impl StubUpstream {
         })
     }
 
-    pub(crate) fn base_url(&self) -> String {
-        format!("http://{}/api/v1", self.addr)
+    pub(crate) fn base_url(&self) -> Url {
+        match Url::parse(&format!("http://{}/api/v1", self.addr)) {
+            Ok(url) => url,
+            Err(error) => panic!("test fixture URL is invalid: {error}"),
+        }
     }
 
     pub(crate) fn captured_requests(&self) -> Result<Vec<CapturedRequest>, Box<dyn Error>> {
@@ -103,8 +123,14 @@ impl StubUpstream {
 
 #[derive(Debug, Clone)]
 struct StubState {
-    response_body: Value,
+    response: StubResponse,
     seen_requests: Arc<Mutex<Vec<CapturedRequest>>>,
+}
+
+#[derive(Debug, Clone)]
+enum StubResponse {
+    Json(Value),
+    Stream(Vec<u8>),
 }
 
 #[expect(
@@ -115,7 +141,7 @@ async fn stub_handler(
     State(state): State<StubState>,
     headers: HeaderMap,
     body: Bytes,
-) -> (StatusCode, HeaderMap, Json<Value>) {
+) -> Response<Body> {
     let captured = CapturedRequest {
         headers: headers
             .iter()
@@ -134,12 +160,43 @@ async fn stub_handler(
         .expect("captured requests mutex should not be poisoned")
         .push(captured);
 
+    match state.response {
+        StubResponse::Json(response_body) => json_response(response_body),
+        StubResponse::Stream(transcript) => stream_response(&transcript),
+    }
+}
+
+fn json_response(response_body: Value) -> Response<Body> {
     let mut response_headers = HeaderMap::new();
     response_headers.insert(
         axum::http::header::CONTENT_TYPE,
         HeaderValue::from_static("application/json"),
     );
-    (StatusCode::OK, response_headers, Json(state.response_body))
+    let body = match serde_json::to_vec(&Json(response_body).0) {
+        Ok(bytes) => Body::from(bytes),
+        Err(error) => Body::from(format!(r#"{{"error":"{error}"}}"#)),
+    };
+    build_response(response_headers, body)
+}
+
+fn stream_response(transcript: &[u8]) -> Response<Body> {
+    let mut response_headers = HeaderMap::new();
+    response_headers.insert(
+        axum::http::header::CONTENT_TYPE,
+        HeaderValue::from_static("text/event-stream"),
+    );
+    let chunks = transcript
+        .chunks(7)
+        .map(|chunk| Ok::<_, std::io::Error>(Bytes::copy_from_slice(chunk)))
+        .collect::<Vec<_>>();
+    build_response(response_headers, Body::from_stream(stream::iter(chunks)))
+}
+
+fn build_response(headers: HeaderMap, body: Body) -> Response<Body> {
+    let mut response = Response::new(body);
+    *response.status_mut() = StatusCode::OK;
+    *response.headers_mut() = headers;
+    response
 }
 
 async fn wait_for_shutdown(shutdown_rx: oneshot::Receiver<()>) {

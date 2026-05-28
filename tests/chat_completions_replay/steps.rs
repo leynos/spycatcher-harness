@@ -5,6 +5,7 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 
 use rstest_bdd_macros::{given, then, when};
+use url::Url;
 
 use spycatcher_harness::config::{ListenAddr, Mode, UpstreamConfig, UpstreamKind};
 use spycatcher_harness::{HarnessConfig, RunningHarness, start_harness};
@@ -350,6 +351,8 @@ fn make_replay_config(
     cassette_path: &camino::Utf8PathBuf,
 ) -> Result<HarnessConfig, Box<dyn Error>> {
     let (cassette_dir, cassette_name) = split_cassette_path(cassette_path)?;
+    let base_url = Url::parse("http://127.0.0.1:1/api/v1")
+        .map_err(|error| std::io::Error::other(format!("test fixture URL is invalid: {error}")))?;
 
     Ok(HarnessConfig {
         listen: ListenAddr::from(SocketAddr::from(([127, 0, 0, 1], 0))),
@@ -358,7 +361,7 @@ fn make_replay_config(
         cassette_name,
         upstream: Some(UpstreamConfig {
             kind: UpstreamKind::OpenRouter,
-            base_url: "http://127.0.0.1:1/api/v1".to_owned(),
+            base_url,
             api_key_env: "SPYCATCHER_REPLAY_SHOULD_NOT_READ".to_owned(),
             extra_headers: std::collections::BTreeMap::new(),
         }),
