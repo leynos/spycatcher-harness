@@ -241,24 +241,13 @@ mod tests {
     }
 
     #[rstest]
-    fn parser_handles_frames_split_across_every_boundary() {
-        let transcript = b": OPENROUTER PROCESSING\n\ndata: {\"id\":\"chunk\"}\n\ndata: [DONE]\n\n";
-        let expected = parse_all(transcript).expect("baseline parse should succeed");
-        for split in 0..=transcript.len() {
-            let mut parser = SseParser::default();
-            let first = transcript.get(..split).expect("split is in bounds");
-            let second = transcript.get(split..).expect("split is in bounds");
-            let mut events = parser.feed(first).expect("first fragment should parse");
-            events.extend(parser.feed(second).expect("second fragment should parse"));
-            events.extend(parser.finish().expect("split transcript should complete"));
-            assert_eq!(events, expected, "split at byte {split}");
-        }
-    }
-
-    #[rstest]
-    fn parser_handles_crlf_frames_split_across_every_boundary() {
-        let transcript =
-            b": OPENROUTER PROCESSING\r\n\r\ndata: {\"id\":\"chunk\"}\r\n\r\ndata: [DONE]\r\n\r\n";
+    #[case::lf(
+        b": OPENROUTER PROCESSING\n\ndata: {\"id\":\"chunk\"}\n\ndata: [DONE]\n\n".as_slice()
+    )]
+    #[case::crlf(
+        b": OPENROUTER PROCESSING\r\n\r\ndata: {\"id\":\"chunk\"}\r\n\r\ndata: [DONE]\r\n\r\n".as_slice()
+    )]
+    fn parser_handles_frames_split_across_every_boundary(#[case] transcript: &[u8]) {
         let expected = parse_all(transcript).expect("baseline parse should succeed");
         for split in 0..=transcript.len() {
             let mut parser = SseParser::default();
