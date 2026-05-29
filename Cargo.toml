@@ -15,7 +15,7 @@ path = "src/bin/spycatcher_harness.rs"
 [dependencies]
 axum = "0.8.9"
 camino = { version = "1.1.9", features = ["serde1"] }
-cap-std = "3.4.4"
+cap-std = "4.0.2"
 clap = { version = "4.5.32", features = ["derive"] }
 eyre = "0.6.12"
 i18n-embed = { version = "0.16.0", features = ["fluent-system"] }
