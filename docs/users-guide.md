@@ -4,9 +4,9 @@ This guide documents the public API surface and usage patterns for the
 Spycatcher harness. The harness records LLM API interactions for deterministic
 regression testing. In record mode, both non-streaming and streaming
 (`"stream": true`) Chat Completions requests are proxied upstream and persisted
-to cassette. Replay mode does not yet support streaming interactions---matched
-`"stream": true` requests return HTTP `501 Not Implemented`; streaming replay
-serving is not yet implemented.
+to cassette. Replay mode serves matching non-stream responses and matching
+recorded Chat Completions SSE streams, including OpenRouter comment frames.
+Verify execution is not yet implemented.
 
 > **Breaking changes:** record-mode proxying changed raw header handling and
 > redaction defaults before the 0.1.0 release. See
@@ -196,12 +196,18 @@ Persisted response contract:
   from upstream to the client, but it does not append a successful cassette
   entry for that malformed stream.
 
-Replay behaviour for non-stream chat completions:
+Replay behaviour for chat completions:
 
 - Replay mode accepts `POST /v1/chat/completions` against an existing
   cassette.
 - A matching request returns the recorded status, persisted selected response
-  headers, and body bytes from the cassette.
+  headers, and response body from the cassette.
+- Non-stream responses replay the recorded body bytes.
+- Stream responses replay the recorded parsed SSE events as canonical SSE
+  frames. Recorded comment events are emitted as `: ...` frames, recorded data
+  events are emitted as `data: ...` frames, and event order is preserved.
+- If a stream cassette omits `content-type`, replay sets
+  `text/event-stream`.
 - Replay mode does not require upstream configuration or an upstream API key,
   and it constructs no outbound upstream client. If `upstream` is present in a
   replay configuration, it is ignored by the replay request path.
@@ -212,9 +218,14 @@ Replay behaviour for non-stream chat completions:
   HTTP `400 Bad Request` and a JSON `malformed_json` error before matching.
   This prevents different malformed byte sequences from sharing the same
   body-less replay hash.
-- Requests with `stream: true`, and matched stream interactions in recorded or
-  manually authored cassettes, return HTTP `501 Not Implemented` until
-  streaming replay lands in a later roadmap task.
+- A request with `stream: true` must still match a recorded request whose
+  canonical body includes the same streaming shape. If no interaction matches,
+  replay returns the normal HTTP `409 Conflict` request-mismatch diagnostic.
+- If a `stream: true` request matches a manually authored non-stream response,
+  replay returns HTTP `501 Not Implemented` with `stream_cassette_required`.
+- Replay currently serializes parsed stream events rather than the raw
+  `raw_transcript` bytes. Byte-faithful SSE replay remains deferred to roadmap
+  task `2.1.3`.
 
 ### Replay matching modes
 
@@ -250,6 +261,12 @@ let cfg = HarnessConfig {
     ..HarnessConfig::default()
 };
 ```
+
+The cassette module also exposes
+`canonicalize_events(events, StreamCanonicalPolicy::ignore_comments())` for
+tools that compare recorded stream-event sequences while ignoring comment-only
+drift. This is a library helper for cassette consumers and future verification
+work; it is not a replay CLI configuration option.
 
 When a mismatch occurs in sequential strict mode, the diagnostic response
 includes a field-level diff showing the differences between the expected and

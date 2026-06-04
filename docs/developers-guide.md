@@ -214,12 +214,13 @@ proxied downstream, or persisted in cassettes.
 
 The `cassette` module contains several submodules:
 
-| Submodule    | Purpose                                     |
-| ------------ | ------------------------------------------- |
-| `canonical`  | Request normalization and `stable_hash`     |
-| `diff`       | Field-level JSON diff summaries             |
-| `filesystem` | `FilesystemCassetteStore` (reader/appender) |
-| `matching`   | `ReplayMatchEngine` and match outcome types |
+| Submodule          | Purpose                                             |
+| ------------------ | --------------------------------------------------- |
+| `canonical`        | Request normalization and `stable_hash`             |
+| `diff`             | Field-level JSON diff summaries                     |
+| `filesystem`       | `FilesystemCassetteStore` (reader/appender)         |
+| `matching`         | `ReplayMatchEngine` and match outcome types         |
+| `stream_canonical` | Comment-aware stream-event canonicalization helpers |
 
 _Table 3: Cassette submodules._
 
@@ -248,8 +249,12 @@ mode, but with separate state and handlers:
   and wraps it in `ReplayService`.
 - `src/server/replay_handler.rs` owns Axum extraction and response mapping for
   `POST /v1/chat/completions`.
+- `src/server/replay_stream.rs` owns Axum `Body` construction for replayed
+  parsed SSE events. It preserves recorded event order, emits comment events as
+  SSE comments, emits data events as `data:` frames, and keeps cancellation
+  side-effect-free by pre-serializing small streams.
 - `src/replay.rs` owns the adapter-neutral request canonicalization, matcher
-  advancement, and replay error classification.
+  advancement, response-shape classification, and typed replay body selection.
 
 Replay state must not hold `UpstreamConfig`, `ReqwestUpstreamClient`, an
 environment provider, or any outbound transport trait. This is the compile-time
@@ -304,6 +309,14 @@ use the existing `append_interaction` boundary so filesystem writes stay inside
 Future streaming protocol work should keep this split: parser state and
 protocol event classification stay outside HTTP adapters, while Axum response
 body construction and reqwest polling stay in server/upstream adapters.
+
+`src/cassette/stream_canonical.rs` provides
+`canonicalize_events(events, policy)` for stream-event comparison policies. The
+current policy can drop `StreamEvent::Comment` values before comparison so
+verification-style tooling can ignore OpenRouter keep-alive comment drift
+without changing recorded data events. Replay request matching remains based on
+canonical request hashes; stream-event canonicalization is a helper for
+consumers that explicitly compare stream transcripts.
 
 #### Request timeout
 

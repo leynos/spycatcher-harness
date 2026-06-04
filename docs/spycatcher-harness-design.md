@@ -155,9 +155,10 @@ Key architectural points:
   - Record mode supports OpenAI-style `data:` SSE streams by proxying upstream
     byte chunks downstream while recording raw transcript bytes, parsed stream
     events, and timing metadata.
-  - Replay mode still rejects `stream: true` requests and matched stream
-    cassette responses with an explicit "not implemented yet" response until
-    streaming replay lands.
+  - Replay mode supports recorded OpenAI-style stream responses by
+    reserializing parsed stream events, preserving OpenRouter comment frames
+    and data-event ordering. Byte-faithful raw transcript replay remains a
+    later roadmap task.
 - **Replay no-network boundary**:
   - Replay application state owns a `ReplayMatchEngine` only. It does not hold
     `UpstreamConfig`, environment-variable readers, `ReqwestUpstreamClient`,
@@ -239,20 +240,32 @@ recorded request intentionally reflects what the client sent to the harness,
 not the enriched outbound upstream request after bearer-token injection and
 configured `extra_headers`.
 
-Replay of non-stream chat completions reconstructs exactly the HTTP data that
-the cassette persisted: the recorded status when it is a valid HTTP status
-code, the persisted selected response headers in recorded order, and the stored
-body bytes. Replay intentionally does not reconstruct transport framing,
-hop-by-hop headers, or `content-length` because those are not part of the
-cassette contract. If an inbound replay request mismatches, the HTTP adapter
-returns `409 Conflict` with `request_mismatch` diagnostics derived from
+Replay of chat completions reconstructs the HTTP data that the cassette
+persisted. Non-stream responses return the recorded status when it is a valid
+HTTP status code, the persisted selected response headers in recorded order,
+and the stored body bytes. Stream responses return the recorded status and
+selected headers, then reserialize the recorded parsed `StreamEvent` values as
+SSE frames. Comment events are emitted as `: ...` frames, data events are
+emitted as `data: ...` frames, and recorded event order is preserved. If the
+cassette omits `content-type` for a stream response, the HTTP adapter inserts
+`text/event-stream`.
+
+Parsed-event stream replay is intentionally not byte-faithful: it emits a
+canonical SSE representation from the recorded event model rather than the raw
+`raw_transcript` bytes. Byte-faithful replay of exact upstream framing remains
+roadmap task `2.1.3`.
+
+Replay intentionally does not reconstruct transport framing, hop-by-hop
+headers, or `content-length` because those are not part of the cassette
+contract. If an inbound replay request mismatches, the HTTP adapter returns
+`409 Conflict` with `request_mismatch` diagnostics derived from
 `MismatchDiagnostic`. Replay rejects malformed or non-JSON request bodies with
 `400 Bad Request` before matching because body-less canonicalization would
 otherwise give different malformed byte sequences the same replay key. If a
-request asks for `stream: true`, or a manually authored cassette contains a
-stream response for a matched request, replay returns `501 Not Implemented`.
-Record mode accepts `stream: true` and stores a `RecordedResponse::Stream`
-after a clean upstream SSE completion.
+`stream: true` request matches a manually authored non-stream response, replay
+returns HTTP `501 Not Implemented` with `stream_cassette_required`. Record mode
+accepts `stream: true` and stores a `RecordedResponse::Stream` after a clean
+upstream SSE completion.
 
 ### Matching modes
 
@@ -421,9 +434,13 @@ Implemented recording strategy for OpenAI-style SSE:
 
 Replay strategy:
 
-- Not yet implemented for streams. Record-mode stream cassettes intentionally
-  return `501 Not Implemented` in replay until roadmap task `2.1.3`.
-- Later work should emit SSE frames from the recorded transcript.
+- Parsed-event replay emits SSE frames from recorded `StreamEvent` values:
+  - Comment events become `: ...` frames.
+  - Data events become `data: ...` frames.
+  - Event order is preserved.
+- Replay inserts `text/event-stream` when a stream cassette omits a
+  `content-type` response header.
+- Byte-faithful replay from raw transcript bytes remains roadmap task `2.1.3`.
 - Provide a configuration flag to apply “physics” timing:
   - TTFT delay before first token.
   - Inter-chunk spacing (fixed or recorded).

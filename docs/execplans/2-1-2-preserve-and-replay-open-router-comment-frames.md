@@ -4,7 +4,7 @@ This ExecPlan (execution plan) is a living document. The sections `Constraints`,
 `Tolerances`, `Risks`, `Progress`, `Surprises & Discoveries`, `Decision Log`,
 and `Outcomes & Retrospective` must be kept up to date as work proceeds.
 
-Status: IN PROGRESS
+Status: COMPLETE
 
 This plan implements roadmap task `2.1.2`. Implementation must not begin until
 the user explicitly approves the plan. After approval, work must proceed
@@ -341,6 +341,24 @@ Definitions for this plan:
   recoverable rate limit. Slept for 20 minutes with `vsleep` as requested,
   retried the review, and CodeRabbit completed with zero findings. Review log:
   `/tmp/coderabbit-spycatcher-harness-2-1-2-post-fixes5.out`.
+- [x] 2026-06-04: Committed the implementation milestone as `ffdf864` with
+  subject `Replay recorded stream events`.
+- [x] 2026-06-04: Updated `docs/users-guide.md`,
+  `docs/developers-guide.md`, `docs/spycatcher-harness-design.md`, and
+  `docs/roadmap.md` for parsed-event stream replay, comment preservation,
+  canonical stream-event comparison, and the deferred byte-faithful replay task.
+- [x] 2026-06-04: Ran documentation gates for the documentation milestone:
+  `make markdownlint` and `make nixie`. Logs:
+  `/tmp/markdownlint-spycatcher-harness-2-1-2-docs.out` and
+  `/tmp/nixie-spycatcher-harness-2-1-2-docs.out`.
+- [x] 2026-06-04: Ran `coderabbit review --agent` for the documentation
+  milestone; CodeRabbit completed with zero findings. Review log:
+  `/tmp/coderabbit-spycatcher-harness-2-1-2-docs.out`.
+- [x] 2026-06-04: Ran final full quality gates: `make check-fmt`,
+  `make lint`, and `make test`. Logs:
+  `/tmp/check-fmt-spycatcher-harness-2-1-2-final.out`,
+  `/tmp/lint-spycatcher-harness-2-1-2-final.out`, and
+  `/tmp/test-spycatcher-harness-2-1-2-final.out`.
 
 ## Surprises & discoveries
 
@@ -410,9 +428,23 @@ Record every decision (and every escalation) here as work proceeds.
 
 ## Outcomes & retrospective
 
-Populate at completion. Compare results against the purpose statement, list any
-concessions accepted along the way, and capture lessons that should inform task
-`2.1.3` (byte-faithful replay) and task `2.2.1` (verify).
+All implementation and documentation milestones completed.
+
+The delivered replay path serves matching `RecordedResponse::Stream`
+interactions by serializing recorded parsed `StreamEvent` values as SSE. It
+preserves comment frames and data-event ordering, supplies `text/event-stream`
+when a stream cassette lacks a content type, and keeps replay independent of
+upstream network configuration. The delivered canonical stream-event helper
+lets cassette consumers compare streams while ignoring comment-only drift.
+
+Final validation passed with `make check-fmt`, `make lint`, `make test`,
+`make markdownlint`, and `make nixie`. CodeRabbit reviewed both the
+implementation and documentation milestones; the final documentation review
+completed with zero findings.
+
+Follow-up for roadmap task `2.1.3`: byte-faithful stream replay should use the
+persisted `raw_transcript` bytes when exact upstream framing matters. Timing
+physics remains a later replay-realism concern and was not added here.
 
 ## Plan of work
 
