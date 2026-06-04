@@ -21,7 +21,7 @@
 
 use std::cell::RefCell;
 
-use ortho_config::figment;
+use ortho_config::{NoOpLocalizer, figment};
 use rstest::fixture;
 use rstest_bdd::Slot;
 use rstest_bdd_macros::{ScenarioState, given, scenario, then, when};
@@ -210,8 +210,8 @@ fn load_layered_config(cli_layering_world: &CliLayeringWorld) {
             jail.set_env(key, value);
         }
 
-        let result =
-            load_subcommand_config_from_iter(argv.clone()).map_err(|error| error.to_string());
+        let result = load_subcommand_config_from_iter(argv.clone(), &NoOpLocalizer::new())
+            .map_err(|error| error.to_string());
         loaded.replace(Some(result));
         Ok(())
     });

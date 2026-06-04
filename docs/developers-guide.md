@@ -181,11 +181,13 @@ The `cli` module is split into small private support modules to keep
 localization selection policy in these support modules rather than growing
 `src/cli.rs`.
 
-| Internal CLI module       | Purpose                                                                   |
-| ------------------------- | ------------------------------------------------------------------------- |
-| `src/cli_args.rs`         | `LocalizationArgs` and `RecordUpstreamArgs` serializable merge shapes     |
-| `src/cli_help.rs`         | Long-form `CLI_MERGE_HELP` text injected into `clap` after-help output    |
-| `src/cli/localization.rs` | Localization override selection and BCP 47 language identifier validation |
+| Internal CLI module       | Purpose                                                                       |
+| ------------------------- | ----------------------------------------------------------------------------- |
+| `src/cli_args.rs`         | `LocalizationArgs` and `RecordUpstreamArgs` serializable merge shapes         |
+| `src/cli_help.rs`         | Stock long-form merge help used when CLI localization is disabled             |
+| `src/cli/localization.rs` | Localization override selection, validation, and public CLI localization glue |
+| `src/cli/localize_cmd.rs` | Project-owned `LocalizeCmd` trait and localized `clap` parsing helper         |
+| `src/cli/localizer.rs`    | Early locale selection and Fluent-backed CLI localizer construction           |
 
 _Table 2: Private CLI support modules._
 
@@ -220,13 +222,16 @@ The `cassette` module contains several submodules:
 
 _Table 3: Cassette submodules._
 
-The binary crate (`src/bin/spycatcher_harness.rs`) delegates all behaviour to
-the library entry points. It owns application startup localization: after
-layered CLI configuration is loaded, the binary parses the requested `locale`,
-parses `fallback_locale`, constructs one `FluentLanguageLoader`, and loads
-`HarnessLocalizations` into it. Library modules must continue to accept
-injected loaders for localized rendering rather than constructing their own
-loaders or reading process locale state.
+The binary crate (`src/bin/spycatcher_harness.rs`) delegates semantic behaviour
+to the library entry points. It owns two localization phases. Before CLI
+parsing, it builds a best-effort `ortho_config::FluentLocalizer` for help,
+version, and parse-error text, falling back to `NoOpLocalizer` if resources
+cannot be loaded or `SPYCATCHER_HARNESS_DISABLE_LOCALIZATION` is set. After
+layered CLI configuration is loaded, it parses the requested `locale`, parses
+`fallback_locale`, constructs one authoritative `FluentLanguageLoader`, and
+loads `HarnessLocalizations` into it for library error rendering. Library
+modules must continue to accept injected loaders for localized rendering rather
+than constructing their own loaders or reading process locale state.
 
 ## Internal abstractions
 
@@ -584,7 +589,7 @@ matching internals.
 The `diff` module (`cassette::diff`) provides `canonical_diff_summary`, which
 compares two `serde_json::Value` trees and produces a human-readable summary of
 field-level differences. The matching engine calls this function when building a
- `MismatchDiagnostic` to populate the `diff_summary` field. Output format uses
+`MismatchDiagnostic` to populate the `diff_summary` field. Output format uses
 newline-separated change lines:
 
 - `added: <path>: <value>` — field present in observed but not expected.

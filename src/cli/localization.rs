@@ -5,6 +5,7 @@
 
 use i18n_embed::unic_langid::LanguageIdentifier;
 
+pub use super::localize_cmd::{LocalizeCmd, try_parse_localized_from_iter};
 use super::{CliConfigError, RecordArgs, ReplayArgs, VerifyArgs};
 
 /// Common localization and shared field overrides selected for a subcommand.

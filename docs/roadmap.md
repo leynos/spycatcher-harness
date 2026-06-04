@@ -130,14 +130,14 @@ units with explicit dependencies and completion criteria.
     [Localization architecture](spycatcher-harness-design.md#localization-architecture),
     [Configuration via OrthoConfig](spycatcher-harness-design.md#configuration-via-orthoconfig).
 
-- [ ] 1.4.3. Localize CLI help and parse errors via OrthoConfig localizer hooks.
+- [x] 1.4.3. Localize CLI help and parse errors via OrthoConfig localizer hooks.
   - Depends on: 1.4.2.
   - Success criteria:
-    - [ ] CLI help output uses `Command::localize(&localizer)` with a Fluent
+    - [x] CLI help output uses `Command::localize(&localizer)` with a Fluent
           localizer implementation.
-    - [ ] `clap` parsing failures are rendered via
+    - [x] `clap` parsing failures are rendered via
           `localize_clap_error_with_command(..)`.
-    - [ ] Binary falls back to `NoOpLocalizer` when localization assets fail to
+    - [x] Binary falls back to `NoOpLocalizer` when localization assets fail to
           load.
   - Design references:
     [Localization architecture](spycatcher-harness-design.md#localization-architecture),

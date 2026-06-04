@@ -6,10 +6,10 @@
 //! subcommand namespace (`cmds.record`, `cmds.replay`, `cmds.verify`).
 
 use camino::Utf8PathBuf;
-use clap::error::ErrorKind;
 use clap::{CommandFactory, Parser, Subcommand};
 use ortho_config::load_and_merge_subcommand;
 use ortho_config::subcommand::Prefix;
+use ortho_config::{Localizer, NoOpLocalizer};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
@@ -20,11 +20,16 @@ mod cli_args;
 #[path = "cli_help.rs"]
 mod cli_help;
 #[path = "cli/localization.rs"]
-mod localization;
+pub mod localization;
+#[path = "cli/localize_cmd.rs"]
+mod localize_cmd;
+#[path = "cli/localizer.rs"]
+pub mod localizer;
 
 use cli_args::{LocalizationArgs, RecordUpstreamArgs};
 use cli_help::CLI_MERGE_HELP;
 use localization::{CommonOverrides, validate_language_identifier};
+use localize_cmd::try_parse_localized_from_iter;
 
 /// Errors returned while loading merged command configuration.
 #[derive(Debug, Error)]
@@ -78,7 +83,19 @@ pub enum CliConfigError {
 /// Returns [`CliConfigError`] if argument parsing fails or if layered loading
 /// from files/environment fails.
 pub fn load_subcommand_config() -> Result<HarnessConfig, CliConfigError> {
-    load_subcommand_config_from_iter(std::env::args_os())
+    load_subcommand_config_with_localizer(&NoOpLocalizer::new())
+}
+
+/// Loads merged configuration for the selected subcommand using `localizer`.
+///
+/// # Errors
+///
+/// Returns [`CliConfigError`] if argument parsing fails or if layered loading
+/// from files/environment fails.
+pub fn load_subcommand_config_with_localizer(
+    localizer: &dyn Localizer,
+) -> Result<HarnessConfig, CliConfigError> {
+    load_subcommand_config_from_iter(std::env::args_os(), localizer)
 }
 
 /// Loads merged configuration for the selected subcommand from `iter`.
@@ -88,7 +105,10 @@ pub fn load_subcommand_config() -> Result<HarnessConfig, CliConfigError> {
 /// ```rust,no_run
 /// use spycatcher_harness::cli::load_subcommand_config_from_iter;
 ///
-/// let config = load_subcommand_config_from_iter(["spycatcher-harness", "replay"])?;
+/// let config = load_subcommand_config_from_iter(
+///     ["spycatcher-harness", "replay"],
+///     &ortho_config::NoOpLocalizer::new(),
+/// )?;
 /// assert_eq!(config.cassette_name, "default");
 /// # Ok::<(), spycatcher_harness::cli::CliConfigError>(())
 /// ```
@@ -97,36 +117,32 @@ pub fn load_subcommand_config() -> Result<HarnessConfig, CliConfigError> {
 ///
 /// Returns [`CliConfigError`] if argument parsing fails or if layered loading
 /// from files/environment fails.
-pub fn load_subcommand_config_from_iter<I, T>(iter: I) -> Result<HarnessConfig, CliConfigError>
+pub fn load_subcommand_config_from_iter<I, T>(
+    iter: I,
+    localizer: &dyn Localizer,
+) -> Result<HarnessConfig, CliConfigError>
 where
     I: IntoIterator<Item = T>,
     T: Into<std::ffi::OsString> + Clone,
 {
-    let cli = parse_cli_from_iter(iter)?;
+    let cli = parse_cli_from_iter(iter, localizer)?;
     let prefix = Prefix::new("SPYCATCHER_HARNESS_");
     cli.command.load_config(&prefix)
 }
 
 /// Parses [`Cli`] from `iter`, mapping help/version requests to display output.
 /// Errors with display output for help/version or CLI parse failures otherwise.
-fn parse_cli_from_iter<I, T>(iter: I) -> Result<Cli, CliConfigError>
+fn parse_cli_from_iter<I, T>(iter: I, localizer: &dyn Localizer) -> Result<Cli, CliConfigError>
 where
     I: IntoIterator<Item = T>,
     T: Into<std::ffi::OsString> + Clone,
 {
-    match Cli::try_parse_from(iter) {
+    match try_parse_localized_from_iter::<Cli, _, _>(iter, localizer) {
         Ok(cli) => Ok(cli),
-        Err(error)
-            if matches!(
-                error.kind(),
-                ErrorKind::DisplayHelp | ErrorKind::DisplayVersion
-            ) =>
-        {
-            Err(CliConfigError::DisplayRequested {
-                output: error.to_string(),
-            })
-        }
-        Err(error) => Err(CliConfigError::CliParse(error)),
+        Err(error) if error.use_stderr() => Err(CliConfigError::CliParse(error)),
+        Err(error) => Err(CliConfigError::DisplayRequested {
+            output: error.to_string(),
+        }),
     }
 }
 

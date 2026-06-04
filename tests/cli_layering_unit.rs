@@ -20,7 +20,7 @@
 use std::cell::RefCell;
 
 use eyre::{Result, eyre};
-use ortho_config::figment;
+use ortho_config::{NoOpLocalizer, figment};
 use proptest::prelude::*;
 use rstest::rstest;
 
@@ -48,7 +48,7 @@ fn load_with_jail(
         for (key, value) in env_vars {
             jail.set_env(key, value);
         }
-        let cfg = load_subcommand_config_from_iter(argv)
+        let cfg = load_subcommand_config_from_iter(argv, &NoOpLocalizer::new())
             .map_err(|error| figment::Error::from(error.to_string()))?;
         loaded.replace(Some(cfg));
         Ok(())

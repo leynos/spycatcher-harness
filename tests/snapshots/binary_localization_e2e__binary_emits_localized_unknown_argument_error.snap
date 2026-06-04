@@ -1,0 +1,9 @@
+---
+source: tests/binary_localization_e2e.rs
+expression: stderr
+---
+error: unknown argument: ⁨--not-a-flag⁩
+
+Usage: spycatcher-harness replay [OPTIONS]
+
+For more information, try '--help'.

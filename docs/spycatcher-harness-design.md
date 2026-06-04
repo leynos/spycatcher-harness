@@ -522,7 +522,7 @@ Library responsibilities:
   The initial library asset path is `i18n/en-US/spycatcher-harness.ftl`.
 - Expose localized rendering APIs that accept an application-provided
   `FluentLanguageLoader` via dependency injection. The initial public surface is
-   `HarnessLocalizations` plus
+  `HarnessLocalizations` plus
   `localize_harness_error(&FluentLanguageLoader, &HarnessError)`.
 - Keep domain-facing APIs semantic by returning typed errors with stable message
   IDs, rather than preformatted user-facing strings. Harness error messages use
@@ -534,9 +534,10 @@ Library responsibilities:
 Application responsibilities:
 
 - Act as the single authority for locale negotiation and fallback policy.
-- Build one authoritative language loader at process startup.
-- Load both binary-owned and library-owned localization assets into the same
-  locale context.
+- Build a best-effort CLI localizer before parsing so help, version, and parse
+  errors can be localized.
+- Build one authoritative library language loader after layered CLI
+  configuration has been merged.
 - Inject the configured loader into any library helper that renders localized
   text.
 - Load `locale` and `fallback_locale` through the same OrthoConfig layering as
@@ -547,7 +548,8 @@ CLI localization responsibilities:
 - Configure CLI copy via `ortho_config::Localizer`, preferring
   `ortho_config::FluentLocalizer` for Fluent-backed messages.
 - Localize `clap` help and parse errors through
-  `Command::localize(&localizer)` and `localize_clap_error_with_command(..)`.
+  the project-owned `LocalizeCmd::localize(&localizer)` extension trait and
+  `localize_clap_error_with_command(..)`.
 - Fall back to `NoOpLocalizer` if localization resources fail to load, so the
   CLI remains usable while reporting localization setup failures.
 
@@ -857,10 +859,12 @@ Subcommands map directly to vertical-slice deliverables:
 Global CLI localization behaviour:
 
 - `--locale <LANGID>` allows explicit locale override for application messages
-  and localized diagnostics.
+  after full configuration merging.
 - `--fallback-locale <LANGID>` controls the deterministic fallback locale and
   defaults to `en-US`.
-- Without `--locale`, the binary uses `fallback_locale`.
+- Before CLI parsing, help and parse-error localization uses
+  `SPYCATCHER_HARNESS_LOCALE`, then `SPYCATCHER_HARNESS_FALLBACK_LOCALE`, then
+  `en-US`.
 - `clap` parsing errors should be routed through
   `localize_clap_error_with_command(..)` before rendering to users.
 
@@ -1059,10 +1063,9 @@ avoiding time commitments.
 
 - **Private VidaiMock fixture schema uncertainty**: VidaiMock advertises
   powerful simulation features and provider compatibility but its public
-  description does not specify a recording feature or an on-disk fixture
-  schema. [^11] Mitigation: ship with native recording/replay first; add
-  VidaiMock export/backend once the schema is confirmed from authoritative
-  documentation.
+  description does not specify a recording feature or an on-disk fixture schema.
+  [^11] Mitigation: ship with native recording/replay first; add VidaiMock
+  export/backend once the schema is confirmed from authoritative documentation.
 - **Streaming fidelity edge cases**: SSE proxying can break clients if frame
   boundaries or headers differ. OpenRouter’s comment frames and mid-stream
   error reporting increase edge cases. [^2][^3] Mitigation: record raw byte

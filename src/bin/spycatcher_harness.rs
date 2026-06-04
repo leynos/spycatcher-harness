@@ -8,7 +8,11 @@
 use eyre::{WrapErr, eyre};
 use i18n_embed::fluent::FluentLanguageLoader;
 use i18n_embed::unic_langid::LanguageIdentifier;
-use spycatcher_harness::cli::{CliConfigError, load_subcommand_config};
+use ortho_config::NoOpLocalizer;
+use spycatcher_harness::cli::localizer::{
+    build_cli_localizer, early_locale_plan, is_cli_localization_disabled,
+};
+use spycatcher_harness::cli::{CliConfigError, load_subcommand_config_with_localizer};
 use spycatcher_harness::config::LocalizationConfig;
 use spycatcher_harness::i18n::{HarnessLocalizations, localize_harness_error};
 use spycatcher_harness::start_harness;
@@ -60,11 +64,20 @@ fn main() -> eyre::Result<()> {
 /// Returns an error if configuration loading fails for any reason other than a
 /// help or version display request.
 fn load_config_or_display_output() -> eyre::Result<spycatcher_harness::HarnessConfig> {
-    match load_subcommand_config() {
+    let localizer = if is_cli_localization_disabled() {
+        std::sync::Arc::new(NoOpLocalizer::new()) as std::sync::Arc<dyn ortho_config::Localizer>
+    } else {
+        build_cli_localizer(early_locale_plan())
+    };
+    match load_subcommand_config_with_localizer(localizer.as_ref()) {
         Ok(config) => Ok(config),
         Err(CliConfigError::DisplayRequested { output }) => {
             write_display_output(&output).wrap_err("failed to write CLI output")?;
             std::process::exit(0);
+        }
+        Err(CliConfigError::CliParse(error)) => {
+            write_error_output(&error.to_string()).wrap_err("failed to write CLI error output")?;
+            std::process::exit(2);
         }
         Err(error) => Err(error).wrap_err("failed to load merged command config"),
     }
@@ -79,6 +92,17 @@ fn write_display_output(output: &str) -> std::io::Result<()> {
     let mut stdout = std::io::stdout().lock();
     stdout.write_all(output.as_bytes())?;
     stdout.flush()
+}
+
+/// Writes `output` to stderr and flushes the handle.
+///
+/// # Errors
+///
+/// Returns an error if the write or flush fails.
+fn write_error_output(output: &str) -> std::io::Result<()> {
+    let mut stderr = std::io::stderr().lock();
+    stderr.write_all(output.as_bytes())?;
+    stderr.flush()
 }
 
 /// Constructs a [`FluentLanguageLoader`] from layered localisation

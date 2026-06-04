@@ -1,11 +1,10 @@
 # Localize CLI help and parse errors via OrthoConfig localizer hooks
 
-This ExecPlan (execution plan) is a living document. The sections
-`Constraints`, `Tolerances`, `Risks`, `Progress`, `Surprises & Discoveries`,
-`Decision Log`, and `Outcomes & Retrospective` must be kept up to date as work
-proceeds.
+This ExecPlan (execution plan) is a living document. The sections `Constraints`,
+`Tolerances`, `Risks`, `Progress`, `Surprises & Discoveries`, `Decision Log`,
+and `Outcomes & Retrospective` must be kept up to date as work proceeds.
 
-Status: DRAFT
+Status: COMPLETE
 
 ## Purpose / big picture
 
@@ -32,9 +31,9 @@ The observable behaviour for a novice reviewer is:
   prints an error string that matches the bundled localized
   `clap-error-unknown-argument` entry.
 - If the embedded localization assets fail to load (simulated in tests), the
-  binary still parses arguments and still emits help, version, and parse
-  errors using `clap`'s stock text. No process-level failure is introduced by
-  the localization stack itself.
+  binary still parses arguments and still emits help, version, and parse errors
+  using `clap`'s stock text. No process-level failure is introduced by the
+  localization stack itself.
 
 This plan must be approved before implementation begins. Do not mark roadmap
 item `1.4.3` done until implementation, tests, documentation, CodeRabbit
@@ -49,10 +48,9 @@ review, and commit gates are complete.
   depend on `ortho_config::Localizer`. Clap localization is an application
   adapter concern.
 - Preserve the locale precedence and binary-owned `FluentLanguageLoader`
-  introduced by roadmap item `1.4.2`. The new code path may build an
-  additional `FluentLocalizer` for clap text, but the binary must still own
-  exactly one authoritative `FluentLanguageLoader` for harness library
-  rendering.
+  introduced by roadmap item `1.4.2`. The new code path may build an additional
+  `FluentLocalizer` for clap text, but the binary must still own exactly one
+  authoritative `FluentLanguageLoader` for harness library rendering.
 - Keep configuration loading in the CLI/application adapter. Domain and
   cassette logic must not import `clap`, `ortho_config`, Figment, or
   environment access APIs.
@@ -69,8 +67,8 @@ review, and commit gates are complete.
   `tests/binary_localization_e2e.rs` already does, so the help and parse-error
   paths are validated through `std::process::Command`.
 - Do not mutate process environment directly in tests. Use
-  `ortho_config::figment::Jail`, dependency injection, or existing test
-  helpers in `tests/support`.
+  `ortho_config::figment::Jail`, dependency injection, or existing test helpers
+  in `tests/support`.
 - Use `camino::Utf8PathBuf` for path fields. Do not introduce `std::fs` or
   `std::path` into new filesystem-facing application code unless there is no
   capability-oriented alternative.
@@ -93,8 +91,8 @@ review, and commit gates are complete.
   decision-log entry naming the consumer.
 - Configuration shape: if OrthoConfig localizer hooks cannot be used without a
   new top-level configuration surface, stop after documenting the exact
-  conflict and propose the least invasive options before changing the
-  binary's startup contract.
+  conflict and propose the least invasive options before changing the binary's
+  startup contract.
 - Dependencies: if a new runtime dependency beyond the existing
   `ortho_config`, `i18n-embed`, `unic-langid`, `fluent`, and `clap` stack is
   needed, stop and ask for approval. A new dev-dependency for tests also
@@ -106,8 +104,7 @@ review, and commit gates are complete.
   `make markdownlint`, or `make nixie` still fails after five focused repair
   attempts, stop, record the failure transcript, and ask for direction.
 - Review: if `coderabbit review --agent` reports a concern that conflicts
-  with this plan, stop and update the `Decision Log` before changing
-  approach.
+  with this plan, stop and update the `Decision Log` before changing approach.
 
 ## Risks
 
@@ -115,23 +112,23 @@ review, and commit gates are complete.
   named in `docs/ortho-config-users-guide.md` and
   `docs/spycatcher-harness-design.md` are not all exported by the
   `ortho_config` crate. Only the `Localizer` trait, `LocalizationArgs<'a>`
-  alias, `FluentLocalizer`, `NoOpLocalizer`, `localize_clap_error_with_command`,
-  and `clap_error_formatter` are part of the public crate API. `LocalizeCmd`
-  and the `try_parse_localized_*` helpers are defined in the hello_world
-  *example* and must be reproduced in this repository (see Decision Log).
-  Severity: medium. Likelihood: high. Mitigation: include an explicit
-  Milestone for adding a small project-owned `LocalizeCmd` extension trait
-  and parsing helper under `src/cli/`, and document the inversion in
-  `docs/developers-guide.md`.
+  alias, `FluentLocalizer`, `NoOpLocalizer`,
+  `localize_clap_error_with_command`, and `clap_error_formatter` are part of
+  the public crate API. `LocalizeCmd` and the `try_parse_localized_*` helpers
+  are defined in the hello_world *example* and must be reproduced in this
+  repository (see Decision Log). Severity: medium. Likelihood: high.
+  Mitigation: include an explicit Milestone for adding a small project-owned
+  `LocalizeCmd` extension trait and parsing helper under `src/cli/`, and
+  document the inversion in `docs/developers-guide.md`.
 - The OrthoConfig `localize_clap_error_with_command` helper only ships
-  bundled translations for four `clap-error-*` IDs in its embedded
-  catalogue: `clap-error-missing-argument`, `clap-error-unknown-argument`,
+  bundled translations for four `clap-error-*` IDs in its embedded catalogue:
+  `clap-error-missing-argument`, `clap-error-unknown-argument`,
   `clap-error-invalid-value`, `clap-error-missing-subcommand`. Any other
   `ErrorKind` falls back to clap's stock text. Severity: low. Likelihood:
   medium. Mitigation: bundle a focused superset of `clap-error-*` IDs in
   `i18n/en-US/spycatcher-harness.ftl` that covers the kinds the harness
-  surfaces today; assert in tests that the chosen IDs render through our
-  bundle and not OrthoConfig's defaults.
+  surfaces today; assert in tests that the chosen IDs render through our bundle
+  and not OrthoConfig's defaults.
 - OrthoConfig's `FluentLocalizer` and `i18n_embed::fluent::FluentLanguageLoader`
   cannot share a `FluentBundle` directly. The harness will need to compile its
   embedded en-US Fluent text twice (once for library error rendering through
@@ -147,16 +144,16 @@ review, and commit gates are complete.
   Likelihood: high. Mitigation: codify a two-phase localization policy in the
   binary (see Plan of work, Milestone 4) and assert it via unit tests.
 - The OrthoConfig `clap-error-*` ID set is hard-coded; if a future clap
-  release adds new `ErrorKind` variants, the mapping will silently fall back
-  to stock text for the new kinds. Severity: low. Likelihood: low.
-  Mitigation: add an `rstest` matrix that exercises each `clap::error::Kind`
-  variant we care about and asserts which IDs we ship.
+  release adds new `ErrorKind` variants, the mapping will silently fall back to
+  stock text for the new kinds. Severity: low. Likelihood: low. Mitigation: add
+  an `rstest` matrix that exercises each `clap::error::Kind` variant we care
+  about and asserts which IDs we ship.
 - The existing `tests/binary_localization_e2e.rs` exercises `--locale` and
   `--fallback-locale` startup behaviour by invoking the compiled binary. New
   end-to-end coverage for `--help`/`--version`/parse failures will increase
-  test run time. Severity: low. Likelihood: medium. Mitigation: keep
-  end-to-end coverage to small representative scenarios and rely on
-  `insta` snapshots plus pure-Rust unit tests for the bulk of assertions.
+  test run time. Severity: low. Likelihood: medium. Mitigation: keep end-to-end
+  coverage to small representative scenarios and rely on `insta` snapshots plus
+  pure-Rust unit tests for the bulk of assertions.
 
 ## Progress
 
@@ -168,38 +165,55 @@ review, and commit gates are complete.
   upstream localizer API.
 - [x] (2026-05-28T10:30Z) Drafted this ExecPlan.
 - [ ] Open draft PR and request approval.
-- [ ] Receive approval to implement.
-- [ ] Milestone 1: failing tests authored.
-- [ ] Milestone 2: project-owned `LocalizeCmd` and parsing helper.
-- [ ] Milestone 3: bundled `cli-*` and `clap-error-*` FTL assets.
-- [ ] Milestone 4: localizer construction with deterministic `NoOpLocalizer`
-  fallback wired into CLI parsing.
-- [ ] Milestone 5: documentation update (`docs/users-guide.md`,
-  `docs/developers-guide.md`, `docs/spycatcher-harness-design.md`).
-- [ ] Milestone 6: final validation, roadmap update, PR refresh.
+- [x] (2026-06-04T00:00Z) Received user instruction to proceed with
+  implementation of this ExecPlan; treating that as explicit approval to move
+  from draft to implementation.
+- [x] (2026-06-04T00:00Z) Milestone 1: tests authored for catalogue lookups,
+  command localization, localized parse errors, binary help/error output, and
+  `NoOpLocalizer` fallback. The implementation proceeded in the same commit
+  because deterministic gates were required before CodeRabbit review.
+- [x] (2026-06-04T00:00Z) Milestone 2: project-owned `LocalizeCmd` and
+  `try_parse_localized_from_iter` helper added under `src/cli/`.
+- [x] (2026-06-04T00:00Z) Milestone 3: bundled `cli-*` and `clap-error-*` FTL
+  assets added to `i18n/en-US/spycatcher-harness.ftl`.
+- [x] (2026-06-04T00:00Z) Milestone 4: localizer construction with
+  deterministic `NoOpLocalizer` fallback wired into CLI parsing.
+- [x] (2026-06-04T00:00Z) Implemented the production CLI localization path:
+  `LocalizeCmd`, localized parse helper, Fluent-backed CLI localizer,
+  diagnostic disable switch, catalogue entries, unit tests, and binary e2e
+  tests are present. Targeted `cargo test --test cli_localization_unit`,
+  `cargo test --test cli_layering_unit`, and
+  `cargo test --test binary_localization_e2e` pass.
+- [x] (2026-06-04T00:00Z) Milestone 5: documentation update
+  (`docs/users-guide.md`, `docs/developers-guide.md`,
+  `docs/spycatcher-harness-design.md`).
+- [x] (2026-06-04T00:00Z) Milestone 6: final validation and roadmap update.
+  `make check-fmt`, `make lint`, `make test`, `make markdownlint`, and
+  `make nixie` passed. CodeRabbit review first reported one trivial ADR comma
+  fix; after applying it and re-running documentation gates, CodeRabbit
+  returned zero findings.
 
 Use timestamps to measure rates of progress and detect tolerance breaches.
 
 ## Surprises & Discoveries
 
 - `Command::localize` is *not* a public OrthoConfig API. It is an extension
-  trait `LocalizeCmd` defined in
-  `examples/hello_world/src/cli/localization.rs` in the OrthoConfig repository.
-  Likewise, `try_parse_localized_env` is an inherent method on the example's
-  `CommandLine` type. The harness must own equivalent helpers. Evidence:
-  OrthoConfig `v0.8.0` source tree on GitHub. Impact: the plan adds an
-  explicit milestone for a small project-owned `LocalizeCmd` trait and a
-  parsing helper. Documentation referencing `Command::localize` and
-  `try_parse_localized_env` must clarify they are project-owned in this
-  repository.
+  trait `LocalizeCmd` defined in `examples/hello_world/src/cli/localization.rs`
+  in the OrthoConfig repository. Likewise, `try_parse_localized_env` is an
+  inherent method on the example's `CommandLine` type. The harness must own
+  equivalent helpers. Evidence: OrthoConfig `v0.8.0` source tree on GitHub.
+  Impact: the plan adds an explicit milestone for a small project-owned
+  `LocalizeCmd` trait and a parsing helper. Documentation referencing
+  `Command::localize` and `try_parse_localized_env` must clarify they are
+  project-owned in this repository.
 - `ortho_config::LocalizationArgs<'a>` is a type alias for
   `HashMap<&'a str, fluent_bundle::FluentValue<'a>>`, not a struct.
   Implementation must use it as a map.
 - `localize_clap_error_with_command` short-circuits `DisplayHelp` and
   `DisplayVersion` error kinds unchanged. Help and version localization is
-  driven by the `LocalizeCmd` trait alone, not by the error helper. Impact:
-  the help and version code paths must run *before* `try_get_matches` returns
-  in order to substitute localized strings on the `clap::Command` itself.
+  driven by the `LocalizeCmd` trait alone, not by the error helper. Impact: the
+  help and version code paths must run *before* `try_get_matches` returns in
+  order to substitute localized strings on the `clap::Command` itself.
 - `localize_clap_error_with_command` builds a new `ClapError::raw(...)` when
   it has a translation, discarding the original clap context. We must accept
   that the localized rendering will not preserve clap's coloured suggestion
@@ -207,68 +221,93 @@ Use timestamps to measure rates of progress and detect tolerance breaches.
   (include the offending value, available subcommands, etc.) and the snapshot
   tests must lock that down.
 - `ortho_config`'s embedded `messages.ftl` only ships translations for four
-  `clap-error-*` IDs; everything else falls back to stock English. Impact:
-  the harness must ship its own superset of `clap-error-*` IDs in
+  `clap-error-*` IDs; everything else falls back to stock English. Impact: the
+  harness must ship its own superset of `clap-error-*` IDs in
   `i18n/en-US/spycatcher-harness.ftl` to make sure today's behaviour is
   observably localized rather than passing through unchanged.
 - `i18n_embed::fluent::FluentLanguageLoader` does not expose a way to hand
   out a `FluentBundle<Arc<FluentResource>>`, so it cannot share its compiled
   bundle with `FluentLocalizer`. The Fluent source is compiled twice. The
   embedded `include_str!` source remains a single asset.
+- Fluent treats indented bracketed lines such as `[cmds.record]` inside a
+  multiline message as variant syntax. The localized merge-help example now
+  renders those TOML sections as `cmds.record:` and `cmds.record.upstream:` to
+  keep the catalogue parser-friendly.
+- The user-facing binary path for localized parse errors must not wrap
+  `CliConfigError::CliParse` with `eyre`, because that duplicates the Clap
+  diagnostic and adds a source location. The binary now writes localized Clap
+  parse errors directly to stderr and exits with code 2.
 
 ## Decision Log
 
 - Decision: treat this as an application/adapter change. The library crate
-  must not learn about `ortho_config::Localizer` or `clap`. Rationale:
-  matches the architectural boundary set by roadmap items `1.4.1` and `1.4.2`.
+  must not learn about `ortho_config::Localizer` or `clap`. Rationale: matches
+  the architectural boundary set by roadmap items `1.4.1` and `1.4.2`.
   Date/Author: 2026-05-28 / agent.
 - Decision: define a project-owned `LocalizeCmd` extension trait on
   `clap::Command` inside `src/cli/localization.rs` (or a sibling module),
   modelled on the OrthoConfig hello_world example, rather than calling a
-  non-existent `Command::localize` from `ortho_config`. Rationale: the
-  upstream API does not expose this trait; copying the small, well-understood
-  pattern keeps us aligned with the documented OrthoConfig CLI localization
-  recipe without inventing a new abstraction. Date/Author: 2026-05-28 /
-  agent.
+  non-existent `Command::localize` from `ortho_config`. Rationale: the upstream
+  API does not expose this trait; copying the small, well-understood pattern
+  keeps us aligned with the documented OrthoConfig CLI localization recipe
+  without inventing a new abstraction. Date/Author: 2026-05-28 / agent.
 - Decision: define a project-owned `try_parse_localized_from_iter(...)`
   helper that mirrors the OrthoConfig hello_world example's
   `try_parse_localized_env`. Rationale: the helper is the natural seam where
   `LocalizeCmd::localize`, `try_get_matches_from_mut`, and
-  `localize_clap_error_with_command` compose. Owning it in the binary keeps
-  the localization life cycle visible. Date/Author: 2026-05-28 / agent.
+  `localize_clap_error_with_command` compose. Owning it in the binary keeps the
+  localization life cycle visible. Date/Author: 2026-05-28 / agent.
 - Decision: build the localizer *before* CLI parsing using a best-effort
   locale plan derived from the OrthoConfig fallback locale default and any
   environment variable hint, then continue to build the application-phase
   `FluentLanguageLoader` from the fully merged `LocalizationConfig` after CLI
   parsing. Rationale: the requested locale is itself a CLI flag, so the
   localizer used for parsing must be available before clap runs. Application
-  localization can use a more specific locale once the merged config is
-  known. Date/Author: 2026-05-28 / agent.
+  localization can use a more specific locale once the merged config is known.
+  Date/Author: 2026-05-28 / agent.
 - Decision: on Fluent localizer construction failure, the binary falls back
-  to `ortho_config::NoOpLocalizer` and emits a `tracing::warn!` describing
-  the cause. The CLI continues. Rationale: this is the explicit roadmap
-  success criterion and matches the OrthoConfig hello_world fallback
-  pattern. Date/Author: 2026-05-28 / agent.
+  to `ortho_config::NoOpLocalizer` and emits a `tracing::warn!` describing the
+  cause. The CLI continues. Rationale: this is the explicit roadmap success
+  criterion and matches the OrthoConfig hello_world fallback pattern.
+  Date/Author: 2026-05-28 / agent.
 - Decision: keep multilingual coverage out of scope for `1.4.3`. The bundled
   catalogue remains English-only; the implementation only proves that the
   *mechanism* works and that fallback is deterministic. Adding non-English
-  assets is roadmap material beyond `1.4.3`. Date/Author: 2026-05-28 /
-  agent.
+  assets is roadmap material beyond `1.4.3`. Date/Author: 2026-05-28 / agent.
 - Decision: share the FTL *source* between `FluentLanguageLoader` and
   `FluentLocalizer` via `include_str!` but accept two compiled bundles.
   Rationale: `i18n-embed` does not expose a method to share its compiled
   bundle, and a custom Localizer adapter over `FluentLanguageLoader` would
-  bypass OrthoConfig's bundled `clap-error-*` defaults. Date/Author:
-  2026-05-28 / agent.
+  bypass OrthoConfig's bundled `clap-error-*` defaults. Date/Author: 2026-05-28
+  / agent.
+- Decision: introduce `SPYCATCHER_HARNESS_DISABLE_LOCALIZATION` as a
+  diagnostic switch that forces the CLI parser through `NoOpLocalizer`.
+  Rationale: it provides a deterministic process-level fallback test and a
+  practical operator escape hatch when diagnosing localization assets.
+  Date/Author: 2026-06-04 / agent.
+- Decision: surface `CliConfigError::CliParse` directly from the binary
+  process boundary instead of wrapping it in `eyre`. Rationale: Clap parse
+  errors are already complete user-facing diagnostics; wrapping them made the
+  output noisy and duplicated. Date/Author: 2026-06-04 / agent.
 
 ## Outcomes & Retrospective
 
-To be completed after implementation. Compare the final behaviour against
-this plan's purpose: localized help, localized parse errors, and deterministic
-`NoOpLocalizer` fallback. Note any deviations from the proposed file shape
-and any items that should feed into roadmap follow-ups (for example,
-shipping a non-English locale, or improving the locale environment-variable
-hint heuristic).
+Implemented localized CLI help and parse-error rendering through a project-owned
+`LocalizeCmd` trait, `try_parse_localized_from_iter`, and a Fluent-backed
+`ortho_config::Localizer` built from the existing en-US catalogue. The binary
+now builds that CLI localizer before argument parsing, then builds the
+authoritative `FluentLanguageLoader` after merged configuration is available
+for harness library errors.
+
+The fallback path is deterministic. Invalid localizer resources fall back to
+`NoOpLocalizer`, and the diagnostic `SPYCATCHER_HARNESS_DISABLE_LOCALIZATION=1`
+switch proves stock `clap` output through the real binary. Parse errors are
+written directly as Clap diagnostics on stderr with exit code 2, avoiding
+duplicated `eyre` reports.
+
+Validation passed with `make check-fmt`, `make lint`, `make test`,
+`make markdownlint`, and `make nixie`. CodeRabbit review completed with zero
+findings after one trivial ADR punctuation fix.
 
 ## Relevant documentation and skills
 
@@ -293,14 +332,15 @@ Read these project documents before implementation:
 - `docs/documentation-style-guide.md` before adding or changing
   documentation.
 
-Useful upstream references identified during reconnaissance (cite these in
-the implementation commit messages when relevant):
+Useful upstream references identified during reconnaissance (cite these in the
+implementation commit messages when relevant):
 
 - OrthoConfig `v0.8.0` localizer source:
   `ortho_config/src/localizer/{mod,fluent,clap_error}.rs`.
-- OrthoConfig hello_world example: `examples/hello_world/src/cli/localization.rs`
-  and `examples/hello_world/src/localizer.rs` (the source of the
-  `LocalizeCmd` and fallback patterns we are reproducing).
+- OrthoConfig hello_world example:
+  `examples/hello_world/src/cli/localization.rs` and
+  `examples/hello_world/src/localizer.rs` (the source of the `LocalizeCmd` and
+  fallback patterns we are reproducing).
 - OrthoConfig embedded catalogue:
   `ortho_config/locales/en-US/messages.ftl`.
 - `i18n-embed` `FluentLanguageLoader` reference on `docs.rs`.
@@ -327,8 +367,8 @@ Use these skills when implementing:
 
 `src/cli.rs` is the CLI adapter for layered configuration loading. It defines
 the `Cli` struct, the `Commands` enum, `RecordArgs`, `ReplayArgs`, and
-`VerifyArgs`, and the `load_subcommand_config_from_iter` entry point. Help
-and version requests are detected in `parse_cli_from_iter` and surfaced as
+`VerifyArgs`, and the `load_subcommand_config_from_iter` entry point. Help and
+version requests are detected in `parse_cli_from_iter` and surfaced as
 `CliConfigError::DisplayRequested { output }` (`src/cli.rs:112`).
 
 `src/cli_args.rs` defines `LocalizationArgs` and `RecordUpstreamArgs` used by
@@ -351,21 +391,20 @@ ownership into this module.
 
 `src/bin/spycatcher_harness.rs` is the binary composition root. It currently
 calls `load_subcommand_config()`, handles `DisplayRequested`, builds a
-`FluentLanguageLoader` from the merged `LocalizationConfig`, builds the
-Tokio runtime, and starts the harness. This is the right boundary for
-constructing the new `Localizer` *before* CLI parsing.
+`FluentLanguageLoader` from the merged `LocalizationConfig`, builds the Tokio
+runtime, and starts the harness. This is the right boundary for constructing
+the new `Localizer` *before* CLI parsing.
 
 `i18n/en-US/spycatcher-harness.ftl` is the only Fluent catalogue today. It
-contains eight `harness-error-*` message IDs. This file will gain new
-`cli-*` and `clap-error-*` entries during Milestone 3.
+contains eight `harness-error-*` message IDs. This file will gain new `cli-*`
+and `clap-error-*` entries during Milestone 3.
 
 `tests/cli_layering_unit.rs` contains `rstest` unit coverage for layered
 configuration precedence via `figment::Jail`.
 
 `tests/binary_localization_e2e.rs` invokes the compiled binary via
-`std::process::Command` and asserts startup error rendering. The new
-end-to-end coverage for `--help`, `--version`, and parse failures will be
-added alongside.
+`std::process::Command` and asserts startup error rendering. The new end-to-end
+coverage for `--help`, `--version`, and parse failures will be added alongside.
 
 `tests/features/harness_cli_layering.feature` and
 `tests/harness_cli_layering_bdd.rs` contain `rstest-bdd` behavioural coverage
@@ -383,8 +422,8 @@ belong in this directory.
 Begin by adding red coverage for the externally observable behaviour. No
 production code changes in this milestone.
 
-Add `rstest` unit cases to a new test file
-`tests/cli_localization_unit.rs` covering:
+Add `rstest` unit cases to a new test file `tests/cli_localization_unit.rs`
+covering:
 
 - a localizer built from valid bundled Fluent assets returns localized text
   for `cli-about`, `cli-long-about`, and `cli-usage`;
@@ -394,12 +433,11 @@ Add `rstest` unit cases to a new test file
   `message`;
 - the project-owned `LocalizeCmd::localize` extension trait applied to
   `Cli::command()` mutates `about`, `long_about`, and `override_usage` exactly
-  when the localizer returns `Some(...)`, and leaves them untouched
-  otherwise;
-- `localize_clap_error_with_command` is invoked for the `MissingRequiredArgument`,
-  `UnknownArgument`, `InvalidValue`, and `InvalidSubcommand` kinds and the
-  resulting message contains the bundled catalogue text and the contextual
-  argument or value.
+  when the localizer returns `Some(...)`, and leaves them untouched otherwise;
+- `localize_clap_error_with_command` is invoked for the
+  `MissingRequiredArgument`, `UnknownArgument`, `InvalidValue`, and
+  `InvalidSubcommand` kinds and the resulting message contains the bundled
+  catalogue text and the contextual argument or value.
 
 Add `insta` snapshot cases to `tests/cli_localization_unit.rs` (or a sibling
 `tests/snapshots/cli_localization_unit__*` snapshot directory) that pin:
@@ -420,13 +458,13 @@ scenarios for the user-visible behaviour, and step definitions in
 - a missing-required-argument scenario emits the localized text;
 - an unknown-argument scenario emits the localized text;
 - when localization assets fail to load, the CLI still emits help, version,
-  and parse-error output using clap's stock text. The "assets failed to
-  load" condition is simulated by injecting a `NoOpLocalizer` through the
-  test harness; the production binary path is exercised separately by the
-  end-to-end test below.
+  and parse-error output using clap's stock text. The "assets failed to load"
+  condition is simulated by injecting a `NoOpLocalizer` through the test
+  harness; the production binary path is exercised separately by the end-to-end
+  test below.
 
-Extend `tests/binary_localization_e2e.rs` with end-to-end coverage that
-invokes the compiled binary via `std::process::Command`:
+Extend `tests/binary_localization_e2e.rs` with end-to-end coverage that invokes
+the compiled binary via `std::process::Command`:
 
 - `spycatcher-harness --help` exits 0 and prints a deterministic snapshot;
 - `spycatcher-harness replay --not-a-flag` exits non-zero and prints the
@@ -451,14 +489,14 @@ cargo test --test binary_localization_e2e \
 
 Run `coderabbit review --agent` after this milestone and clear any concerns
 before proceeding. Commit this milestone after `make check-fmt`, `make lint`,
-and `make test` pass at the workspace level (the new red tests will still
-fail; this milestone commits *only* the failing tests and any necessary
-plumbing such as snapshot directories).
+and `make test` pass at the workspace level (the new red tests will still fail;
+this milestone commits *only* the failing tests and any necessary plumbing such
+as snapshot directories).
 
 ### Milestone 2: project-owned `LocalizeCmd` and parsing helper
 
-In `src/cli/localization.rs` (or a sibling module
-`src/cli/localize_cmd.rs` if file size pushes over 400 lines), add:
+In `src/cli/localization.rs` (or a sibling module `src/cli/localize_cmd.rs` if
+file size pushes over 400 lines), add:
 
 ```rust,no_run
 use clap::Command;
@@ -513,8 +551,8 @@ where
 }
 ```
 
-Wire `parse_cli_from_iter` in `src/cli.rs` to accept `&dyn Localizer` and
-call `try_parse_localized_from_iter`. The function's signature changes from:
+Wire `parse_cli_from_iter` in `src/cli.rs` to accept `&dyn Localizer` and call
+`try_parse_localized_from_iter`. The function's signature changes from:
 
 ```rust,no_run
 fn parse_cli_from_iter<I, T>(iter: I) -> Result<Cli, CliConfigError>
@@ -530,13 +568,12 @@ fn parse_cli_from_iter<I, T>(
 ```
 
 Cascade the same signature change to `load_subcommand_config_from_iter` and
-introduce a new convenience function `load_subcommand_config_with_localizer`
-to keep the no-arg `load_subcommand_config()` working for callers that pass a
+introduce a new convenience function `load_subcommand_config_with_localizer` to
+keep the no-arg `load_subcommand_config()` working for callers that pass a
 `NoOpLocalizer`. Document the new entry point.
 
-Go/no-go: the unit tests for `LocalizeCmd` and
-`try_parse_localized_from_iter` pass. Existing layered configuration tests
-still pass.
+Go/no-go: the unit tests for `LocalizeCmd` and `try_parse_localized_from_iter`
+pass. Existing layered configuration tests still pass.
 
 Run:
 
@@ -574,14 +611,14 @@ Update `i18n/en-US/spycatcher-harness.ftl` to add:
   `clap-error-invalid-utf8`, `clap-error-io`, and `clap-error-format` — each
   using the OrthoConfig-documented argument keys (`argument`, `value`,
   `valid_values`, `expected`, `actual`, `min`, `subcommand`,
-  `valid_subcommands`). Write the en-US text so it reads naturally and
-  conveys the same information as the corresponding clap stock message.
+  `valid_subcommands`). Write the en-US text so it reads naturally and conveys
+  the same information as the corresponding clap stock message.
 
 Add the existing `CLI_MERGE_HELP` static text into the FTL catalogue as the
 `cli-merge-help` entry. Delete the `CLI_MERGE_HELP` constant from
 `src/cli_help.rs` if it becomes redundant, or keep a doc-test fixture that
-asserts the catalogue and the constant agree, and document the rationale in
-the Decision Log.
+asserts the catalogue and the constant agree, and document the rationale in the
+Decision Log.
 
 Add unit tests that:
 
@@ -592,8 +629,7 @@ Add unit tests that:
   `cli-merge-help`.
 
 Go/no-go: the previously red `insta` snapshots from Milestone 1 now produce
-deterministic localized output. Existing layered configuration tests still
-pass.
+deterministic localized output. Existing layered configuration tests still pass.
 
 Run:
 
@@ -611,8 +647,8 @@ Run `coderabbit review --agent` and clear concerns. Commit after
 
 ### Milestone 4: localizer construction with deterministic fallback
 
-In a new `src/cli/localizer.rs` module (or extend
-`src/cli/localization.rs` if the 400-line ceiling permits), add:
+In a new `src/cli/localizer.rs` module (or extend `src/cli/localization.rs` if
+the 400-line ceiling permits), add:
 
 ```rust,no_run
 use std::sync::Arc;
@@ -645,8 +681,8 @@ pub fn build_cli_localizer(locale: LanguageIdentifier) -> Arc<dyn Localizer> {
 const CLI_FTL: &str = include_str!("../../i18n/en-US/spycatcher-harness.ftl");
 ```
 
-Add an `early_locale_plan()` helper that returns the locale to use *before*
-CLI parsing. The deterministic rule is:
+Add an `early_locale_plan()` helper that returns the locale to use *before* CLI
+parsing. The deterministic rule is:
 
 1. Read `SPYCATCHER_HARNESS_LOCALE` (if set), otherwise
    `SPYCATCHER_HARNESS_FALLBACK_LOCALE` (if set), otherwise the OrthoConfig
@@ -660,8 +696,8 @@ Wire the binary so that `main` (in `src/bin/spycatcher_harness.rs`) calls
 `build_language_loader(&config.localization)` call continues to run after CLI
 parsing and is unaffected by this milestone.
 
-Add a deliberate test seam for the "localization assets failed to load"
-branch. Two acceptable options:
+Add a deliberate test seam for the "localization assets failed to load" branch.
+Two acceptable options:
 
 - pass the FTL text as a parameter so a test can pass deliberately broken
   bytes (preferred); or
@@ -670,10 +706,10 @@ branch. Two acceptable options:
   user-observable; if chosen, document it in `docs/users-guide.md` as a
   diagnostic toggle.
 
-Add a `proptest` strategy (already used in `src/bin/spycatcher_harness.rs`)
-to assert that random BCP 47 language identifiers either build a
-`FluentLocalizer` or fall back to `NoOpLocalizer` without panicking. This
-guards the deterministic fallback invariant.
+Add a `proptest` strategy (already used in `src/bin/spycatcher_harness.rs`) to
+assert that random BCP 47 language identifiers either build a `FluentLocalizer`
+or fall back to `NoOpLocalizer` without panicking. This guards the
+deterministic fallback invariant.
 
 Go/no-go: every localized test from Milestones 1 and 3 passes against the
 compiled binary; the simulated load-failure path yields stock clap text;
@@ -697,18 +733,17 @@ Run `coderabbit review --agent` and clear concerns. Commit after
 
 ### Milestone 5: documentation
 
-Update `docs/users-guide.md` with a CLI localization section that
-documents:
+Update `docs/users-guide.md` with a CLI localization section that documents:
 
 - where bundled help text comes from (the embedded en-US Fluent catalogue);
 - how parse errors are rendered through OrthoConfig's
   `clap-error-*` mapping;
 - the deterministic fallback to stock clap text when localization assets
-  fail to load, including the diagnostic env switch if introduced in
-  Milestone 4;
+  fail to load, including the diagnostic env switch if introduced in Milestone
+  4;
 - the relationship between `--locale`/`--fallback-locale` and CLI text
-  rendering (currently no non-English locale is bundled, but the mechanism
-  is in place for future locales).
+  rendering (currently no non-English locale is bundled, but the mechanism is
+  in place for future locales).
 
 Update `docs/developers-guide.md` with:
 
@@ -720,14 +755,14 @@ Update `docs/developers-guide.md` with:
   CLI parsing; the authoritative `FluentLanguageLoader` is built after).
 
 Update `docs/spycatcher-harness-design.md` only where the implementation
-resolves an existing ambiguity. The "CLI shape" and "Localization
-architecture" sections should now reference the project-owned `LocalizeCmd`
-and the catalogue-backed `cli-*`/`clap-error-*` IDs. Where the design
-references `Command::localize` as an OrthoConfig API, clarify that the
-project owns the extension trait.
+resolves an existing ambiguity. The "CLI shape" and "Localization architecture"
+sections should now reference the project-owned `LocalizeCmd` and the
+catalogue-backed `cli-*`/`clap-error-*` IDs. Where the design references
+`Command::localize` as an OrthoConfig API, clarify that the project owns the
+extension trait.
 
-Add a short ADR in `docs/adr/` only if Milestone 4's diagnostic env switch
-is introduced, because that is a user-visible configuration knob outside the
+Add a short ADR in `docs/adr/` only if Milestone 4's diagnostic env switch is
+introduced, because that is a user-visible configuration knob outside the
 existing `[cmds.<subcommand>.localization]` shape. The ADR should follow
 `docs/documentation-style-guide.md`.
 
@@ -743,8 +778,8 @@ make markdownlint 2>&1 | tee /tmp/markdownlint-1-4-3-docs.out
 make nixie 2>&1 | tee /tmp/nixie-1-4-3-docs.out
 ```
 
-Run `coderabbit review --agent` and clear concerns. Commit after
-documentation gates pass.
+Run `coderabbit review --agent` and clear concerns. Commit after documentation
+gates pass.
 
 ### Milestone 6: final validation, roadmap update, and PR refresh
 
@@ -758,15 +793,14 @@ make markdownlint 2>&1 | tee /tmp/markdownlint-1-4-3.out
 make nixie 2>&1 | tee /tmp/nixie-1-4-3.out
 ```
 
-If all gates pass and CodeRabbit has no open concerns, update
-`docs/roadmap.md` to mark item `1.4.3` and its success criteria done. Update
-this ExecPlan's `Progress`, `Surprises & Discoveries`, `Decision Log`, and
-`Outcomes & Retrospective` with final evidence and any deviations from the
-plan.
+If all gates pass and CodeRabbit has no open concerns, update `docs/roadmap.md`
+to mark item `1.4.3` and its success criteria done. Update this ExecPlan's
+`Progress`, `Surprises & Discoveries`, `Decision Log`, and
+`Outcomes & Retrospective` with final evidence and any deviations from the plan.
 
-Commit the roadmap and final plan updates as the final implementation
-commit. Push the branch and refresh the draft PR description so reviewers
-can see the implementation status, validation logs, and roadmap completion.
+Commit the roadmap and final plan updates as the final implementation commit.
+Push the branch and refresh the draft PR description so reviewers can see the
+implementation status, validation logs, and roadmap completion.
 
 ## Validation strategy
 
@@ -778,14 +812,11 @@ The minimum accepted validation for the implementation is:
 - new `insta` snapshots pin the localized help, version, and parse-error
   text for the root command and each subcommand;
 - new `rstest-bdd` scenarios prove externally observable behaviour
-  for localized help, localized parse errors, and the `NoOpLocalizer`
-  fallback;
+  for localized help, localized parse errors, and the `NoOpLocalizer` fallback;
 - extended `tests/binary_localization_e2e.rs` proves the compiled binary
-  emits localized help and parse errors through the real OS process
-  boundary;
+  emits localized help and parse errors through the real OS process boundary;
 - a `proptest` strategy proves random BCP 47 language identifiers do not
-  panic and always resolve to either a `FluentLocalizer` or a
-  `NoOpLocalizer`;
+  panic and always resolve to either a `FluentLocalizer` or a `NoOpLocalizer`;
 - existing harness startup, locale precedence, record-mode, cassette,
   matching, and doctest suites still pass;
 - documentation gates pass;
@@ -802,8 +833,8 @@ bounded randomness involved.
 The work is complete only when:
 
 - CLI help output uses the project-owned `Command::localize(&localizer)`
-  (i.e. `LocalizeCmd::localize`) with a Fluent localizer implementation
-  backed by `i18n/en-US/spycatcher-harness.ftl`;
+  (i.e. `LocalizeCmd::localize`) with a Fluent localizer implementation backed
+  by `i18n/en-US/spycatcher-harness.ftl`;
 - `clap` parsing failures are rendered via
   `localize_clap_error_with_command(..)` and the bundled `clap-error-*` IDs
   produce the localized text;
@@ -816,21 +847,20 @@ The work is complete only when:
 - all full validation gates pass;
 - CodeRabbit has no unresolved concerns; and
 - the branch has been pushed to
-  `origin/1-4-3-localize-help-and-parse-errors-via-ortho-config` with a
-  draft PR that references this ExecPlan in its summary.
+  `origin/1-4-3-localize-help-and-parse-errors-via-ortho-config` with a draft
+  PR that references this ExecPlan in its summary.
 
 ## Idempotence and recovery
 
-Each milestone above is committed as a discrete change. Reverting any
-milestone in reverse order returns the repository to a fully buildable
-state. Snapshot acceptance is the only step that requires interactive
-review; rerunning `cargo insta accept` after a deliberate UI text update is
-safe and reproducible.
+Each milestone above is committed as a discrete change. Reverting any milestone
+in reverse order returns the repository to a fully buildable state. Snapshot
+acceptance is the only step that requires interactive review; rerunning
+`cargo insta accept` after a deliberate UI text update is safe and reproducible.
 
 If a milestone fails its quality gate, do not advance to the next milestone.
-Investigate, fix at root cause, and re-run the gate. Do not silence lints,
-do not bypass hooks, and do not edit snapshots by hand without rerunning the
-tests they correspond to.
+Investigate, fix at root cause, and re-run the gate. Do not silence lints, do
+not bypass hooks, and do not edit snapshots by hand without rerunning the tests
+they correspond to.
 
 ## Interfaces and dependencies
 
@@ -841,26 +871,36 @@ By the end of Milestone 4 the following symbols must exist:
 - `crate::cli::localization::try_parse_localized_from_iter` — generic helper
   that parses any `Parser + CommandFactory` from an iterator of OS strings,
   using `&dyn Localizer` for help, version, and parse-error rendering.
-- `crate::cli::localizer::build_cli_localizer(locale: LanguageIdentifier)
-  -> Arc<dyn Localizer>` — constructs a `FluentLocalizer` from the embedded
-  en-US Fluent text, falling back to `NoOpLocalizer` on failure.
+- `crate::cli::localizer::build_cli_localizer` — constructs a
+  `FluentLocalizer` from the embedded en-US Fluent text, falling back to
+  `NoOpLocalizer` on failure.
+
+  ```rust,no_run
+  fn build_cli_localizer(locale: LanguageIdentifier) -> Arc<dyn Localizer>
+  ```
+
 - `crate::cli::localizer::early_locale_plan() -> LanguageIdentifier` —
   best-effort locale selection used before CLI parsing.
-- `crate::cli::load_subcommand_config_with_localizer(localizer: &dyn
-  Localizer) -> Result<HarnessConfig, CliConfigError>` — new public entry
-  point that takes a localizer. The existing
-  `load_subcommand_config()` continues to work and internally constructs a
-  `NoOpLocalizer` for callers that have not migrated.
+- `crate::cli::load_subcommand_config_with_localizer` — new public entry point
+  that takes a localizer. The existing `load_subcommand_config()` continues to
+  work and internally constructs a `NoOpLocalizer` for callers that have not
+  migrated.
 
-By the end of Milestone 3 the FTL catalogue
-`i18n/en-US/spycatcher-harness.ftl` must contain at minimum:
+  ```rust,no_run
+  fn load_subcommand_config_with_localizer(
+      localizer: &dyn Localizer,
+  ) -> Result<HarnessConfig, CliConfigError>
+  ```
+
+By the end of Milestone 3 the FTL catalogue `i18n/en-US/spycatcher-harness.ftl`
+must contain at minimum:
 
 - `cli-about`, `cli-long-about`, `cli-usage`, `cli-merge-help`;
 - `cli-record-about`, `cli-replay-about`, `cli-verify-about`;
 - the `clap-error-*` IDs listed in Milestone 3.
 
-External crates used at runtime (no new direct dependencies are introduced;
-all are already in `Cargo.toml`):
+External crates used at runtime (no new direct dependencies are introduced; all
+are already in `Cargo.toml`):
 
 - `ortho_config` for `Localizer`, `FluentLocalizer`, `NoOpLocalizer`,
   `LocalizationArgs`, and `localize_clap_error_with_command`.
