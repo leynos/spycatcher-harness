@@ -6,7 +6,7 @@ use serde_json::json;
 use crate::HarnessError;
 use crate::cassette::{
     Cassette, Interaction, InteractionMetadata, RecordedRequest, RecordedResponse,
-    ReplayMatchEngine,
+    ReplayMatchEngine, StreamCanonicalPolicy,
 };
 use crate::config::MatchMode;
 
@@ -95,4 +95,27 @@ fn new_succeeds_with_empty_cassette() {
     let result = ReplayMatchEngine::new(cassette, MatchMode::SequentialStrict);
 
     assert!(result.is_ok(), "empty cassette should succeed");
+}
+
+#[test]
+fn new_uses_verbatim_stream_policy() {
+    let mut cassette = Cassette::new();
+    cassette.append(interaction_with_hash(Some("hash_a")));
+
+    let engine = ReplayMatchEngine::new(cassette, MatchMode::SequentialStrict)
+        .expect("cassette with hash should build replay engine");
+
+    assert_eq!(engine.stream_policy(), StreamCanonicalPolicy::default());
+}
+
+#[test]
+fn with_policy_preserves_explicit_stream_policy() {
+    let mut cassette = Cassette::new();
+    cassette.append(interaction_with_hash(Some("hash_a")));
+    let policy = StreamCanonicalPolicy::ignore_comments();
+
+    let engine = ReplayMatchEngine::with_policy(cassette, MatchMode::SequentialStrict, policy)
+        .expect("cassette with hash should build replay engine");
+
+    assert_eq!(engine.stream_policy(), policy);
 }

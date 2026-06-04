@@ -16,9 +16,10 @@ use tracing::{debug, info};
 use crate::cassette::{InteractionPosition, MismatchDiagnostic};
 use crate::http_exchange::{ObservedRequest, parse_json_bytes, selected_request_headers};
 use crate::protocol::CHAT_COMPLETIONS_PATH;
-use crate::replay::{ReplayError, ReplayResponse};
+use crate::replay::{ReplayBody, ReplayError, ReplayResponse};
 
 use super::replay::ReplayAppState;
+use super::replay_stream::build_stream_body;
 
 /// Axum route handler for replay-mode chat completions playback.
 pub(crate) async fn replay_chat_completions_handler(
@@ -60,14 +61,20 @@ fn log_replay_request(method: &Method, uri: &Uri) {
 }
 
 fn build_replay_response(response: ReplayResponse) -> Response<axum::body::Body> {
-    let mut built = Response::new(axum::body::Body::from(response.body));
+    let is_stream = matches!(response.body, ReplayBody::Events(_));
+    let mut built = Response::new(match response.body {
+        ReplayBody::OneShot(body) => axum::body::Body::from(body),
+        ReplayBody::Events(events) => build_stream_body(events),
+    });
     *built.status_mut() = replay_status_code(response.status);
+    let mut has_content_type = false;
     for (name, value) in response.headers {
         match (
             HeaderName::try_from(name.as_str()),
             HeaderValue::from_bytes(value.as_bytes()),
         ) {
             (Ok(header_name), Ok(header_value)) => {
+                has_content_type |= header_name == CONTENT_TYPE;
                 built.headers_mut().append(header_name, header_value);
             }
             _ => {
@@ -78,6 +85,11 @@ fn build_replay_response(response: ReplayResponse) -> Response<axum::body::Body>
                 );
             }
         }
+    }
+    if is_stream && !has_content_type {
+        built
+            .headers_mut()
+            .insert(CONTENT_TYPE, HeaderValue::from_static("text/event-stream"));
     }
     built
 }
@@ -101,6 +113,14 @@ fn build_replay_error_response(error: &ReplayError) -> Response<axum::body::Body
             json_error_body(
                 "unsupported_stream",
                 "streaming chat completions replay is not implemented yet",
+            )
+            .into_bytes(),
+        ),
+        ReplayError::StreamCassetteRequiredForStreamRequest => (
+            StatusCode::NOT_IMPLEMENTED,
+            json_error_body(
+                "stream_cassette_required",
+                "streaming chat completions replay requires a recorded stream response",
             )
             .into_bytes(),
         ),
@@ -182,7 +202,7 @@ mod tests {
                 ("x-repeat".to_owned(), "one".to_owned()),
                 ("x-repeat".to_owned(), "two".to_owned()),
             ],
-            body: b"recorded bytes".to_vec(),
+            body: ReplayBody::OneShot(b"recorded bytes".to_vec()),
         };
 
         let built = build_replay_response(response);
@@ -200,7 +220,7 @@ mod tests {
         let response = ReplayResponse {
             status: 200,
             headers: vec![("bad header".to_owned(), "value".to_owned())],
-            body: Vec::new(),
+            body: ReplayBody::OneShot(Vec::new()),
         };
 
         let built = build_replay_response(response);
@@ -213,12 +233,49 @@ mod tests {
         let response = ReplayResponse {
             status: 999,
             headers: vec![],
-            body: Vec::new(),
+            body: ReplayBody::OneShot(Vec::new()),
         };
 
         let built = build_replay_response(response);
 
         assert_eq!(built.status(), StatusCode::BAD_GATEWAY);
+    }
+
+    #[rstest::rstest]
+    #[tokio::test]
+    async fn build_replay_response_renders_stream_events_and_default_content_type() {
+        let response = ReplayResponse {
+            status: 201,
+            headers: vec![("x-stream".to_owned(), "yes".to_owned())],
+            body: ReplayBody::Events(vec![
+                crate::cassette::StreamEvent::Comment {
+                    text: "OPENROUTER PROCESSING".to_owned(),
+                },
+                crate::cassette::StreamEvent::Data {
+                    raw: "[DONE]".to_owned(),
+                    parsed_json: None,
+                },
+            ]),
+        };
+
+        let built = build_replay_response(response);
+
+        assert_eq!(built.status(), StatusCode::CREATED);
+        assert_eq!(
+            built.headers().get(CONTENT_TYPE),
+            Some(&HeaderValue::from_static("text/event-stream")),
+        );
+        assert_eq!(
+            built.headers().get("x-stream"),
+            Some(&HeaderValue::from_static("yes")),
+        );
+        let body = axum::body::to_bytes(built.into_body(), 1024)
+            .await
+            .expect("body readable");
+        assert_eq!(
+            body.as_ref(),
+            b": OPENROUTER PROCESSING\n\ndata: [DONE]\n\n"
+        );
     }
 
     #[rstest::rstest]
@@ -286,17 +343,6 @@ mod tests {
             "mismatch",
             build_replay_error_response(&ReplayError::Mismatch(diagnostic)),
             StatusCode::CONFLICT,
-        )
-        .await
-    }
-
-    #[tokio::test]
-    async fn unsupported_stream_error_response_matches_snapshot()
-    -> Result<(), Box<dyn std::error::Error>> {
-        assert_error_response_snapshot(
-            "unsupported_stream",
-            build_replay_error_response(&ReplayError::UnsupportedStream),
-            StatusCode::NOT_IMPLEMENTED,
         )
         .await
     }

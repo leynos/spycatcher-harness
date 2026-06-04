@@ -9,7 +9,7 @@ use std::collections::HashMap;
 use serde_json::Value;
 
 use crate::cassette::diff::canonical_diff_summary;
-use crate::cassette::{Cassette, Interaction};
+use crate::cassette::{Cassette, Interaction, StreamCanonicalPolicy};
 use crate::config::MatchMode;
 use crate::{HarnessError, HarnessResult};
 
@@ -99,6 +99,8 @@ pub struct ReplayMatchEngine {
     hash_to_indices: HashMap<String, Vec<usize>>,
     /// Keyed mode: tracks consumed interactions.
     consumed: Vec<bool>,
+    /// Stream-event comparison policy for future verification surfaces.
+    stream_policy: StreamCanonicalPolicy,
 }
 
 /// Interaction data extracted from the cassette for matching purposes.
@@ -133,6 +135,39 @@ impl ReplayMatchEngine {
     /// }
     /// ```
     pub fn new(cassette: Cassette, mode: MatchMode) -> HarnessResult<Self> {
+        Self::with_policy(cassette, mode, StreamCanonicalPolicy::default())
+    }
+
+    /// Creates a new engine with explicit stream canonicalization policy.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`HarnessError::InvalidCassette`] if any interaction in the
+    /// cassette has a missing `stable_hash`.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use spycatcher_harness::cassette::{
+    ///     Cassette, ReplayMatchEngine, StreamCanonicalPolicy,
+    /// };
+    /// use spycatcher_harness::config::MatchMode;
+    ///
+    /// fn main() -> Result<(), Box<dyn std::error::Error>> {
+    ///     let cassette = Cassette::new();
+    ///     let _engine = ReplayMatchEngine::with_policy(
+    ///         cassette,
+    ///         MatchMode::SequentialStrict,
+    ///         StreamCanonicalPolicy::ignore_comments(),
+    ///     )?;
+    ///     Ok(())
+    /// }
+    /// ```
+    pub fn with_policy(
+        cassette: Cassette,
+        mode: MatchMode,
+        stream_policy: StreamCanonicalPolicy,
+    ) -> HarnessResult<Self> {
         let mut interactions = Vec::with_capacity(cassette.interactions.len());
         for (idx, interaction) in cassette.interactions.iter().enumerate() {
             let stable_hash = interaction.request.stable_hash.clone().ok_or_else(|| {
@@ -168,7 +203,14 @@ impl ReplayMatchEngine {
             sequential_cursor: 0,
             hash_to_indices,
             consumed,
+            stream_policy,
         })
+    }
+
+    /// Returns the configured stream canonicalization policy.
+    #[must_use]
+    pub const fn stream_policy(&self) -> StreamCanonicalPolicy {
+        self.stream_policy
     }
 
     /// Attempts to match an incoming request against the cassette.

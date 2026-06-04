@@ -3,6 +3,7 @@
 use super::*;
 use crate::cassette::{
     Cassette, CassetteFormatVersion, Interaction, InteractionMetadata, RecordedResponse,
+    StreamEvent,
 };
 use crate::config::MatchMode;
 use crate::protocol::CHAT_COMPLETIONS_PATH;
@@ -31,7 +32,7 @@ fn matching_non_stream_request_returns_recorded_response() {
         response.headers,
         vec![("x-replay".to_owned(), "yes".to_owned())]
     );
-    assert_eq!(response.body, b"recorded");
+    assert_eq!(response.body, ReplayBody::OneShot(b"recorded".to_vec()));
     assert_eq!(service.counters(), (1, 0));
 }
 
@@ -59,7 +60,7 @@ fn mismatched_request_returns_diagnostic() {
 }
 
 #[rstest]
-fn matched_stream_response_is_rejected() {
+fn matched_stream_response_replays_as_events() {
     let request = sample_observed_request(br#"{"model":"test","messages":[]}"#);
     let service = service_with_single_interaction(
         request.clone(),
@@ -73,21 +74,62 @@ fn matched_stream_response_is_rejected() {
     )
     .unwrap_or_else(|message| panic!("{message}"));
 
-    let error = service
+    let response = service
         .handle_chat_completions(request)
-        .expect_err("stream response should fail");
+        .expect("stream response should replay as events");
 
-    assert_eq!(error, ReplayError::UnsupportedStream);
+    assert_eq!(response.body, ReplayBody::Events(Vec::new()));
+    assert_eq!(service.counters(), (1, 0));
+}
+
+#[rstest]
+fn matched_stream_response_preserves_recorded_events() {
+    let request = sample_observed_request(br#"{"model":"test","stream":true,"messages":[]}"#);
+    let events = vec![
+        StreamEvent::Comment {
+            text: "OPENROUTER PROCESSING".to_owned(),
+        },
+        StreamEvent::Data {
+            raw: "{\"id\":\"chunk\"}".to_owned(),
+            parsed_json: Some(serde_json::json!({"id": "chunk"})),
+        },
+        StreamEvent::Data {
+            raw: "[DONE]".to_owned(),
+            parsed_json: None,
+        },
+    ];
+    let service = service_with_single_interaction(
+        request.clone(),
+        RecordedResponse::Stream {
+            status: 202,
+            headers: vec![("x-stream".to_owned(), "yes".to_owned())],
+            events: events.clone(),
+            raw_transcript: Vec::new(),
+            timing: None,
+        },
+    )
+    .unwrap_or_else(|message| panic!("{message}"));
+
+    let response = service
+        .handle_chat_completions(request)
+        .expect("stream request should replay from stream cassette");
+
+    assert_eq!(response.status, 202);
+    assert_eq!(
+        response.headers,
+        vec![("x-stream".to_owned(), "yes".to_owned())]
+    );
+    assert_eq!(response.body, ReplayBody::Events(events));
     assert_eq!(service.counters(), (1, 0));
 }
 
 #[rstest]
 #[case(
     (
-        br#"{"model":"test","messages":[]}"# as &[u8],
+        br#"{"model":"test","stream":true,"messages":[]}"# as &[u8],
         b"" as &[u8],
         br#"{"model":"test","stream":true,"messages":[]}"# as &[u8],
-        ReplayError::UnsupportedStream,
+        ReplayError::StreamCassetteRequiredForStreamRequest,
         "streaming replay request should fail",
     )
 )]
@@ -131,7 +173,15 @@ fn request_is_rejected_before_matching(
         .expect_err(expect_err_msg);
 
     assert_eq!(error, expected_error);
-    assert_eq!(service.counters(), (0, 0));
+    let expected_counters = if matches!(
+        expected_error,
+        ReplayError::StreamCassetteRequiredForStreamRequest
+    ) {
+        (1, 0)
+    } else {
+        (0, 0)
+    };
+    assert_eq!(service.counters(), expected_counters);
 }
 
 #[rstest]
@@ -156,14 +206,21 @@ fn concurrent_sequential_replay_consumes_duplicate_hashes_once_each() {
         })
         .collect::<Vec<_>>();
 
-    let mut bodies = handles
+    let bodies = handles
         .into_iter()
         .map(|handle| handle.join().expect("thread should not panic"))
         .collect::<Vec<_>>();
-    bodies.sort();
+    let mut body_bytes = bodies
+        .into_iter()
+        .map(|body| match body {
+            ReplayBody::OneShot(bytes) => bytes,
+            ReplayBody::Events(_) => panic!("duplicate non-stream responses should be bytes"),
+        })
+        .collect::<Vec<_>>();
+    body_bytes.sort();
 
     assert_eq!(
-        bodies,
+        body_bytes,
         (0..8)
             .map(|index| format!("response-{index}").into_bytes())
             .collect::<Vec<_>>()

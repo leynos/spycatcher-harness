@@ -13,10 +13,12 @@ use log::{error, info, warn};
 
 use crate::cassette::{
     IgnorePathConfig, MatchOutcome, MismatchDiagnostic, RecordedRequest, RecordedResponse,
-    ReplayMatchEngine,
+    ReplayMatchEngine, StreamEvent,
 };
 use crate::http_exchange::ObservedRequest;
-use crate::protocol::{CHAT_COMPLETIONS_PROTOCOL_ID, is_streaming_chat_completions_request};
+use crate::protocol::{
+    CHAT_COMPLETIONS_PATH, CHAT_COMPLETIONS_PROTOCOL_ID, is_streaming_chat_completions_request,
+};
 
 /// Thread-safe replay orchestration boundary.
 #[derive(Debug, Clone)]
@@ -55,27 +57,25 @@ impl ReplayService {
         )
     }
 
-    /// Replays one non-stream chat completions request from the cassette.
+    /// Replays one chat completions request from the cassette.
     pub(crate) fn handle_chat_completions(
         &self,
         request: ObservedRequest,
     ) -> Result<ReplayResponse, ReplayError> {
+        let is_stream_request = is_streaming_chat_completions_request(request.parsed_json.as_ref());
         self.reject_unreplayable_request_shape(&request)?;
         let recorded_request = canonicalize_observed_request(request)?;
         let observed_hash = recorded_hash(&recorded_request)?;
         let canonical_request = recorded_canonical_request(&recorded_request)?;
         let response = self.match_recorded_response(observed_hash, canonical_request)?;
-        self.response_from_recorded(response)
+        self.response_from_recorded(response, is_stream_request)
     }
 
     fn reject_unreplayable_request_shape(
         &self,
         request: &ObservedRequest,
     ) -> Result<(), ReplayError> {
-        if is_streaming_chat_completions_request(request.parsed_json.as_ref()) {
-            self.log_rejection("unsupported_stream", &request.path);
-            Err(ReplayError::UnsupportedStream)
-        } else if request.parsed_json.is_none() {
+        if request.parsed_json.is_none() {
             self.log_rejection("malformed_json", &request.path);
             Err(ReplayError::MalformedJson)
         } else {
@@ -168,6 +168,7 @@ impl ReplayService {
     fn response_from_recorded(
         &self,
         response: RecordedResponse,
+        is_stream_request: bool,
     ) -> Result<ReplayResponse, ReplayError> {
         match response {
             RecordedResponse::NonStream {
@@ -175,21 +176,28 @@ impl ReplayService {
                 headers,
                 body,
                 ..
+            } => {
+                if is_stream_request {
+                    self.log_rejection("stream_cassette_required", CHAT_COMPLETIONS_PATH);
+                    Err(ReplayError::StreamCassetteRequiredForStreamRequest)
+                } else {
+                    Ok(ReplayResponse {
+                        status,
+                        headers,
+                        body: ReplayBody::OneShot(body),
+                    })
+                }
+            }
+            RecordedResponse::Stream {
+                status,
+                headers,
+                events,
+                ..
             } => Ok(ReplayResponse {
                 status,
                 headers,
-                body,
+                body: ReplayBody::Events(events),
             }),
-            RecordedResponse::Stream { .. } => {
-                warn!(
-                    target: "spycatcher.harness.replay",
-                    "replay response rejected mode=replay protocol={protocol} \
-                     outcome=unsupported_stream cassette={cassette}",
-                    protocol = self.context.protocol,
-                    cassette = self.context.cassette,
-                );
-                Err(ReplayError::UnsupportedStream)
-            }
         }
     }
 }
@@ -290,8 +298,17 @@ pub(crate) struct ReplayResponse {
     pub(crate) status: u16,
     /// Persisted selected response headers in recorded order.
     pub(crate) headers: Vec<(String, String)>,
-    /// Raw recorded body bytes.
-    pub(crate) body: Vec<u8>,
+    /// Recorded body data.
+    pub(crate) body: ReplayBody,
+}
+
+/// Replay body data independent of the inbound HTTP framework.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) enum ReplayBody {
+    /// Raw recorded body bytes for non-stream responses.
+    OneShot(Vec<u8>),
+    /// Parsed stream events preserved in observed order.
+    Events(Vec<StreamEvent>),
 }
 
 /// Request-level replay failures reported to the HTTP adapter.
@@ -300,7 +317,13 @@ pub(crate) enum ReplayError {
     /// The observed request does not match the next replayable interaction.
     Mismatch(MismatchDiagnostic),
     /// Streaming replay is outside this task's scope.
+    #[expect(
+        dead_code,
+        reason = "reserved for task 2.1.3 raw-transcript streaming replay errors"
+    )]
     UnsupportedStream,
+    /// A streaming request matched a non-stream cassette interaction.
+    StreamCassetteRequiredForStreamRequest,
     /// Chat completions replay requires a valid JSON request body.
     MalformedJson,
     /// An internal replay invariant or lock failed.

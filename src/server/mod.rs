@@ -8,6 +8,7 @@ mod record_handler;
 pub(crate) mod record_metadata;
 mod replay;
 mod replay_handler;
+mod replay_stream;
 mod runtime;
 
 pub(crate) use runtime::{ServerHandle, start_record_server, start_replay_server};

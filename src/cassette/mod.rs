@@ -11,6 +11,7 @@ mod canonical;
 mod diff;
 pub(crate) mod filesystem;
 pub(crate) mod matching;
+mod stream_canonical;
 
 use std::io::{Read, Write};
 use std::num::ParseIntError;
@@ -27,6 +28,7 @@ pub use matching::{
     DIAGNOSTIC_CONSUMED, DIAGNOSTIC_EXHAUSTED, DIAGNOSTIC_NO_MATCH, InteractionPosition,
     MatchOutcome, MismatchDiagnostic, ReplayMatchEngine,
 };
+pub use stream_canonical::{StreamCanonicalPolicy, canonicalize_events};
 
 /// Schema version used to encode and validate cassette documents.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

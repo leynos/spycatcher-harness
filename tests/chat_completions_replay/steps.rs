@@ -23,7 +23,7 @@ const BASELINE_REQUEST: &[u8] =
     br#"{"model":"gpt-test","messages":[{"role":"user","content":"hi"}]}"#;
 const DIFFERENT_REQUEST: &[u8] =
     br#"{"model":"gpt-other","messages":[{"role":"user","content":"hi"}]}"#;
-const STREAMING_REQUEST: &[u8] =
+pub(super) const STREAMING_REQUEST: &[u8] =
     br#"{"model":"gpt-test","stream":true,"messages":[{"role":"user","content":"hi"}]}"#;
 const MALFORMED_REQUEST: &[u8] = br#"{"model":"gpt-test""#;
 const DIFFERENT_MALFORMED_REQUEST: &[u8] = br#"{"model":"gpt-other""#;
@@ -255,7 +255,10 @@ fn the_replay_stub_upstream_is_stopped(replay_world: &ReplayWorld) -> Result<(),
     )
 }
 
-fn send_replay_request(replay_world: &ReplayWorld, body: &[u8]) -> Result<(), Box<dyn Error>> {
+pub(super) fn send_replay_request(
+    replay_world: &ReplayWorld,
+    body: &[u8],
+) -> Result<(), Box<dyn Error>> {
     send_request_to_harness_slot(
         replay_world,
         &HarnessTarget {
@@ -267,7 +270,7 @@ fn send_replay_request(replay_world: &ReplayWorld, body: &[u8]) -> Result<(), Bo
     )
 }
 
-fn send_request_to_record_harness(
+pub(super) fn send_request_to_record_harness(
     replay_world: &ReplayWorld,
     body: &[u8],
 ) -> Result<(), Box<dyn Error>> {
@@ -331,7 +334,7 @@ fn send_request_to_harness_slot(
     Ok(())
 }
 
-fn make_record_config(
+pub(super) fn make_record_config(
     cassette_path: &camino::Utf8PathBuf,
     upstream: UpstreamConfig,
 ) -> Result<HarnessConfig, Box<dyn Error>> {
@@ -347,7 +350,7 @@ fn make_record_config(
     })
 }
 
-fn make_replay_config(
+pub(super) fn make_replay_config(
     cassette_path: &camino::Utf8PathBuf,
 ) -> Result<HarnessConfig, Box<dyn Error>> {
     let (cassette_dir, cassette_name) = split_cassette_path(cassette_path)?;
