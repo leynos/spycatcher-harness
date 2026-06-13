@@ -9,6 +9,8 @@ use ortho_config::{LocalizationArgs, Localizer, localize_clap_error_with_command
 
 const ROOT_COMMAND_ID: &str = "cli";
 
+type CommandStringApplicator = fn(Command, String) -> Command;
+
 /// Extension trait that applies localized copy to a [`Command`].
 ///
 /// # Examples
@@ -98,10 +100,24 @@ fn localize_command_copy(
     localizer: &dyn Localizer,
 ) -> Command {
     let args = command_args(&command);
-    command = localize_about(command, command_id, localizer, Some(&args));
-    command = localize_long_about(command, command_id, localizer, Some(&args));
-    command = localize_usage(command, command_id, localizer, Some(&args));
-    localize_after_help(command, command_id, localizer, Some(&args))
+    let fields: &[(&str, CommandStringApplicator)] = &[
+        ("-about", |cmd, value| cmd.about(value)),
+        ("-long-about", |cmd, value| cmd.long_about(value)),
+        ("-usage", |cmd, value| cmd.override_usage(value)),
+        ("-merge-help", |cmd, value| cmd.after_long_help(value)),
+    ];
+
+    for (suffix, apply) in fields {
+        command = apply_localized_string(
+            command,
+            &format!("{command_id}{suffix}"),
+            localizer,
+            Some(&args),
+            *apply,
+        );
+    }
+
+    command
 }
 
 fn localize_subcommands(command: Command, localizer: &dyn Localizer) -> Command {
@@ -114,50 +130,19 @@ fn command_args(command: &Command) -> LocalizationArgs<'static> {
     args
 }
 
-fn localize_about(
+#[expect(
+    clippy::too_many_arguments,
+    reason = "the helper keeps each command, lookup context, and setter dependency explicit"
+)]
+fn apply_localized_string(
     command: Command,
-    command_id: &str,
+    key: &str,
     localizer: &dyn Localizer,
     args: Option<&LocalizationArgs<'_>>,
+    apply: CommandStringApplicator,
 ) -> Command {
-    match localizer.lookup(&format!("{command_id}-about"), args) {
-        Some(about) => command.about(about),
-        None => command,
-    }
-}
-
-fn localize_long_about(
-    command: Command,
-    command_id: &str,
-    localizer: &dyn Localizer,
-    args: Option<&LocalizationArgs<'_>>,
-) -> Command {
-    match localizer.lookup(&format!("{command_id}-long-about"), args) {
-        Some(about) => command.long_about(about),
-        None => command,
-    }
-}
-
-fn localize_usage(
-    command: Command,
-    command_id: &str,
-    localizer: &dyn Localizer,
-    args: Option<&LocalizationArgs<'_>>,
-) -> Command {
-    match localizer.lookup(&format!("{command_id}-usage"), args) {
-        Some(usage) => command.override_usage(usage),
-        None => command,
-    }
-}
-
-fn localize_after_help(
-    command: Command,
-    command_id: &str,
-    localizer: &dyn Localizer,
-    args: Option<&LocalizationArgs<'_>>,
-) -> Command {
-    match localizer.lookup(&format!("{command_id}-merge-help"), args) {
-        Some(help) => command.after_long_help(help),
+    match localizer.lookup(key, args) {
+        Some(value) => apply(command, value),
         None => command,
     }
 }
