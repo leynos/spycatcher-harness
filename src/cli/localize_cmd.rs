@@ -100,6 +100,10 @@ fn localize_command_copy(
     localizer: &dyn Localizer,
 ) -> Command {
     let args = command_args(&command);
+    let ctx = LocalizeContext {
+        localizer,
+        args: Some(&args),
+    };
     let fields: &[(&str, CommandStringApplicator)] = &[
         ("-about", |cmd, value| cmd.about(value)),
         ("-long-about", |cmd, value| cmd.long_about(value)),
@@ -108,13 +112,7 @@ fn localize_command_copy(
     ];
 
     for (suffix, apply) in fields {
-        command = apply_localized_string(
-            command,
-            &format!("{command_id}{suffix}"),
-            localizer,
-            Some(&args),
-            *apply,
-        );
+        command = apply_localized_string(command, &format!("{command_id}{suffix}"), &ctx, *apply);
     }
 
     command
@@ -130,18 +128,18 @@ fn command_args(command: &Command) -> LocalizationArgs<'static> {
     args
 }
 
-#[expect(
-    clippy::too_many_arguments,
-    reason = "the helper keeps each command, lookup context, and setter dependency explicit"
-)]
+struct LocalizeContext<'a> {
+    localizer: &'a dyn Localizer,
+    args: Option<&'a LocalizationArgs<'a>>,
+}
+
 fn apply_localized_string(
     command: Command,
     key: &str,
-    localizer: &dyn Localizer,
-    args: Option<&LocalizationArgs<'_>>,
+    ctx: &LocalizeContext<'_>,
     apply: CommandStringApplicator,
 ) -> Command {
-    match localizer.lookup(key, args) {
+    match ctx.localizer.lookup(key, ctx.args) {
         Some(value) => apply(command, value),
         None => command,
     }
