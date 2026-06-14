@@ -1,4 +1,4 @@
-# Localize CLI help and parse errors via OrthoConfig localizer hooks
+# Localize CLI help, parse errors, and version output via OrthoConfig localizer hooks
 
 This ExecPlan (execution plan) is a living document. The sections `Constraints`,
 `Tolerances`, `Risks`, `Progress`, `Surprises & Discoveries`, `Decision Log`,
@@ -108,18 +108,6 @@ review, and commit gates are complete.
 
 ## Risks
 
-- The `Localizer`, `Command::localize`, and `try_parse_localized_*` symbols
-  named in `docs/ortho-config-users-guide.md` and
-  `docs/spycatcher-harness-design.md` are not all exported by the
-  `ortho_config` crate. Only the `Localizer` trait, `LocalizationArgs<'a>`
-  alias, `FluentLocalizer`, `NoOpLocalizer`,
-  `localize_clap_error_with_command`, and `clap_error_formatter` are part of
-  the public crate API. `LocalizeCmd` and the `try_parse_localized_*` helpers
-  are defined in the hello_world *example* and must be reproduced in this
-  repository (see Decision Log). Severity: medium. Likelihood: high.
-  Mitigation: include an explicit Milestone for adding a small project-owned
-  `LocalizeCmd` extension trait and parsing helper under `src/cli/`, and
-  document the inversion in `docs/developers-guide.md`.
 - The OrthoConfig `localize_clap_error_with_command` helper only ships
   bundled translations for four `clap-error-*` IDs in its embedded catalogue:
   `clap-error-missing-argument`, `clap-error-unknown-argument`,
@@ -206,6 +194,14 @@ Use timestamps to measure rates of progress and detect tolerance breaches.
   `LocalizeCmd` trait and a parsing helper. Documentation referencing
   `Command::localize` and `try_parse_localized_env` must clarify they are
   project-owned in this repository.
+- The `Localizer`, `Command::localize`, and `try_parse_localized_*` symbols
+  named in earlier planning notes were not all exported by the `ortho_config`
+  crate. Only the `Localizer` trait, `LocalizationArgs<'a>` alias,
+  `FluentLocalizer`, `NoOpLocalizer`, `localize_clap_error_with_command`, and
+  `clap_error_formatter` were available as public crate API. The project
+  resolved this by adding its own `LocalizeCmd` extension trait and localized
+  parsing helpers under `src/cli/`, then documenting that boundary in
+  `docs/developers-guide.md`.
 - `ortho_config::LocalizationArgs<'a>` is a type alias for
   `HashMap<&'a str, fluent_bundle::FluentValue<'a>>`, not a struct.
   Implementation must use it as a map.
@@ -230,9 +226,9 @@ Use timestamps to measure rates of progress and detect tolerance breaches.
   bundle with `FluentLocalizer`. The Fluent source is compiled twice. The
   embedded `include_str!` source remains a single asset.
 - Fluent treats indented bracketed lines such as `[cmds.record]` inside a
-  multiline message as variant syntax. The localized merge-help example now
-  renders those TOML sections as `cmds.record:` and `cmds.record.upstream:` to
-  keep the catalogue parser-friendly.
+  multiline message as variant syntax. The localized merge-help example uses
+  escaped bracket placeables so the rendered text remains valid TOML while the
+  catalogue stays parser-friendly.
 - The user-facing binary path for localized parse errors must not wrap
   `CliConfigError::CliParse` with `eyre`, because that duplicates the Clap
   diagnostic and adds a source location. The binary now writes localized Clap
@@ -761,10 +757,10 @@ catalogue-backed `cli-*`/`clap-error-*` IDs. Where the design references
 `Command::localize` as an OrthoConfig API, clarify that the project owns the
 extension trait.
 
-Add a short ADR in `docs/adr/` only if Milestone 4's diagnostic env switch is
-introduced, because that is a user-visible configuration knob outside the
-existing `[cmds.<subcommand>.localization]` shape. The ADR should follow
-`docs/documentation-style-guide.md`.
+The diagnostic environment switch introduced in Milestone 4 is documented in
+`docs/adr/2026-06-04-cli-localization-disable-switch.md` because it is a
+user-visible configuration knob outside the existing
+`[cmds.<subcommand>.localization]` shape.
 
 Go/no-go: `make markdownlint` and `make nixie` pass on the updated docs.
 Documentation describes the implemented behaviour and does not overpromise

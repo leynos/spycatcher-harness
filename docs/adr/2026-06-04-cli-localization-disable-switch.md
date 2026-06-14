@@ -1,8 +1,14 @@
-# Add a diagnostic switch for CLI localization
+# Architectural decision record (ADR) 001: Add a diagnostic switch for CLI localization
 
-Status: accepted
+## Status
 
-## Context
+Accepted
+
+## Date
+
+2026-06-04
+
+## Context and problem statement
 
 The `spycatcher-harness` binary now localizes `clap` help, version, and
 parse-error text before full command-line parsing completes. That early phase
@@ -17,8 +23,9 @@ diagnosing startup problems.
 ## Decision
 
 Introduce `SPYCATCHER_HARNESS_DISABLE_LOCALIZATION=1`. When this environment
-variable is present, the binary bypasses Fluent-backed CLI localization and uses
-`NoOpLocalizer` for help, version, and parse-error rendering.
+variable is set to an explicit truthy value, the binary bypasses Fluent-backed
+CLI localization and uses `NoOpLocalizer` for help, version, and parse-error
+rendering.
 
 The switch affects only CLI parser output. Harness library errors still use the
 merged `locale` and `fallback_locale` configuration after parsing.

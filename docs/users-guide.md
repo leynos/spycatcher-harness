@@ -4,10 +4,9 @@ This guide documents the public API surface and usage patterns for the
 Spycatcher harness. The harness records LLM API interactions for deterministic
 regression testing. In record mode, both non-streaming and streaming
 (`"stream": true`) Chat Completions requests are proxied upstream and persisted
-to cassette. Replay mode does not yet support streaming
-interactions---matched `"stream": true` requests return HTTP `501 Not
-Implemented`; full replay serving and verify execution are not yet
-implemented.
+to cassette. Replay mode does not yet support streaming interactions---matched
+`"stream": true` requests return HTTP `501 Not Implemented`; full replay
+serving and verify execution are not yet implemented.
 
 > **Breaking changes:** record-mode proxying changed raw header handling and
 > redaction defaults before the 0.1.0 release. See
@@ -390,9 +389,11 @@ falls back to `en-US`. After parsing, harness library errors still use the
 authoritative `--locale` and `--fallback-locale` values from the merged
 configuration.
 
-Set `SPYCATCHER_HARNESS_DISABLE_LOCALIZATION=1` to force stock `clap` help and
-parse-error output. This is intended as a diagnostic escape hatch if localized
-CLI assets need to be ruled out while investigating startup behaviour.
+Set `SPYCATCHER_HARNESS_DISABLE_LOCALIZATION=1` to force stock `clap` help,
+version, and parse-error output. This is intended as a diagnostic escape hatch
+if localized CLI assets need to be ruled out while investigating startup
+behaviour. The binary uses the same `NoOpLocalizer` fallback automatically when
+localized CLI resources cannot be loaded.
 
 ### Configuration file shape
 

@@ -18,9 +18,9 @@ cli-merge-help =
     Configuration precedence: CLI > env > config files > defaults.
     Subcommand defaults merge from the `cmds` namespace.
     Example:
-      cmds.record:
+      { "[" }cmds.record{ "]" }
       cassette_name = "session_a"
-      cmds.record.upstream:
+      { "[" }cmds.record.upstream{ "]" }
       kind = "openrouter"
       base_url = "https://openrouter.ai/api/v1"
       api_key_env = "OPENROUTER_API_KEY"

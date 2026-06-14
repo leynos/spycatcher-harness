@@ -181,13 +181,14 @@ The `cli` module is split into small private support modules to keep
 localization selection policy in these support modules rather than growing
 `src/cli.rs`.
 
-| Internal CLI module       | Purpose                                                                       |
-| ------------------------- | ----------------------------------------------------------------------------- |
-| `src/cli_args.rs`         | `LocalizationArgs` and `RecordUpstreamArgs` serializable merge shapes         |
-| `src/cli_help.rs`         | Stock long-form merge help used when CLI localization is disabled             |
-| `src/cli/localization.rs` | Localization override selection, validation, and public CLI localization glue |
-| `src/cli/localize_cmd.rs` | Project-owned `LocalizeCmd` trait and localized `clap` parsing helper         |
-| `src/cli/localizer.rs`    | Early locale selection and Fluent-backed CLI localizer construction           |
+| Internal CLI module       | Purpose                                                                |
+| ------------------------- | ---------------------------------------------------------------------- |
+| `src/cli.rs`              | Public CLI localization parsing entry points and configuration helpers |
+| `src/cli_args.rs`         | `LocalizationArgs` and `RecordUpstreamArgs` serializable merge shapes  |
+| `src/cli_help.rs`         | Stock long-form merge help used when CLI localization is disabled      |
+| `src/cli/localization.rs` | Localization override selection and validation                         |
+| `src/cli/localize_cmd.rs` | Project-owned `LocalizeCmd` trait and localized `clap` parsing helper  |
+| `src/cli/localizer.rs`    | Early locale selection and Fluent-backed CLI localizer construction    |
 
 _Table 2: Private CLI support modules._
 

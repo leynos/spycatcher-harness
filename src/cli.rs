@@ -35,7 +35,7 @@ use localize_cmd::try_parse_localized_from_iter;
 #[derive(Debug, Error)]
 pub enum CliConfigError {
     /// CLI parsing failed.
-    #[error("failed to parse CLI arguments: {0}")]
+    #[error("{0}")]
     CliParse(#[from] clap::Error),
     /// Subcommand merge failed.
     #[error("failed to merge layered config for `{subcommand}`: {message}")]
@@ -95,7 +95,7 @@ pub fn load_subcommand_config() -> Result<HarnessConfig, CliConfigError> {
 pub fn load_subcommand_config_with_localizer(
     localizer: &dyn Localizer,
 ) -> Result<HarnessConfig, CliConfigError> {
-    load_subcommand_config_from_iter(std::env::args_os(), localizer)
+    load_subcommand_config_from_iter_with_localizer(std::env::args_os(), localizer)
 }
 
 /// Loads merged configuration for the selected subcommand from `iter`.
@@ -105,10 +105,7 @@ pub fn load_subcommand_config_with_localizer(
 /// ```rust,no_run
 /// use spycatcher_harness::cli::load_subcommand_config_from_iter;
 ///
-/// let config = load_subcommand_config_from_iter(
-///     ["spycatcher-harness", "replay"],
-///     &ortho_config::NoOpLocalizer::new(),
-/// )?;
+/// let config = load_subcommand_config_from_iter(["spycatcher-harness", "replay"])?;
 /// assert_eq!(config.cassette_name, "default");
 /// # Ok::<(), spycatcher_harness::cli::CliConfigError>(())
 /// ```
@@ -117,7 +114,22 @@ pub fn load_subcommand_config_with_localizer(
 ///
 /// Returns [`CliConfigError`] if argument parsing fails or if layered loading
 /// from files/environment fails.
-pub fn load_subcommand_config_from_iter<I, T>(
+pub fn load_subcommand_config_from_iter<I, T>(iter: I) -> Result<HarnessConfig, CliConfigError>
+where
+    I: IntoIterator<Item = T>,
+    T: Into<std::ffi::OsString> + Clone,
+{
+    load_subcommand_config_from_iter_with_localizer(iter, &NoOpLocalizer::new())
+}
+
+/// Loads merged configuration for the selected subcommand from `iter` using
+/// `localizer`.
+///
+/// # Errors
+///
+/// Returns [`CliConfigError`] if argument parsing fails or if layered loading
+/// from files/environment fails.
+pub fn load_subcommand_config_from_iter_with_localizer<I, T>(
     iter: I,
     localizer: &dyn Localizer,
 ) -> Result<HarnessConfig, CliConfigError>
@@ -131,7 +143,6 @@ where
 }
 
 /// Parses [`Cli`] from `iter`, mapping help/version requests to display output.
-/// Errors with display output for help/version or CLI parse failures otherwise.
 fn parse_cli_from_iter<I, T>(iter: I, localizer: &dyn Localizer) -> Result<Cli, CliConfigError>
 where
     I: IntoIterator<Item = T>,
@@ -147,7 +158,6 @@ where
 }
 
 /// Merges env and config-file layers into subcommand `args` using `prefix`.
-/// Errors with [`CliConfigError::Merge`] if `OrthoConfig` cannot merge input.
 fn merge_subcommand_config<T>(
     prefix: &Prefix,
     args: &T,
@@ -194,7 +204,6 @@ impl Commands {
 }
 
 /// Dispatches configuration loading to the subcommand-specific loader.
-/// Errors are propagated from the selected subcommand loader.
 fn load_command_config(
     prefix: &Prefix,
     command: &Commands,
@@ -207,14 +216,12 @@ fn load_command_config(
 }
 
 /// Merges record subcommand configuration into [`HarnessConfig`].
-/// Errors if merging or locale validation fails.
 fn load_record_config(prefix: &Prefix, args: &RecordArgs) -> Result<HarnessConfig, CliConfigError> {
     let merged_args: RecordArgs = merge_subcommand_config(prefix, args, "record")?;
     to_record_config(args, &merged_args)
 }
 
 /// Merges replay subcommand configuration into [`HarnessConfig`].
-/// Errors if merging or locale validation fails.
 fn load_replay_config(prefix: &Prefix, args: &ReplayArgs) -> Result<HarnessConfig, CliConfigError> {
     let merged_args: ReplayArgs = merge_subcommand_config(prefix, args, "replay")?;
     to_replay_config(args, &merged_args)
@@ -300,7 +307,6 @@ struct VerifyArgs {
 }
 
 /// Builds [`HarnessConfig`] from common overrides, `mode`, and optional upstream.
-/// Errors if locale validation inside `apply_overrides` fails.
 fn build_config(
     overrides: CommonOverrides<'_>,
     mode: config::Mode,
@@ -320,7 +326,6 @@ fn build_config(
 }
 
 /// Converts record CLI and merged arguments into record-mode [`HarnessConfig`].
-/// Errors if locale validation fails.
 fn to_record_config(
     cli_args: &RecordArgs,
     merged_args: &RecordArgs,
@@ -333,7 +338,6 @@ fn to_record_config(
 }
 
 /// Converts replay CLI and merged arguments into replay-mode [`HarnessConfig`].
-/// Errors if locale validation fails.
 fn to_replay_config(
     cli_args: &ReplayArgs,
     merged_args: &ReplayArgs,
@@ -342,7 +346,6 @@ fn to_replay_config(
 }
 
 /// Converts verify CLI and merged arguments into verify-mode [`HarnessConfig`].
-/// Errors if locale validation fails.
 fn to_verify_config(
     cli_args: &VerifyArgs,
     merged_args: &VerifyArgs,
@@ -351,9 +354,6 @@ fn to_verify_config(
 }
 
 /// Applies `overrides` to `config`, validating locale values before mutation.
-/// The final `fallback_locale` is always validated, including defaults.
-/// Errors with [`CliConfigError::InvalidLocale`] if any locale value is not a
-/// valid BCP 47 language identifier.
 fn apply_overrides(
     config: &mut HarnessConfig,
     overrides: CommonOverrides<'_>,

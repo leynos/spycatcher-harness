@@ -70,29 +70,48 @@ pub fn build_cli_localizer_from_resources(
 /// ```
 #[must_use]
 pub fn parse_early_locale(candidate: Option<&str>) -> LanguageIdentifier {
-    candidate
-        .unwrap_or("en-US")
-        .parse()
-        .unwrap_or_else(|error| {
-            tracing::warn!(?error, "invalid early CLI locale; using en-US");
-            langid!("en-US")
-        })
+    parse_locale(candidate.unwrap_or("en-US")).unwrap_or_else(|error| {
+        tracing::warn!(?error, "invalid early CLI locale; using en-US");
+        langid!("en-US")
+    })
 }
 
 /// Returns the locale to use before full CLI parsing.
 #[must_use]
 pub fn early_locale_plan() -> LanguageIdentifier {
-    parse_early_locale(early_locale_env_value().as_deref())
+    if let Ok(locale) = std::env::var(LOCALE_ENV) {
+        match parse_locale(&locale) {
+            Ok(parsed) => return parsed,
+            Err(error) => tracing::warn!(
+                ?error,
+                "invalid primary early CLI locale; trying fallback locale"
+            ),
+        }
+    }
+
+    if let Ok(locale) = std::env::var(FALLBACK_LOCALE_ENV) {
+        match parse_locale(&locale) {
+            Ok(parsed) => return parsed,
+            Err(error) => tracing::warn!(?error, "invalid fallback early CLI locale; using en-US"),
+        }
+    }
+
+    langid!("en-US")
 }
 
 /// Returns true when CLI localization should be bypassed for diagnostics.
 #[must_use]
 pub fn is_cli_localization_disabled() -> bool {
-    std::env::var_os(DISABLE_LOCALIZATION_ENV).is_some()
+    std::env::var(DISABLE_LOCALIZATION_ENV).is_ok_and(|value| {
+        matches!(
+            value.trim().to_ascii_lowercase().as_str(),
+            "1" | "true" | "yes"
+        )
+    })
 }
 
-fn early_locale_env_value() -> Option<String> {
-    std::env::var(LOCALE_ENV)
-        .ok()
-        .or_else(|| std::env::var(FALLBACK_LOCALE_ENV).ok())
+fn parse_locale(
+    value: &str,
+) -> Result<LanguageIdentifier, i18n_embed::unic_langid::LanguageIdentifierError> {
+    value.parse()
 }

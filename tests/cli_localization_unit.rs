@@ -6,13 +6,14 @@
 use clap::Command;
 use i18n_embed::unic_langid::langid;
 use ortho_config::{
-    FluentLocalizer, LocalizationArgs, NoOpLocalizer, localize_clap_error_with_command,
+    FluentLocalizer, LocalizationArgs, NoOpLocalizer, figment, localize_clap_error_with_command,
 };
 use rstest::rstest;
-use spycatcher_harness::cli::load_subcommand_config_from_iter;
+use spycatcher_harness::cli::load_subcommand_config_from_iter_with_localizer;
 use spycatcher_harness::cli::localization::LocalizeCmd;
 use spycatcher_harness::cli::localizer::{
-    build_cli_localizer, build_cli_localizer_from_resources, parse_early_locale,
+    DISABLE_LOCALIZATION_ENV, build_cli_localizer, build_cli_localizer_from_resources,
+    early_locale_plan, is_cli_localization_disabled, parse_early_locale,
 };
 
 const CLI_FTL: &str = include_str!("../i18n/en-US/spycatcher-harness.ftl");
@@ -99,9 +100,11 @@ fn fluent_localizer_updates_command_copy() {
 fn localized_help_display_is_returned_from_config_loader() {
     let localizer = build_cli_localizer(langid!("en-US"));
 
-    let error =
-        load_subcommand_config_from_iter(["spycatcher-harness", "--help"], localizer.as_ref())
-            .expect_err("help should be surfaced as display output");
+    let error = load_subcommand_config_from_iter_with_localizer(
+        ["spycatcher-harness", "--help"],
+        localizer.as_ref(),
+    )
+    .expect_err("help should be surfaced as display output");
 
     insta::assert_snapshot!(error.to_string());
 }
@@ -110,7 +113,7 @@ fn localized_help_display_is_returned_from_config_loader() {
 fn localized_unknown_argument_is_returned_from_config_loader() {
     let localizer = build_cli_localizer(langid!("en-US"));
 
-    let error = load_subcommand_config_from_iter(
+    let error = load_subcommand_config_from_iter_with_localizer(
         ["spycatcher-harness", "replay", "--not-a-flag"],
         localizer.as_ref(),
     )
@@ -121,7 +124,7 @@ fn localized_unknown_argument_is_returned_from_config_loader() {
 
 #[rstest]
 fn noop_localizer_preserves_stock_unknown_argument() {
-    let error = load_subcommand_config_from_iter(
+    let error = load_subcommand_config_from_iter_with_localizer(
         ["spycatcher-harness", "replay", "--not-a-flag"],
         &NoOpLocalizer::new(),
     )
@@ -158,4 +161,45 @@ fn broken_consumer_resources_fall_back_to_noop_localizer() {
 #[case(None, "en-US")]
 fn parse_early_locale_is_deterministic(#[case] candidate: Option<&str>, #[case] expected: &str) {
     assert_eq!(parse_early_locale(candidate).to_string(), expected);
+}
+
+#[rstest]
+fn early_locale_plan_uses_fallback_when_primary_env_is_invalid() {
+    #[expect(
+        clippy::result_large_err,
+        reason = "figment::Jail callback requires figment::error::Result"
+    )]
+    figment::Jail::expect_with(|jail| {
+        jail.set_env("SPYCATCHER_HARNESS_LOCALE", "not_a_locale");
+        jail.set_env("SPYCATCHER_HARNESS_FALLBACK_LOCALE", "en-GB");
+
+        assert_eq!(early_locale_plan().to_string(), "en-GB");
+        Ok(())
+    });
+}
+
+#[rstest]
+#[case(None, false)]
+#[case(Some(""), false)]
+#[case(Some("0"), false)]
+#[case(Some("false"), false)]
+#[case(Some("1"), true)]
+#[case(Some("true"), true)]
+#[case(Some("yes"), true)]
+fn cli_localization_disable_switch_requires_truthy_value(
+    #[case] env_value: Option<&str>,
+    #[case] expected: bool,
+) {
+    #[expect(
+        clippy::result_large_err,
+        reason = "figment::Jail callback requires figment::error::Result"
+    )]
+    figment::Jail::expect_with(|jail| {
+        if let Some(value) = env_value {
+            jail.set_env(DISABLE_LOCALIZATION_ENV, value);
+        }
+
+        assert_eq!(is_cli_localization_disabled(), expected);
+        Ok(())
+    });
 }

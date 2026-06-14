@@ -11,6 +11,7 @@ use spycatcher_harness::cli::localizer::DISABLE_LOCALIZATION_ENV;
 #[test]
 fn binary_emits_localized_help() {
     let output = Command::new(env!("CARGO_BIN_EXE_spycatcher-harness"))
+        .env_remove(DISABLE_LOCALIZATION_ENV)
         .arg("--help")
         .output()
         .expect("binary should execute");
@@ -23,6 +24,7 @@ fn binary_emits_localized_help() {
 #[test]
 fn binary_emits_localized_unknown_argument_error() {
     let output = Command::new(env!("CARGO_BIN_EXE_spycatcher-harness"))
+        .env_remove(DISABLE_LOCALIZATION_ENV)
         .args(["replay", "--not-a-flag"])
         .output()
         .expect("binary should execute");
@@ -53,6 +55,7 @@ fn binary_can_disable_cli_localization_for_diagnostics() {
 fn binary_uses_locale_flags_for_startup_error_rendering() {
     let temp_dir = tempfile::tempdir().expect("temporary directory should be created");
     let output = Command::new(env!("CARGO_BIN_EXE_spycatcher-harness"))
+        .env_remove(DISABLE_LOCALIZATION_ENV)
         .current_dir(temp_dir.path())
         .args(["record", "--locale", "en-GB", "--fallback-locale", "en-US"])
         .output()

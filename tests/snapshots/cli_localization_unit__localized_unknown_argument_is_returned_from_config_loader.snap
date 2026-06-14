@@ -1,8 +1,9 @@
 ---
 source: tests/cli_localization_unit.rs
+assertion_line: 122
 expression: error.to_string()
 ---
-failed to parse CLI arguments: error: unknown argument: ⁨--not-a-flag⁩
+error: unknown argument: ⁨--not-a-flag⁩
 
 Usage: spycatcher-harness replay [OPTIONS]
 
