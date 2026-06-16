@@ -152,7 +152,7 @@ review, and commit gates are complete.
   current CLI adapter, binary, localization assets, tests, and OrthoConfig
   upstream localizer API.
 - [x] (2026-05-28T10:30Z) Drafted this ExecPlan.
-- [ ] Open draft PR and request approval.
+- [x] Open draft PR and request approval.
 - [x] (2026-06-04T00:00Z) Received user instruction to proceed with
   implementation of this ExecPlan; treating that as explicit approval to move
   from draft to implementation.
@@ -180,6 +180,20 @@ review, and commit gates are complete.
   `make nixie` passed. CodeRabbit review first reported one trivial ADR comma
   fix; after applying it and re-running documentation gates, CodeRabbit
   returned zero findings.
+- [x] (2026-06-16T00:00Z) Review follow-up: verified the reported version
+  overclaim against the current code, implemented `--version` with localized
+  command-copy support, and added snapshots for version, missing-subcommand,
+  and invalid-value output.
+- [x] (2026-06-16T00:00Z) Review follow-up: added the planned proptest
+  invariant for generated language identifiers and localizer fallback, plus a
+  merge-help content parity test to guard the stock and Fluent copies.
+- [x] (2026-06-16T00:00Z) Review follow-up: recorded the explicit decision to
+  rely on binary e2e snapshots instead of adding duplicate `rstest-bdd`
+  scenarios for this CLI localization surface.
+- [x] (2026-06-16T00:00Z) Review follow-up validation passed:
+  `make check-fmt`, `make typecheck`, `make lint`, `make test`,
+  `make markdownlint`, and `make nixie`. CodeRabbit review completed with zero
+  findings.
 
 Use timestamps to measure rates of progress and detect tolerance breaches.
 
@@ -233,6 +247,14 @@ Use timestamps to measure rates of progress and detect tolerance breaches.
   `CliConfigError::CliParse` with `eyre`, because that duplicates the Clap
   diagnostic and adds a source location. The binary now writes localized Clap
   parse errors directly to stderr and exits with code 2.
+- `clap::Command::version` stores a static builder string, unlike help text
+  fields that accept owned strings. The localized version helper therefore
+  converts the rendered version component into the static string shape clap
+  requires before parsing.
+- Fluent inserts bidirectional isolation marks around interpolated values such
+  as `{ $binary }`, `{ $argument }`, and `{ $valid_subcommands }`. The root
+  usage snapshots intentionally preserve those marks; subcommand usage remains
+  plain stock clap usage when no localized subcommand usage entry is present.
 
 ## Decision Log
 
@@ -285,15 +307,34 @@ Use timestamps to measure rates of progress and detect tolerance breaches.
   process boundary instead of wrapping it in `eyre`. Rationale: Clap parse
   errors are already complete user-facing diagnostics; wrapping them made the
   output noisy and duplicated. Date/Author: 2026-06-04 / agent.
+- Decision: implement `--version` rather than reverting the version scope from
+  the roadmap and guides. Rationale: the documentation already describes
+  version output as part of the pre-parse command localization path, and clap
+  can provide the flag with `#[command(version)]`. The localized catalogue
+  supplies the version component while clap renders the final
+  `spycatcher-harness 0.1.0` line. Date/Author: 2026-06-16 / agent.
+- Decision: do not add a separate `rstest-bdd` feature for CLI localization.
+  Rationale: `tests/binary_localization_e2e.rs` exercises the compiled binary
+  through the real process boundary and now snapshots localized help, version,
+  unknown-argument output, and the `NoOpLocalizer` diagnostic fallback.
+  Duplicating those same paths through BDD step definitions would add
+  maintenance without increasing behaviour coverage. Date/Author: 2026-06-16
+  / agent.
+- Decision: keep both `src/cli_help.rs::CLI_MERGE_HELP` and the
+  `cli-merge-help` Fluent entry. Rationale: the constant remains the stock
+  clap fallback when localization is disabled, while the Fluent entry is the
+  localized path. A unit test renders the Fluent entry and asserts every
+  non-empty stock line is still present, allowing harmless whitespace
+  differences without silent content drift. Date/Author: 2026-06-16 / agent.
 
 ## Outcomes & Retrospective
 
-Implemented localized CLI help and parse-error rendering through a project-owned
-`LocalizeCmd` trait, `try_parse_localized_from_iter`, and a Fluent-backed
-`ortho_config::Localizer` built from the existing en-US catalogue. The binary
-now builds that CLI localizer before argument parsing, then builds the
-authoritative `FluentLanguageLoader` after merged configuration is available
-for harness library errors.
+Implemented localized CLI help, version, and parse-error rendering through a
+project-owned `LocalizeCmd` trait, `try_parse_localized_from_iter`, and a
+Fluent-backed `ortho_config::Localizer` built from the existing en-US
+catalogue. The binary now builds that CLI localizer before argument parsing,
+then builds the authoritative `FluentLanguageLoader` after merged configuration
+is available for harness library errors.
 
 The fallback path is deterministic. Invalid localizer resources fall back to
 `NoOpLocalizer`, and the diagnostic `SPYCATCHER_HARNESS_DISABLE_LOCALIZATION=1`
@@ -303,7 +344,12 @@ duplicated `eyre` reports.
 
 Validation passed with `make check-fmt`, `make lint`, `make test`,
 `make markdownlint`, and `make nixie`. CodeRabbit review completed with zero
-findings after one trivial ADR punctuation fix.
+findings after one trivial ADR punctuation fix. Follow-up validation on
+2026-06-16 added targeted `cargo test --test cli_localization_unit` and
+`cargo test --test binary_localization_e2e` runs covering the new version and
+parse-error snapshots before `make check-fmt`, `make typecheck`, `make lint`,
+`make test`, `make markdownlint`, `make nixie`, and `coderabbit review --agent`
+all passed.
 
 ## Relevant documentation and skills
 
@@ -445,19 +491,9 @@ Add `insta` snapshot cases to `tests/cli_localization_unit.rs` (or a sibling
 - the rendered output for an invalid value
   (`record --listen not-a-socket`).
 
-Add an `rstest-bdd` feature `tests/features/cli_localization.feature` with
-scenarios for the user-visible behaviour, and step definitions in
-`tests/cli_localization_bdd.rs`:
-
-- localized help is emitted when running `--help`;
-- localized version is emitted when running `--version`;
-- a missing-required-argument scenario emits the localized text;
-- an unknown-argument scenario emits the localized text;
-- when localization assets fail to load, the CLI still emits help, version,
-  and parse-error output using clap's stock text. The "assets failed to load"
-  condition is simulated by injecting a `NoOpLocalizer` through the test
-  harness; the production binary path is exercised separately by the end-to-end
-  test below.
+Do not add a separate `rstest-bdd` feature for CLI localization. The Decision
+Log records the 2026-06-16 choice to use binary e2e snapshots instead because
+they exercise the same user-visible behaviour through the compiled binary.
 
 Extend `tests/binary_localization_e2e.rs` with end-to-end coverage that invokes
 the compiled binary via `std::process::Command`:
@@ -805,10 +841,11 @@ The minimum accepted validation for the implementation is:
 - new `rstest` unit tests prove the `LocalizeCmd` extension trait, the
   `try_parse_localized_from_iter` helper, and the `build_cli_localizer`
   fallback policy;
-- new `insta` snapshots pin the localized help, version, and parse-error
-  text for the root command and each subcommand;
-- new `rstest-bdd` scenarios prove externally observable behaviour
-  for localized help, localized parse errors, and the `NoOpLocalizer` fallback;
+- new `insta` snapshots pin localized root help, version, missing-subcommand,
+  unknown-argument, and invalid-value text, plus binary help, version, and
+  unknown-argument output;
+- the Decision Log records why no additional `rstest-bdd` scenarios are added
+  for this surface;
 - extended `tests/binary_localization_e2e.rs` proves the compiled binary
   emits localized help and parse errors through the real OS process boundary;
 - a `proptest` strategy proves random BCP 47 language identifiers do not

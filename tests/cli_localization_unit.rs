@@ -4,10 +4,11 @@
 //! parsing helper without invoking the compiled binary.
 
 use clap::Command;
-use i18n_embed::unic_langid::langid;
+use i18n_embed::unic_langid::{LanguageIdentifier, langid};
 use ortho_config::{
     FluentLocalizer, LocalizationArgs, NoOpLocalizer, figment, localize_clap_error_with_command,
 };
+use proptest::prelude::*;
 use rstest::rstest;
 use spycatcher_harness::cli::load_subcommand_config_from_iter_with_localizer;
 use spycatcher_harness::cli::localization::LocalizeCmd;
@@ -30,6 +31,7 @@ fn bundled_cli_catalogue_builds() {
 #[case("cli-about")]
 #[case("cli-long-about")]
 #[case("cli-usage")]
+#[case("cli-version")]
 #[case("cli-merge-help")]
 #[case("cli-record-about")]
 #[case("cli-replay-about")]
@@ -38,6 +40,7 @@ fn cli_catalogue_entries_are_available(#[case] id: &str) {
     let localizer = build_cli_localizer(langid!("en-US"));
     let mut args = LocalizationArgs::new();
     args.insert("binary", "spycatcher-harness".into());
+    args.insert("version", "0.1.0".into());
 
     let rendered = localizer.lookup(id, Some(&args));
 
@@ -78,7 +81,9 @@ fn noop_localizer_leaves_command_copy_unchanged() {
 
 #[rstest]
 fn fluent_localizer_updates_command_copy() {
-    let command = Command::new("spycatcher-harness").about("Stock about");
+    let command = Command::new("spycatcher-harness")
+        .about("Stock about")
+        .version("0.0.0");
     let localizer = build_cli_localizer(langid!("en-US"));
 
     let localized = command.localize(localizer.as_ref());
@@ -89,10 +94,41 @@ fn fluent_localizer_updates_command_copy() {
             "Deterministic record/replay harness for LLM API testing"
         ))
     );
+    let version = localized
+        .get_version()
+        .map(str::to_owned)
+        .expect("localized command should keep version text");
+    assert!(
+        version.contains("0.0.0"),
+        "localized version should include the package version, got: {version}"
+    );
     assert!(
         localized
             .get_after_long_help()
             .is_some_and(|help| help.to_string().contains("Configuration precedence"))
+    );
+}
+
+#[rstest]
+fn fluent_localizer_updates_subcommand_copy() {
+    let localizer = FluentLocalizer::builder(langid!("en-US"))
+        .with_consumer_resources([
+            "cli-about = Root localized\ncli-replay-about = Replay localized by catalogue\n",
+        ])
+        .try_build()
+        .expect("test CLI catalogue should build");
+    let command =
+        Command::new("spycatcher-harness").subcommand(Command::new("replay").about("Stock replay"));
+
+    let localized = command.localize(&localizer);
+    let replay = localized
+        .get_subcommands()
+        .find(|subcommand| subcommand.get_name() == "replay")
+        .expect("replay subcommand should remain present");
+
+    assert_eq!(
+        replay.get_about().map(ToString::to_string),
+        Some(String::from("Replay localized by catalogue"))
     );
 }
 
@@ -110,6 +146,30 @@ fn localized_help_display_is_returned_from_config_loader() {
 }
 
 #[rstest]
+fn localized_version_display_is_returned_from_config_loader() {
+    let localizer = build_cli_localizer(langid!("en-US"));
+
+    let error = load_subcommand_config_from_iter_with_localizer(
+        ["spycatcher-harness", "--version"],
+        localizer.as_ref(),
+    )
+    .expect_err("version should be surfaced as display output");
+
+    insta::assert_snapshot!(error.to_string());
+}
+
+#[rstest]
+fn localized_missing_subcommand_is_returned_from_config_loader() {
+    let localizer = build_cli_localizer(langid!("en-US"));
+
+    let error =
+        load_subcommand_config_from_iter_with_localizer(["spycatcher-harness"], localizer.as_ref())
+            .expect_err("missing subcommand should fail");
+
+    insta::assert_snapshot!(error.to_string());
+}
+
+#[rstest]
 fn localized_unknown_argument_is_returned_from_config_loader() {
     let localizer = build_cli_localizer(langid!("en-US"));
 
@@ -118,6 +178,19 @@ fn localized_unknown_argument_is_returned_from_config_loader() {
         localizer.as_ref(),
     )
     .expect_err("unknown argument should fail");
+
+    insta::assert_snapshot!(error.to_string());
+}
+
+#[rstest]
+fn localized_invalid_value_is_returned_from_config_loader() {
+    let localizer = build_cli_localizer(langid!("en-US"));
+
+    let error = load_subcommand_config_from_iter_with_localizer(
+        ["spycatcher-harness", "record", "--listen", "not-a-socket"],
+        localizer.as_ref(),
+    )
+    .expect_err("invalid listen address should fail");
 
     insta::assert_snapshot!(error.to_string());
 }
@@ -153,6 +226,71 @@ fn broken_consumer_resources_fall_back_to_noop_localizer() {
     let localizer = build_cli_localizer_from_resources(langid!("en-US"), ["cli-about = {"]);
 
     assert!(localizer.lookup("cli-about", None).is_none());
+}
+
+fn language_subtag() -> impl Strategy<Value = String> {
+    proptest::collection::vec(b'a'..=b'z', 2..=3)
+        .prop_map(|bytes| bytes.into_iter().map(char::from).collect())
+}
+
+fn region_subtag() -> impl Strategy<Value = String> {
+    proptest::collection::vec(b'A'..=b'Z', 2)
+        .prop_map(|bytes| bytes.into_iter().map(char::from).collect())
+}
+
+fn script_subtag() -> impl Strategy<Value = String> {
+    (b'A'..=b'Z', proptest::collection::vec(b'a'..=b'z', 3))
+        .prop_map(|(first, rest)| std::iter::once(first).chain(rest).map(char::from).collect())
+}
+
+fn variant_subtag() -> impl Strategy<Value = String> {
+    prop_oneof![
+        Just(String::from("valencia")),
+        proptest::collection::vec(b'a'..=b'z', 5..=8)
+            .prop_map(|bytes| bytes.into_iter().map(char::from).collect()),
+    ]
+}
+
+fn valid_locale_text() -> impl Strategy<Value = String> {
+    (
+        language_subtag(),
+        proptest::option::of(script_subtag()),
+        proptest::option::of(region_subtag()),
+        proptest::option::of(variant_subtag()),
+    )
+        .prop_map(|(language, script, region, variant)| {
+            let mut locale = language;
+            for subtag in [script, region, variant].into_iter().flatten() {
+                locale.push('-');
+                locale.push_str(&subtag);
+            }
+            locale
+        })
+}
+
+proptest! {
+    #[test]
+    fn generated_language_identifiers_resolve_to_a_cli_localizer(
+        locale in valid_locale_text(),
+        use_broken_resource in any::<bool>(),
+    ) {
+        let parsed = locale
+            .parse::<LanguageIdentifier>()
+            .map_err(|error| TestCaseError::fail(error.to_string()))?;
+        let resources = if use_broken_resource {
+            vec!["cli-about = {"]
+        } else {
+            vec![CLI_FTL]
+        };
+        let localizer = build_cli_localizer_from_resources(parsed, resources);
+        let mut args = LocalizationArgs::new();
+        args.insert("binary", "spycatcher-harness".into());
+        args.insert("version", "0.1.0".into());
+
+        let rendered = localizer.lookup("cli-about", Some(&args));
+
+        prop_assert!(rendered.is_none_or(|text| !text.trim().is_empty()));
+    }
 }
 
 #[rstest]

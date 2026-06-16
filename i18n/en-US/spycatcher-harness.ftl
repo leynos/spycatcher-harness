@@ -14,6 +14,7 @@ cli-long-about =
     cassette responses for repeatable tests, and verifies cassette integrity
     before those cassettes are used in automation.
 cli-usage = { $binary } <COMMAND>
+cli-version = { $version }
 cli-merge-help =
     Configuration precedence: CLI > env > config files > defaults.
     Subcommand defaults merge from the `cmds` namespace.

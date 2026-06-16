@@ -24,3 +24,40 @@ pub(super) const CLI_MERGE_HELP: &str = concat!(
     "Nested keys use double underscores, e.g.\n",
     "SPYCATCHER_HARNESS_CMDS_RECORD_UPSTREAM__BASE_URL."
 );
+
+#[cfg(test)]
+mod tests {
+    //! Tests for keeping stock and localized long-help content aligned.
+
+    use i18n_embed::unic_langid::langid;
+    use ortho_config::{FluentLocalizer, Localizer};
+
+    use super::CLI_MERGE_HELP;
+
+    const CLI_FTL: &str = include_str!("../i18n/en-US/spycatcher-harness.ftl");
+
+    #[test]
+    fn localized_merge_help_matches_stock_merge_help_content() {
+        let fluent = FluentLocalizer::builder(langid!("en-US"))
+            .with_consumer_resources([CLI_FTL])
+            .try_build()
+            .expect("bundled CLI catalogue should build");
+        let rendered_help = fluent
+            .lookup("cli-merge-help", None)
+            .expect("localized merge help should render");
+
+        for expected in non_empty_lines(CLI_MERGE_HELP) {
+            assert!(
+                non_empty_lines(&rendered_help).contains(&expected),
+                "localized merge help should contain stock line: {expected}"
+            );
+        }
+    }
+
+    fn non_empty_lines(text: &str) -> Vec<&str> {
+        text.lines()
+            .map(str::trim)
+            .filter(|line| !line.is_empty())
+            .collect()
+    }
+}

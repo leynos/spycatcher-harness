@@ -1,0 +1,5 @@
+---
+source: tests/binary_localization_e2e.rs
+expression: stdout
+---
+spycatcher-harness 0.1.0

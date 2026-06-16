@@ -180,6 +180,7 @@ where
 
 #[derive(Debug, Parser)]
 #[command(name = "spycatcher-harness")]
+#[command(version)]
 #[command(about = "Deterministic record/replay harness for LLM API testing")]
 #[command(after_long_help = CLI_MERGE_HELP)]
 struct Cli {

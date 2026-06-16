@@ -1,0 +1,17 @@
+---
+source: tests/cli_localization_unit.rs
+expression: error.to_string()
+---
+error: missing required subcommand; valid subcommands: ⁨record, replay, verify, help⁩
+
+Usage: ⁨spycatcher-harness⁩ <COMMAND>
+
+Commands:
+  record  Proxy to upstream and record interactions.
+  replay  Replay interactions from a cassette.
+  verify  Verify cassette and configuration integrity.
+  help    Print this message or the help of the given subcommand(s)
+
+Options:
+  -h, --help     Print help (see more with '--help')
+  -V, --version  Print version

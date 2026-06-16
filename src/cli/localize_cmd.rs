@@ -107,6 +107,7 @@ fn localize_command_copy(
     let fields: &[(&str, CommandStringApplicator)] = &[
         ("-about", |cmd, value| cmd.about(value)),
         ("-long-about", |cmd, value| cmd.long_about(value)),
+        ("-version", apply_localized_version),
         ("-usage", |cmd, value| cmd.override_usage(value)),
         ("-merge-help", |cmd, value| cmd.after_long_help(value)),
     ];
@@ -122,9 +123,18 @@ fn localize_subcommands(command: Command, localizer: &dyn Localizer) -> Command 
     command.mut_subcommands(|subcommand| subcommand.localize(localizer))
 }
 
+fn apply_localized_version(command: Command, value: String) -> Command {
+    // Clap stores version text as a static builder string, unlike help text.
+    let leaked: &'static str = Box::leak(value.into_boxed_str());
+    command.version(leaked)
+}
+
 fn command_args(command: &Command) -> LocalizationArgs<'static> {
     let mut args = LocalizationArgs::new();
     args.insert("binary", command.get_name().to_owned().into());
+    if let Some(version) = command.get_version() {
+        args.insert("version", version.to_owned().into());
+    }
     args
 }
 

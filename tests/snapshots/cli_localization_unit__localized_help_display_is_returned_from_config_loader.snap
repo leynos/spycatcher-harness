@@ -1,6 +1,5 @@
 ---
 source: tests/cli_localization_unit.rs
-assertion_line: 109
 expression: error.to_string()
 ---
 Deterministic record/replay harness for LLM API testing.
@@ -19,6 +18,9 @@ Commands:
 Options:
   -h, --help
           Print help (see a summary with '-h')
+
+  -V, --version
+          Print version
 
 Configuration precedence: CLI > env > config files > defaults.
 Subcommand defaults merge from the `cmds` namespace.

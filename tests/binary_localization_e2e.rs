@@ -22,6 +22,19 @@ fn binary_emits_localized_help() {
 }
 
 #[test]
+fn binary_emits_localized_version() {
+    let output = Command::new(env!("CARGO_BIN_EXE_spycatcher-harness"))
+        .env_remove(DISABLE_LOCALIZATION_ENV)
+        .arg("--version")
+        .output()
+        .expect("binary should execute");
+
+    assert!(output.status.success(), "version should exit successfully");
+    let stdout = String::from_utf8(output.stdout).expect("stdout should be UTF-8");
+    insta::assert_snapshot!(stdout);
+}
+
+#[test]
 fn binary_emits_localized_unknown_argument_error() {
     let output = Command::new(env!("CARGO_BIN_EXE_spycatcher-harness"))
         .env_remove(DISABLE_LOCALIZATION_ENV)

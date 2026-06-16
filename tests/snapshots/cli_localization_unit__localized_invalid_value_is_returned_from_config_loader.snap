@@ -1,0 +1,7 @@
+---
+source: tests/cli_localization_unit.rs
+expression: error.to_string()
+---
+error: invalid value ⁨not-a-socket⁩ for ⁨--listen <LISTEN>⁩
+
+For more information, try '--help'.

@@ -1,0 +1,5 @@
+---
+source: tests/cli_localization_unit.rs
+expression: error.to_string()
+---
+spycatcher-harness 0.1.0

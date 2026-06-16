@@ -1055,13 +1055,13 @@ avoiding time commitments.
   - [ ] Startup locale negotiation is deterministic and tested for fallback
         behaviour.
   - [ ] One authoritative language loader is created at startup and reused.
-- [ ] 1.4.3. Localize CLI help, version, and parse errors via OrthoConfig
+- [x] 1.4.3. Localize CLI help, version, and parse errors via OrthoConfig
       localizer hooks.
-  - [ ] CLI help output uses `Command::localize(&localizer)` with a Fluent
+  - [x] CLI help output uses `Command::localize(&localizer)` with a Fluent
         localizer implementation.
-  - [ ] Clap version output is localized through the same pre-parse command
+  - [x] Clap version output is localized through the same pre-parse command
         localization path.
-  - [ ] `clap` parsing failures are rendered via
+  - [x] `clap` parsing failures are rendered via
         `localize_clap_error_with_command(...)`.
 
 ## Known risks and limitations
