@@ -12,6 +12,8 @@ use spycatcher_harness::cli::localizer::DISABLE_LOCALIZATION_ENV;
 fn binary_emits_localized_help() {
     let output = Command::new(env!("CARGO_BIN_EXE_spycatcher-harness"))
         .env_remove(DISABLE_LOCALIZATION_ENV)
+        .env_remove("SPYCATCHER_HARNESS_LOCALE")
+        .env_remove("SPYCATCHER_HARNESS_FALLBACK_LOCALE")
         .arg("--help")
         .output()
         .expect("binary should execute");
@@ -25,6 +27,8 @@ fn binary_emits_localized_help() {
 fn binary_emits_localized_version() {
     let output = Command::new(env!("CARGO_BIN_EXE_spycatcher-harness"))
         .env_remove(DISABLE_LOCALIZATION_ENV)
+        .env_remove("SPYCATCHER_HARNESS_LOCALE")
+        .env_remove("SPYCATCHER_HARNESS_FALLBACK_LOCALE")
         .arg("--version")
         .output()
         .expect("binary should execute");
@@ -38,6 +42,8 @@ fn binary_emits_localized_version() {
 fn binary_emits_localized_unknown_argument_error() {
     let output = Command::new(env!("CARGO_BIN_EXE_spycatcher-harness"))
         .env_remove(DISABLE_LOCALIZATION_ENV)
+        .env_remove("SPYCATCHER_HARNESS_LOCALE")
+        .env_remove("SPYCATCHER_HARNESS_FALLBACK_LOCALE")
         .args(["replay", "--not-a-flag"])
         .output()
         .expect("binary should execute");

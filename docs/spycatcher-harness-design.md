@@ -547,7 +547,8 @@ CLI localization responsibilities:
 
 - Configure CLI copy via `ortho_config::Localizer`, preferring
   `ortho_config::FluentLocalizer` for Fluent-backed messages.
-- Localize `clap` help and parse errors through
+- Localize `clap` help, `--version`, and parse errors through the pre-parse
+  locale flow using
   the project-owned `LocalizeCmd::localize(&localizer)` extension trait and
   `localize_clap_error_with_command(...)`.
 - Fall back to `NoOpLocalizer` if localization resources fail to load, or when
@@ -658,7 +659,7 @@ classDiagram
     +LocalizationConfig localization
     +Protocol protocol
     +MatchMode match_mode
-    +PathBuf cassette_dir
+    +camino::Utf8PathBuf cassette_dir
     +String cassette_name
     +Option~UpstreamConfig~ upstream
     +RedactionConfig redaction
@@ -702,7 +703,7 @@ classDiagram
 
   class RunningHarness {
     +SocketAddr addr
-    +PathBuf cassette_path
+    +camino::Utf8PathBuf cassette_path
     +shutdown() Result
   }
 

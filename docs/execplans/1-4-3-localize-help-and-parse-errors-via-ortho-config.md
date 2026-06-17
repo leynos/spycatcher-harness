@@ -202,6 +202,11 @@ review, and commit gates are complete.
   mention in `src/cli/localization.rs`, accepting `on` as an explicit truthy
   disable value, logging when the diagnostic disable switch is active, and a
   small property test for generated early-locale candidates.
+- [x] (2026-06-17T00:00Z) Second failed-check follow-up: removed the
+  conditional wording around the shipped diagnostic env switch, documented all
+  truthy disable values, isolated locale environment variables in binary
+  snapshots, enabled clap's `string` feature to remove the localized version
+  string leak, and aligned design diagrams with `camino::Utf8PathBuf`.
 
 Use timestamps to measure rates of progress and detect tolerance breaches.
 
@@ -749,9 +754,9 @@ Two acceptable options:
 - pass the FTL text as a parameter so a test can pass deliberately broken
   bytes (preferred); or
 - introduce an `SPYCATCHER_HARNESS_DISABLE_LOCALIZATION` env switch that
-  forces the binary to construct a `NoOpLocalizer`. The env-switch path is
-  user-observable; if chosen, document it in `docs/users-guide.md` as a
-  diagnostic toggle.
+  forces the binary to construct a `NoOpLocalizer`. Users can use this
+  user-observable env switch as a diagnostic toggle, and
+  `docs/users-guide.md` documents the shipped behaviour.
 
 Add a `proptest` strategy (already used in `src/bin/spycatcher_harness.rs`) to
 assert that random BCP 47 language identifiers either build a `FluentLocalizer`

@@ -124,9 +124,7 @@ fn localize_subcommands(command: Command, localizer: &dyn Localizer) -> Command 
 }
 
 fn apply_localized_version(command: Command, value: String) -> Command {
-    // Clap stores version text as a static builder string, unlike help text.
-    let leaked: &'static str = Box::leak(value.into_boxed_str());
-    command.version(leaked)
+    command.version(value)
 }
 
 fn command_args(command: &Command) -> LocalizationArgs<'static> {

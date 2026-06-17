@@ -345,6 +345,8 @@ fn cli_localization_disable_switch_requires_truthy_value(
     figment::Jail::expect_with(|jail| {
         if let Some(value) = env_value {
             jail.set_env(DISABLE_LOCALIZATION_ENV, value);
+        } else {
+            jail.set_env(DISABLE_LOCALIZATION_ENV, "");
         }
 
         assert_eq!(is_cli_localization_disabled(), expected);

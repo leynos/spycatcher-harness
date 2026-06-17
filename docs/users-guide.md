@@ -5,7 +5,7 @@ Spycatcher harness. The harness records LLM API interactions for deterministic
 regression testing. In record mode, both non-streaming and streaming
 (`"stream": true`) Chat Completions requests are proxied upstream and persisted
 to cassette. Replay mode does not yet support streaming interactions---matched
-`"stream": true` requests return HTTP `501 Not Implemented`; full replay
+`"stream": true` requests return HTTP `501 Not Implemented`; streaming replay
 serving and verify execution are not yet implemented.
 
 > **Breaking changes:** record-mode proxying changed raw header handling and
@@ -375,25 +375,27 @@ application messages. `--fallback-locale` selects the deterministic fallback
 locale and defaults to `en-US`. Invalid language identifiers fail startup
 before the harness begins serving.
 
-### Localized CLI help and parse errors
+### Localized CLI help, version, and parse errors
 
 The binary renders `clap` help, version, and parse-error text through
 OrthoConfig's `Localizer` abstraction. The bundled en-US Fluent catalogue in
-`i18n/en-US/spycatcher-harness.ftl` contains the `cli-*` help strings and the
-`clap-error-*` parse-error strings used by the command-line interface.
+`i18n/en-US/spycatcher-harness.ftl` contains the `cli-*` help strings,
+`cli-version`, and the `clap-error-*` parse-error strings used by the
+command-line interface.
 
 CLI parsing happens before subcommand configuration has been fully merged, so
-help and parse errors use a best-effort early locale. The binary checks
+help, version, and parse errors use a best-effort early locale. The binary checks
 `SPYCATCHER_HARNESS_LOCALE`, then `SPYCATCHER_HARNESS_FALLBACK_LOCALE`, then
 falls back to `en-US`. After parsing, harness library errors still use the
 authoritative `--locale` and `--fallback-locale` values from the merged
 configuration.
 
-Set `SPYCATCHER_HARNESS_DISABLE_LOCALIZATION=1` to force stock `clap` help,
-version, and parse-error output. This is intended as a diagnostic escape hatch
-if localized CLI assets need to be ruled out while investigating startup
-behaviour. The binary uses the same `NoOpLocalizer` fallback automatically when
-localized CLI resources cannot be loaded.
+Set `SPYCATCHER_HARNESS_DISABLE_LOCALIZATION` to a truthy value (`1`, `true`,
+`yes`, or `on`) to force stock `clap` help, version, and parse-error output.
+This is intended as a diagnostic escape hatch if localized CLI assets need to
+be ruled out while investigating startup behaviour. The binary uses the same
+`NoOpLocalizer` fallback automatically when localized CLI resources cannot be
+loaded.
 
 ### Configuration file shape
 
