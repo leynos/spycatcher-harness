@@ -194,6 +194,14 @@ review, and commit gates are complete.
   `make check-fmt`, `make typecheck`, `make lint`, `make test`,
   `make markdownlint`, and `make nixie`. CodeRabbit review completed with zero
   findings.
+- [x] (2026-06-17T00:00Z) Failed-check follow-up: re-verified the reported
+  items against current code. The fallback locale retry, truthy disable switch,
+  public config-loading shim, binary snapshot env isolation, ADR structure,
+  users' guide disable-switch wording, and version-scope documentation were
+  already present. The still-valid items were the missing public re-export
+  mention in `src/cli/localization.rs`, accepting `on` as an explicit truthy
+  disable value, logging when the diagnostic disable switch is active, and a
+  small property test for generated early-locale candidates.
 
 Use timestamps to measure rates of progress and detect tolerance breaches.
 
@@ -255,6 +263,13 @@ Use timestamps to measure rates of progress and detect tolerance breaches.
   as `{ $binary }`, `{ $argument }`, and `{ $valid_subcommands }`. The root
   usage snapshots intentionally preserve those marks; subcommand usage remains
   plain stock clap usage when no localized subcommand usage entry is present.
+- Later failed-check output repeated several stale concerns from the earlier
+  review after those fixes had already landed. The code already preserved the
+  original `load_subcommand_config_from_iter(iter)` public signature, isolated
+  binary localization snapshots with `env_remove(DISABLE_LOCALIZATION_ENV)`,
+  retried `SPYCATCHER_HARNESS_FALLBACK_LOCALE` when the primary early locale
+  was invalid, and documented the disable switch as affecting help, version,
+  and parse-error output through `NoOpLocalizer`.
 
 ## Decision Log
 

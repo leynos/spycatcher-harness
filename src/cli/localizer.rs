@@ -108,12 +108,20 @@ pub fn early_locale_plan() -> LanguageIdentifier {
 /// Returns true when CLI localization should be bypassed for diagnostics.
 #[must_use]
 pub fn is_cli_localization_disabled() -> bool {
-    std::env::var(DISABLE_LOCALIZATION_ENV).is_ok_and(|value| {
-        matches!(
-            value.trim().to_ascii_lowercase().as_str(),
-            "1" | "true" | "yes"
-        )
-    })
+    let Ok(value) = std::env::var(DISABLE_LOCALIZATION_ENV) else {
+        return false;
+    };
+    let is_disabled = matches!(
+        value.trim().to_ascii_lowercase().as_str(),
+        "1" | "true" | "yes" | "on"
+    );
+    if is_disabled {
+        tracing::warn!(
+            env_var = DISABLE_LOCALIZATION_ENV,
+            "CLI localization disabled by diagnostic environment switch"
+        );
+    }
+    is_disabled
 }
 
 fn parse_locale(

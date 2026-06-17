@@ -270,6 +270,15 @@ fn valid_locale_text() -> impl Strategy<Value = String> {
 
 proptest! {
     #[test]
+    fn parse_early_locale_accepts_generated_language_identifiers(locale in valid_locale_text()) {
+        let parsed = locale
+            .parse::<LanguageIdentifier>()
+            .map_err(|error| TestCaseError::fail(error.to_string()))?;
+
+        prop_assert_eq!(parse_early_locale(Some(locale.as_str())), parsed);
+    }
+
+    #[test]
     fn generated_language_identifiers_resolve_to_a_cli_localizer(
         locale in valid_locale_text(),
         use_broken_resource in any::<bool>(),
@@ -324,6 +333,7 @@ fn early_locale_plan_uses_fallback_when_primary_env_is_invalid() {
 #[case(Some("1"), true)]
 #[case(Some("true"), true)]
 #[case(Some("yes"), true)]
+#[case(Some("on"), true)]
 fn cli_localization_disable_switch_requires_truthy_value(
     #[case] env_value: Option<&str>,
     #[case] expected: bool,

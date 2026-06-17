@@ -1,7 +1,11 @@
 //! Localization helpers for the CLI configuration adapter.
 //!
 //! This module owns the small amount of policy needed while translating merged
-//! command arguments into `HarnessConfig` localization fields.
+//! command arguments into `HarnessConfig` localization fields. It also
+//! re-exports the project-owned [`LocalizeCmd`] extension trait and
+//! [`try_parse_localized_from_iter`] helper so callers can apply the same
+//! `ortho_config::Localizer` pipeline to `clap` help, version, and parse-error
+//! rendering before those merged fields are available.
 
 use i18n_embed::unic_langid::LanguageIdentifier;
 
