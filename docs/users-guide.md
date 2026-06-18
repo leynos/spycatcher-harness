@@ -6,7 +6,7 @@ regression testing. In record mode, both non-streaming and streaming
 (`"stream": true`) Chat Completions requests are proxied upstream and persisted
 to cassette. Replay mode does not yet support streaming interactions---matched
 `"stream": true` requests return HTTP `501 Not Implemented`; streaming replay
-serving and verify execution are not yet implemented.
+serving is not yet implemented.
 
 > **Breaking changes:** record-mode proxying changed raw header handling and
 > redaction defaults before the 0.1.0 release. See

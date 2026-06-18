@@ -35,9 +35,9 @@ The observable behaviour for a novice reviewer is:
   using `clap`'s stock text. No process-level failure is introduced by the
   localization stack itself.
 
-This plan must be approved before implementation begins. Do not mark roadmap
-item `1.4.3` done until implementation, tests, documentation, CodeRabbit
-review, and commit gates are complete.
+This plan was approved before implementation began. Roadmap item `1.4.3` was
+marked complete after implementation, tests, documentation, CodeRabbit review,
+and commit gates were complete.
 
 ## Constraints
 
@@ -108,15 +108,15 @@ review, and commit gates are complete.
 
 ## Risks
 
-- The OrthoConfig `localize_clap_error_with_command` helper only ships
-  bundled translations for four `clap-error-*` IDs in its embedded catalogue:
+- The OrthoConfig `localize_clap_error_with_command` helper shipped bundled
+  translations for four `clap-error-*` IDs in its embedded catalogue:
   `clap-error-missing-argument`, `clap-error-unknown-argument`,
-  `clap-error-invalid-value`, `clap-error-missing-subcommand`. Any other
-  `ErrorKind` falls back to clap's stock text. Severity: low. Likelihood:
-  medium. Mitigation: bundle a focused superset of `clap-error-*` IDs in
-  `i18n/en-US/spycatcher-harness.ftl` that covers the kinds the harness
-  surfaces today; assert in tests that the chosen IDs render through our bundle
-  and not OrthoConfig's defaults.
+  `clap-error-invalid-value`, `clap-error-missing-subcommand`. During this work,
+  `i18n/en-US/spycatcher-harness.ftl` was expanded with a focused superset of
+  `clap-error-*` IDs for the `ErrorKind` cases the harness surfaces today.
+  Tests now assert that those IDs render through the harness bundle rather than
+  relying on OrthoConfig defaults. Residual severity: low. Residual likelihood:
+  low.
 - OrthoConfig's `FluentLocalizer` and `i18n_embed::fluent::FluentLanguageLoader`
   cannot share a `FluentBundle` directly. The harness will need to compile its
   embedded en-US Fluent text twice (once for library error rendering through
