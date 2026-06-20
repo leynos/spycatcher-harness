@@ -60,6 +60,9 @@ pub fn build_cli_localizer_from_resources(
 
 /// Selects the locale used before full CLI parsing.
 ///
+/// Logs a warning and returns `en-US` if `candidate` is not a valid BCP 47
+/// language identifier.
+///
 /// # Examples
 ///
 /// ```rust
@@ -81,7 +84,10 @@ fn try_locale_from_env(var: &str, warn_msg: &str) -> Option<LanguageIdentifier> 
         return None;
     };
     match parse_locale(&locale) {
-        Ok(parsed) => Some(parsed),
+        Ok(parsed) => {
+            tracing::debug!(env_var = var, locale = %parsed, "selected early CLI locale");
+            Some(parsed)
+        }
         Err(error) => {
             tracing::warn!(?error, "{warn_msg}");
             None
@@ -90,6 +96,10 @@ fn try_locale_from_env(var: &str, warn_msg: &str) -> Option<LanguageIdentifier> 
 }
 
 /// Returns the locale to use before full CLI parsing.
+///
+/// Reads `SPYCATCHER_HARNESS_LOCALE`, then
+/// `SPYCATCHER_HARNESS_FALLBACK_LOCALE`, and falls back to `en-US`. Invalid
+/// environment values are ignored after emitting a warning.
 #[must_use]
 pub fn early_locale_plan() -> LanguageIdentifier {
     try_locale_from_env(
@@ -106,6 +116,9 @@ pub fn early_locale_plan() -> LanguageIdentifier {
 }
 
 /// Returns true when CLI localization should be bypassed for diagnostics.
+///
+/// Reads `SPYCATCHER_HARNESS_DISABLE_LOCALIZATION` and emits a warning when the
+/// diagnostic switch is set to a truthy value.
 #[must_use]
 pub fn is_cli_localization_disabled() -> bool {
     let Ok(value) = std::env::var(DISABLE_LOCALIZATION_ENV) else {

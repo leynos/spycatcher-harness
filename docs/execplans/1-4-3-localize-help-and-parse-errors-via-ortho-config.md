@@ -110,13 +110,6 @@ and commit gates were complete.
 
 ## Risks
 
-- OrthoConfig's `FluentLocalizer` and `i18n_embed::fluent::FluentLanguageLoader`
-  cannot share a `FluentBundle` directly. The harness will need to compile its
-  embedded en-US Fluent text twice (once for library error rendering through
-  `FluentLanguageLoader`, once for clap text through `FluentLocalizer`).
-  Severity: low. Likelihood: high. Mitigation: keep the FTL source as a single
-  embedded asset, but pass the same `include_str!` text into the
-  `FluentLocalizer` builder so a translator-facing change only happens once.
 - Localization must be available *before* CLI parsing, but the requested
   locale itself is parsed from CLI flags. The binary therefore has to make a
   best-effort locale choice (fallback locale + any environment variable hint)
@@ -127,8 +120,8 @@ and commit gates were complete.
 - The OrthoConfig `clap-error-*` ID set is hard-coded; if a future clap
   release adds new `ErrorKind` variants, the mapping will silently fall back to
   stock text for the new kinds. Severity: low. Likelihood: low. Mitigation: add
-  an `rstest` matrix that exercises each `clap::error::Kind` variant we care
-  about and asserts which IDs we ship.
+  an `rstest` matrix that exercises each `clap::error::ErrorKind` variant we
+  care about and asserts which IDs we ship.
 - The existing `tests/binary_localization_e2e.rs` exercises `--locale` and
   `--fallback-locale` startup behaviour by invoking the compiled binary. New
   end-to-end coverage for `--help`/`--version`/parse failures will increase
@@ -206,6 +199,11 @@ and commit gates were complete.
   CassetteStore diagram path type, corrected verify-mode users' guide wording,
   added CLI localization debug events, and added property tests for command
   localization invariants.
+- [x] (2026-06-20T00:00Z) Second review follow-up: corrected replay startup
+  wording, constrained the generated unknown-argument property test, expanded
+  property-test module documentation, removed a duplicate Fluent bundle risk
+  note, corrected the `clap::error::ErrorKind` reference, and documented/logged
+  CLI localizer query side effects.
 
 Use timestamps to measure rates of progress and detect tolerance breaches.
 

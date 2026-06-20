@@ -57,7 +57,19 @@ fn main() -> eyre::Result<()> {
 fn load_config_or_display_output() -> eyre::Result<spycatcher_harness::HarnessConfig> {
     let (localizer_kind, localizer) = select_cli_localizer();
     tracing::debug!(localizer_kind, "selected CLI localizer");
-    match load_subcommand_config_with_localizer(localizer.as_ref()) {
+    let span = tracing::debug_span!("parse_cli", localizer_kind);
+    let _guard = span.enter();
+    handle_cli_config_result(
+        load_subcommand_config_with_localizer(localizer.as_ref()),
+        localizer_kind,
+    )
+}
+
+fn handle_cli_config_result(
+    result: Result<spycatcher_harness::HarnessConfig, CliConfigError>,
+    localizer_kind: &str,
+) -> eyre::Result<spycatcher_harness::HarnessConfig> {
+    match result {
         Ok(config) => {
             tracing::debug!(localizer_kind, "parsed CLI configuration");
             Ok(config)
@@ -68,12 +80,24 @@ fn load_config_or_display_output() -> eyre::Result<spycatcher_harness::HarnessCo
             std::process::exit(0);
         }
         Err(CliConfigError::CliParse(error)) => {
-            tracing::debug!(localizer_kind, "parsed CLI error");
+            tracing::debug!(localizer_kind, error_kind = ?error.kind(), "parsed CLI error");
             write_error_output(&error.to_string()).wrap_err("failed to write CLI error output")?;
             std::process::exit(2);
         }
         Err(error) => Err(error).wrap_err("failed to load merged command config"),
     }
+}
+
+fn write_display_output(output: &str) -> std::io::Result<()> {
+    let mut stdout = std::io::stdout().lock();
+    stdout.write_all(output.as_bytes())?;
+    stdout.flush()
+}
+
+fn write_error_output(output: &str) -> std::io::Result<()> {
+    let mut stderr = std::io::stderr().lock();
+    stderr.write_all(output.as_bytes())?;
+    stderr.flush()
 }
 
 fn select_cli_localizer() -> (&'static str, Arc<dyn Localizer>) {
@@ -82,28 +106,6 @@ fn select_cli_localizer() -> (&'static str, Arc<dyn Localizer>) {
     } else {
         ("fluent", build_cli_localizer(early_locale_plan()))
     }
-}
-
-/// Writes `output` to stdout and flushes the handle.
-///
-/// # Errors
-///
-/// Returns an error if the write or flush fails.
-fn write_display_output(output: &str) -> std::io::Result<()> {
-    let mut stdout = std::io::stdout().lock();
-    stdout.write_all(output.as_bytes())?;
-    stdout.flush()
-}
-
-/// Writes `output` to stderr and flushes the handle.
-///
-/// # Errors
-///
-/// Returns an error if the write or flush fails.
-fn write_error_output(output: &str) -> std::io::Result<()> {
-    let mut stderr = std::io::stderr().lock();
-    stderr.write_all(output.as_bytes())?;
-    stderr.flush()
 }
 
 /// Constructs a [`FluentLanguageLoader`] from layered localisation

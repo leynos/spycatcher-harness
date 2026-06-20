@@ -1,4 +1,10 @@
 //! Property tests for CLI command localization invariants.
+//!
+//! This module complements the example-driven CLI localization unit tests and
+//! process-level binary snapshots by generating small command trees and
+//! argument names. The properties assert that `LocalizeCmd::localize()` keeps
+//! command structure intact, remains idempotent for the bundled catalogue, and
+//! preserves the offending argument text when clap errors are localized.
 
 use clap::{Arg, Command};
 use i18n_embed::unic_langid::langid;
@@ -93,7 +99,9 @@ proptest! {
     }
 
     #[test]
-    fn localized_unknown_argument_preserves_argument_text(unknown in identifier()) {
+    fn localized_unknown_argument_preserves_argument_text(
+        unknown in identifier().prop_filter("must differ from known flag", |value| value != "known"),
+    ) {
         let localizer = build_cli_localizer(langid!("en-US"));
         let command = Command::new("spycatcher-harness").arg(Arg::new("known").long("known"));
         let unknown_argument = format!("--{unknown}");

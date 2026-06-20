@@ -24,9 +24,10 @@ Call `start_harness` with a `HarnessConfig` to validate configuration and
 prepare the harness for operation. In record mode, startup now binds a real
 local HTTP listener and returns the actual bound socket address in
 `RunningHarness.addr`. In replay mode, startup opens the configured cassette
-file read-only, validates its `format_version`, and then returns
-`HarnessError::ModeNotYetImplemented`. Verify mode is available through the CLI
-for cassette and configuration checks.
+file read-only, validates its `format_version`, and returns a running harness
+that serves the recorded interactions described later in this guide. In verify
+mode, library startup returns `HarnessError::ModeNotYetImplemented`; verify
+mode is available through the CLI for cassette and configuration checks.
 
 ```rust,no_run
 use spycatcher_harness::{start_harness, HarnessConfig};
