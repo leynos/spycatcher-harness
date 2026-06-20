@@ -8,7 +8,7 @@
 use eyre::{WrapErr, eyre};
 use i18n_embed::fluent::FluentLanguageLoader;
 use i18n_embed::unic_langid::LanguageIdentifier;
-use ortho_config::NoOpLocalizer;
+use ortho_config::{Localizer, NoOpLocalizer};
 use spycatcher_harness::cli::localizer::{
     build_cli_localizer, early_locale_plan, is_cli_localization_disabled,
 };
@@ -16,7 +16,7 @@ use spycatcher_harness::cli::{CliConfigError, load_subcommand_config_with_locali
 use spycatcher_harness::config::LocalizationConfig;
 use spycatcher_harness::i18n::{HarnessLocalizations, localize_harness_error};
 use spycatcher_harness::start_harness;
-use std::io::Write;
+use std::{io::Write, sync::Arc};
 use thiserror::Error;
 
 /// Errors returned while preparing startup localization.
@@ -41,10 +41,6 @@ enum StartupLocalizationError {
 }
 
 /// Application entry point.
-///
-/// # Errors
-///
-/// Returns an error if configuration loading, startup, or shutdown fails.
 fn main() -> eyre::Result<()> {
     let config = load_config_or_display_output()?;
     let language_loader =
@@ -58,28 +54,33 @@ fn main() -> eyre::Result<()> {
 
 /// Loads merged subcommand configuration, or writes help/version output to
 /// stdout and exits cleanly if clap requests it.
-///
-/// # Errors
-///
-/// Returns an error if configuration loading fails for any reason other than a
-/// help or version display request.
 fn load_config_or_display_output() -> eyre::Result<spycatcher_harness::HarnessConfig> {
-    let localizer = if is_cli_localization_disabled() {
-        std::sync::Arc::new(NoOpLocalizer::new()) as std::sync::Arc<dyn ortho_config::Localizer>
-    } else {
-        build_cli_localizer(early_locale_plan())
-    };
+    let (localizer_kind, localizer) = select_cli_localizer();
+    tracing::debug!(localizer_kind, "selected CLI localizer");
     match load_subcommand_config_with_localizer(localizer.as_ref()) {
-        Ok(config) => Ok(config),
+        Ok(config) => {
+            tracing::debug!(localizer_kind, "parsed CLI configuration");
+            Ok(config)
+        }
         Err(CliConfigError::DisplayRequested { output }) => {
+            tracing::debug!(localizer_kind, "parsed CLI display request");
             write_display_output(&output).wrap_err("failed to write CLI output")?;
             std::process::exit(0);
         }
         Err(CliConfigError::CliParse(error)) => {
+            tracing::debug!(localizer_kind, "parsed CLI error");
             write_error_output(&error.to_string()).wrap_err("failed to write CLI error output")?;
             std::process::exit(2);
         }
         Err(error) => Err(error).wrap_err("failed to load merged command config"),
+    }
+}
+
+fn select_cli_localizer() -> (&'static str, Arc<dyn Localizer>) {
+    if is_cli_localization_disabled() {
+        ("noop", Arc::new(NoOpLocalizer::new()))
+    } else {
+        ("fluent", build_cli_localizer(early_locale_plan()))
     }
 }
 

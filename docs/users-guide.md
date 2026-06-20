@@ -23,9 +23,10 @@ lifecycle management.
 Call `start_harness` with a `HarnessConfig` to validate configuration and
 prepare the harness for operation. In record mode, startup now binds a real
 local HTTP listener and returns the actual bound socket address in
-`RunningHarness.addr`. In replay and verify modes, startup opens the configured
-cassette file read-only, validates its `format_version`, and then returns
-`HarnessError::ModeNotYetImplemented`.
+`RunningHarness.addr`. In replay mode, startup opens the configured cassette
+file read-only, validates its `format_version`, and then returns
+`HarnessError::ModeNotYetImplemented`. Verify mode is available through the CLI
+for cassette and configuration checks.
 
 ```rust,no_run
 use spycatcher_harness::{start_harness, HarnessConfig};
@@ -384,9 +385,9 @@ OrthoConfig's `Localizer` abstraction. The bundled en-US Fluent catalogue in
 command-line interface.
 
 CLI parsing happens before subcommand configuration has been fully merged, so
-help, version, and parse errors use a best-effort early locale. The binary checks
-`SPYCATCHER_HARNESS_LOCALE`, then `SPYCATCHER_HARNESS_FALLBACK_LOCALE`, then
-falls back to `en-US`. After parsing, harness library errors still use the
+help, version, and parse errors use a best-effort early locale. The binary
+checks `SPYCATCHER_HARNESS_LOCALE`, then `SPYCATCHER_HARNESS_FALLBACK_LOCALE`,
+then falls back to `en-US`. After parsing, harness library errors still use the
 authoritative `--locale` and `--fallback-locale` values from the merged
 configuration.
 

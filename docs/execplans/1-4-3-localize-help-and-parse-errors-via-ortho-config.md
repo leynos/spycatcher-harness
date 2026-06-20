@@ -27,6 +27,8 @@ The observable behaviour for a novice reviewer is:
 
 - `spycatcher-harness --help` emits a deterministic snapshot of the bundled
   localized usage text.
+- `spycatcher-harness --version` emits a deterministic snapshot of the bundled
+  localized version text.
 - `spycatcher-harness replay --not-a-flag` exits with a non-zero status and
   prints an error string that matches the bundled localized
   `clap-error-unknown-argument` entry.
@@ -108,15 +110,6 @@ and commit gates were complete.
 
 ## Risks
 
-- The OrthoConfig `localize_clap_error_with_command` helper shipped bundled
-  translations for four `clap-error-*` IDs in its embedded catalogue:
-  `clap-error-missing-argument`, `clap-error-unknown-argument`,
-  `clap-error-invalid-value`, `clap-error-missing-subcommand`. During this work,
-  `i18n/en-US/spycatcher-harness.ftl` was expanded with a focused superset of
-  `clap-error-*` IDs for the `ErrorKind` cases the harness surfaces today.
-  Tests now assert that those IDs render through the harness bundle rather than
-  relying on OrthoConfig defaults. Residual severity: low. Residual likelihood:
-  low.
 - OrthoConfig's `FluentLocalizer` and `i18n_embed::fluent::FluentLanguageLoader`
   cannot share a `FluentBundle` directly. The harness will need to compile its
   embedded en-US Fluent text twice (once for library error rendering through
@@ -207,6 +200,12 @@ and commit gates were complete.
   truthy disable values, isolated locale environment variables in binary
   snapshots, enabled clap's `string` feature to remove the localized version
   string leak, and aligned design diagrams with `camino::Utf8PathBuf`.
+- [x] (2026-06-20T00:00Z) Review follow-up: moved the resolved
+  OrthoConfig `clap-error-*` catalogue note from Risks to Surprises &
+  Discoveries, documented deterministic `--version` behaviour, aligned the
+  CassetteStore diagram path type, corrected verify-mode users' guide wording,
+  added CLI localization debug events, and added property tests for command
+  localization invariants.
 
 Use timestamps to measure rates of progress and detect tolerance breaches.
 
@@ -248,6 +247,14 @@ Use timestamps to measure rates of progress and detect tolerance breaches.
   harness must ship its own superset of `clap-error-*` IDs in
   `i18n/en-US/spycatcher-harness.ftl` to make sure today's behaviour is
   observably localized rather than passing through unchanged.
+- The OrthoConfig `localize_clap_error_with_command` helper shipped bundled
+  translations for four `clap-error-*` IDs in its embedded catalogue:
+  `clap-error-missing-argument`, `clap-error-unknown-argument`,
+  `clap-error-invalid-value`, `clap-error-missing-subcommand`. During this work,
+  `i18n/en-US/spycatcher-harness.ftl` was expanded with a focused superset of
+  `clap-error-*` IDs for the `ErrorKind` cases the harness surfaces today.
+  Tests now assert that those IDs render through the harness bundle rather than
+  relying on OrthoConfig defaults.
 - `i18n_embed::fluent::FluentLanguageLoader` does not expose a way to hand
   out a `FluentBundle<Arc<FluentResource>>`, so it cannot share its compiled
   bundle with `FluentLocalizer`. The Fluent source is compiled twice. The
@@ -338,11 +345,11 @@ Use timestamps to measure rates of progress and detect tolerance breaches.
   through the real process boundary and now snapshots localized help, version,
   unknown-argument output, and the `NoOpLocalizer` diagnostic fallback.
   Duplicating those same paths through BDD step definitions would add
-  maintenance without increasing behaviour coverage. Date/Author: 2026-06-16
-  / agent.
+  maintenance without increasing behaviour coverage. Date/Author: 2026-06-16 /
+  agent.
 - Decision: keep both `src/cli_help.rs::CLI_MERGE_HELP` and the
-  `cli-merge-help` Fluent entry. Rationale: the constant remains the stock
-  clap fallback when localization is disabled, while the Fluent entry is the
+  `cli-merge-help` Fluent entry. Rationale: the constant remains the stock clap
+  fallback when localization is disabled, while the Fluent entry is the
   localized path. A unit test renders the Fluent entry and asserts every
   non-empty stock line is still present, allowing harmless whitespace
   differences without silent content drift. Date/Author: 2026-06-16 / agent.
@@ -755,8 +762,8 @@ Two acceptable options:
   bytes (preferred); or
 - introduce an `SPYCATCHER_HARNESS_DISABLE_LOCALIZATION` env switch that
   forces the binary to construct a `NoOpLocalizer`. Users can use this
-  user-observable env switch as a diagnostic toggle, and
-  `docs/users-guide.md` documents the shipped behaviour.
+  user-observable env switch as a diagnostic toggle, and `docs/users-guide.md`
+  documents the shipped behaviour.
 
 Add a `proptest` strategy (already used in `src/bin/spycatcher_harness.rs`) to
 assert that random BCP 47 language identifiers either build a `FluentLocalizer`
