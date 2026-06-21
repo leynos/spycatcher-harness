@@ -4,10 +4,9 @@ This guide documents the public API surface and usage patterns for the
 Spycatcher harness. The harness records LLM API interactions for deterministic
 regression testing. In record mode, both non-streaming and streaming
 (`"stream": true`) Chat Completions requests are proxied upstream and persisted
-to cassette. Replay mode does not yet support streaming
-interactions---matched `"stream": true` requests return HTTP `501 Not
-Implemented`; full replay serving and verify execution are not yet
-implemented.
+to cassette. Replay mode does not yet support streaming interactions---matched
+`"stream": true` requests return HTTP `501 Not Implemented`; streaming replay
+serving is not yet implemented.
 
 > **Breaking changes:** record-mode proxying changed raw header handling and
 > redaction defaults before the 0.1.0 release. See
@@ -24,9 +23,11 @@ lifecycle management.
 Call `start_harness` with a `HarnessConfig` to validate configuration and
 prepare the harness for operation. In record mode, startup now binds a real
 local HTTP listener and returns the actual bound socket address in
-`RunningHarness.addr`. In replay and verify modes, startup opens the configured
-cassette file read-only, validates its `format_version`, and then returns
-`HarnessError::ModeNotYetImplemented`.
+`RunningHarness.addr`. In replay mode, startup opens the configured cassette
+file read-only, validates its `format_version`, and returns a running harness
+that serves the recorded interactions described later in this guide. In verify
+mode, library startup returns `HarnessError::ModeNotYetImplemented`; verify
+mode is available through the CLI for cassette and configuration checks.
 
 ```rust,no_run
 use spycatcher_harness::{start_harness, HarnessConfig};
@@ -260,7 +261,7 @@ observed canonical requests. The diff format uses:
 
 Paths use dotted notation for nested objects (e.g.,
 `canonical_body.metadata.run_id`) and bracket notation for array elements (e.g.,
- `messages[0].role`).
+`messages[0].role`).
 
 ### Canonical request hashing
 
@@ -375,6 +376,28 @@ layering under `cmds.record.upstream`.
 application messages. `--fallback-locale` selects the deterministic fallback
 locale and defaults to `en-US`. Invalid language identifiers fail startup
 before the harness begins serving.
+
+### Localized CLI help, version, and parse errors
+
+The binary renders `clap` help, version, and parse-error text through
+OrthoConfig's `Localizer` abstraction. The bundled en-US Fluent catalogue in
+`i18n/en-US/spycatcher-harness.ftl` contains the `cli-*` help strings,
+`cli-version`, and the `clap-error-*` parse-error strings used by the
+command-line interface.
+
+CLI parsing happens before subcommand configuration has been fully merged, so
+help, version, and parse errors use a best-effort early locale. The binary
+checks `SPYCATCHER_HARNESS_LOCALE`, then `SPYCATCHER_HARNESS_FALLBACK_LOCALE`,
+then falls back to `en-US`. After parsing, harness library errors still use the
+authoritative `--locale` and `--fallback-locale` values from the merged
+configuration.
+
+Set `SPYCATCHER_HARNESS_DISABLE_LOCALIZATION` to a truthy value (`1`, `true`,
+`yes`, or `on`) to force stock `clap` help, version, and parse-error output.
+This is intended as a diagnostic escape hatch if localized CLI assets need to
+be ruled out while investigating startup behaviour. The binary uses the same
+`NoOpLocalizer` fallback automatically when localized CLI resources cannot be
+loaded.
 
 ### Configuration file shape
 

@@ -8,7 +8,7 @@ Model (LLM) APIs routinely fail repeatability requirements. Even with
 capacity, and implementation detail. OpenRouter explicitly supports
 model/provider normalization and fallbacks, and supports streaming over
 Server-Sent Events (SSE), including comment payloads and mid-stream error
-signalling. [^1][^2][^3]
+signalling.[^1][^2][^3]
 
 The required capability is a harness that captures a complete agent↔LLM session
 once (recording against OpenRouter, free or paid models), then replays it as
@@ -16,24 +16,24 @@ part of a regression suite with strong repeatability guarantees and failure
 diagnostics. The harness must:
 
 - Expose an OpenAI Chat Completions-compatible HTTP endpoint first
-  (`/v1/chat/completions` semantics). [^4]
+  (`/v1/chat/completions` semantics).[^4]
 - Extend to OpenAI Responses, Anthropic-compatible Messages streaming, and
-  DeepSeek-compatible APIs over time. [^5][^6][^7]
+  DeepSeek-compatible APIs over time.[^5][^6][^7]
 - Provide a Rust library API and a CLI.
 - Load configuration via OrthoConfig’s layered precedence model (CLI > env >
-  config files > defaults), including subcommand configuration merging. [^8][^9]
+  config files > defaults), including subcommand configuration merging.[^8][^9]
   [^10]
 - Integrate with VidaiMock for replay realism where it improves test coverage
   (latency/time-to-first-token (TTFT)/jitter, chaos primitives), while keeping
   an early shippable vertical slice that does not depend on undocumented
   VidaiMock fixture formats. VidaiMock advertises OpenAI- and
   Anthropic-compatible endpoints, streaming simulation, and chaos injection via
-  headers, and that it runs fully offline/stateless. [^11]
+  headers, and that it runs fully offline/stateless.[^11]
 
 WireMock (or equivalent) can record/play back HTTP interactions by proxying and
 producing stub mappings, but the harness should only rely on this class of tool
 if VidaiMock or the harness itself cannot provide recording that is fit for LLM
-SSE and multi-protocol evolution. [^12][^13]
+SSE and multi-protocol evolution.[^12][^13]
 
 ## Goals and non-goals
 
@@ -43,7 +43,7 @@ SSE and multi-protocol evolution. [^12][^13]
   diagnostics.
 - Support streaming capture and replay for OpenRouter/OpenAI-style SSE
   (including comment payloads), because agents frequently stream partial
-  output. OpenRouter documents SSE streaming and its comment payloads. [^2][^1]
+  output. OpenRouter documents SSE streaming and its comment payloads.[^2][^1]
 - Provide two operational modes:
   - **Record**: proxy upstream (OpenRouter) and persist a “cassette”.
   - **Replay**: serve deterministic responses from the cassette, without
@@ -81,7 +81,7 @@ layer. In record mode it now binds a real local listener, proxies
 `POST /v1/chat/completions` to the configured OpenRouter-style OpenAI-
 compatible API base, and records the full request/response exchange. OpenRouter
 documents its OpenAI-like request/response schema and that streaming is SSE
-with occasional comment payloads. [^1][^2]
+with occasional comment payloads.[^1][^2]
 
 Replay-mode HTTP serving for non-stream `POST /v1/chat/completions`
 interactions is native in the harness as of task `1.3.2`. Replay starts a local
@@ -89,7 +89,7 @@ server, loads the configured cassette read-only, matches inbound requests, and
 serves the recorded status, persisted selected headers, and body bytes without
 constructing an upstream client. Verify mode remains a later slice. VidaiMock
 can be used as an optional replay backend to simulate time-to-first-token
-(TTFT), jitter, and chaos failure modes that it explicitly advertises. [^11]
+(TTFT), jitter, and chaos failure modes that it explicitly advertises.[^11]
 
 A short diagram description follows. The diagram shows the record/replay data
 flow and the adapter boundary.
@@ -127,10 +127,10 @@ Key architectural points:
 - **Protocol router** mounts HTTP routes for supported APIs:
   - Initial: `POST /v1/chat/completions` (OpenAI Chat Completions-compatible).
     [^4]
-  - Later: `POST /v1/responses` (OpenAI Responses API). [^5]
+  - Later: `POST /v1/responses` (OpenAI Responses API).[^5]
   - Later: `POST /v1/messages` (Anthropic Messages) with SSE event types.
     [^6]
-  - Later: DeepSeek Chat Completions (OpenAI-compatible). [^7]
+  - Later: DeepSeek Chat Completions (OpenAI-compatible).[^7]
 - **Protocol adapter** provides:
   - Request canonicalization and matching keys.
   - Streaming parsers/emitters appropriate to each protocol.
@@ -350,7 +350,7 @@ Canonicalization normalizes inputs so that stable matching does not depend on:
 The canonicalization pipeline should be explicit and configurable per protocol
 adapter. For OpenAI Chat Completions, the request body schema includes fields
 like `stream` and `stream_options`, which materially affect response shape, so
-those fields must participate in the canonical form. [^4]
+those fields must participate in the canonical form.[^4]
 
 Recommended approach:
 
@@ -390,11 +390,11 @@ Current implementation notes:
 
 OpenRouter supports SSE streaming for Chat Completions; its documentation notes
 that comment payloads may be sent (e.g., `: OPENROUTER PROCESSING`) and should
-be ignored per SSE rules. [^2]
+be ignored per SSE rules.[^2]
 
 OpenAI’s Chat Completions API streams “chat completion chunk” objects via SSE
 when `stream: true`, and supports `stream_options.include_usage` producing an
-additional final chunk with usage. [^4]
+additional final chunk with usage.[^4]
 
 Implemented recording strategy for OpenAI-style SSE:
 
@@ -429,13 +429,13 @@ Replay strategy:
   - Inter-chunk spacing (fixed or recorded).
 - When VidaiMock is used as a replay backend, prefer VidaiMock’s existing
   streaming physics/chaos semantics where feasible, because those behaviours
-  are explicitly a VidaiMock feature. [^11]
+  are explicitly a VidaiMock feature.[^11]
 
 #### Anthropic Messages streaming
 
 Anthropic streaming uses SSE with explicit `event:` names and a defined event
 flow (`message_start`, content block events, `message_delta`, `message_stop`),
-and may include `ping` and `error` events. [^6]
+and may include `ping` and `error` events.[^6]
 
 Adapter implications:
 
@@ -448,7 +448,7 @@ Adapter implications:
 
 OpenAI Responses streaming emits a set of typed events such as
 `response.created`, `response.output_text.delta`, `response.completed`, and
-`error`. [^5][^16]
+`error`.[^5][^16]
 
 Adapter implications:
 
@@ -461,8 +461,8 @@ Adapter implications:
 #### DeepSeek compatibility
 
 DeepSeek documents that its API format is compatible with OpenAI, and that
-clients can use `https://api.deepseek.com/v1` as an OpenAI-compatible base URL.
-[^7]
+clients can use `https://api.deepseek.com/v1` as an OpenAI-compatible base
+URL.[^7]
 
 Compatibility implications:
 
@@ -476,13 +476,13 @@ Compatibility implications:
 
 VidaiMock’s public product description emphasizes offline mocking,
 provider-compatible endpoints, streaming physics, and chaos injection via
-headers, but does not describe an HTTP recording feature. [^11]
+headers, but does not describe an HTTP recording feature.[^11]
 
 Therefore, the early design assumes recording must be implemented by the
 harness itself. WireMock is a proven recording/proxy tool (record/snapshot via
 proxying), but it introduces a JVM runtime and produces generic HTTP stub
 mappings, which are typically insufficient for protocol-aware SSE replay and
-multi-protocol evolution without additional transformation. [^12][^13]
+multi-protocol evolution without additional transformation.[^12][^13]
 
 A practical compromise:
 
@@ -522,7 +522,7 @@ Library responsibilities:
   The initial library asset path is `i18n/en-US/spycatcher-harness.ftl`.
 - Expose localized rendering APIs that accept an application-provided
   `FluentLanguageLoader` via dependency injection. The initial public surface is
-   `HarnessLocalizations` plus
+  `HarnessLocalizations` plus
   `localize_harness_error(&FluentLanguageLoader, &HarnessError)`.
 - Keep domain-facing APIs semantic by returning typed errors with stable message
   IDs, rather than preformatted user-facing strings. Harness error messages use
@@ -534,9 +534,10 @@ Library responsibilities:
 Application responsibilities:
 
 - Act as the single authority for locale negotiation and fallback policy.
-- Build one authoritative language loader at process startup.
-- Load both binary-owned and library-owned localization assets into the same
-  locale context.
+- Build a best-effort CLI localizer before parsing so help, version, and parse
+  errors can be localized.
+- Build one authoritative library language loader after layered CLI
+  configuration has been merged.
 - Inject the configured loader into any library helper that renders localized
   text.
 - Load `locale` and `fallback_locale` through the same OrthoConfig layering as
@@ -546,27 +547,30 @@ CLI localization responsibilities:
 
 - Configure CLI copy via `ortho_config::Localizer`, preferring
   `ortho_config::FluentLocalizer` for Fluent-backed messages.
-- Localize `clap` help and parse errors through
-  `Command::localize(&localizer)` and `localize_clap_error_with_command(..)`.
-- Fall back to `NoOpLocalizer` if localization resources fail to load, so the
-  CLI remains usable while reporting localization setup failures.
+- Localize `clap` help, `--version`, and parse errors through the pre-parse
+  locale flow using the project-owned `LocalizeCmd::localize(&localizer)`
+  extension trait and `localize_clap_error_with_command(...)`.
+- Fall back to `NoOpLocalizer` if localization resources fail to load, or when
+  `SPYCATCHER_HARNESS_DISABLE_LOCALIZATION` explicitly opts out of CLI
+  localization, so the CLI remains usable while reporting localization setup
+  failures.
 
 ### Configuration via OrthoConfig
 
 OrthoConfig provides a `load()` method that loads configuration using
 precedence rules where command-line arguments have the highest precedence,
 environment variables next, then configuration files, with default attribute
-values at the lowest. [^8]
+values at the lowest.[^8]
 
 OrthoConfig also supports subcommand configuration merging (
 `load_and_merge_subcommand_for` / `SubcmdConfigMerge`) that reads per-command
-defaults from configuration under a `cmds` namespace and merges them beneath
-CLI args. [^9]
+defaults from configuration under a `cmds` namespace and merges them beneath CLI
+args.[^9]
 
 File format support notes:
 
 - TOML parsing is enabled by default, and JSON5/YAML can be enabled by feature
-  flags. [^10]
+  flags.[^10]
 
 ### Core traits and types
 
@@ -654,7 +658,7 @@ classDiagram
     +LocalizationConfig localization
     +Protocol protocol
     +MatchMode match_mode
-    +PathBuf cassette_dir
+    +camino::Utf8PathBuf cassette_dir
     +String cassette_name
     +Option~UpstreamConfig~ upstream
     +RedactionConfig redaction
@@ -691,14 +695,14 @@ classDiagram
   class CassetteStore {
     <<interface>>
     +append(interaction Interaction) Result
-    +load(path PathBuf) Result~Cassette~
+    +load(path camino::Utf8PathBuf) Result~Cassette~
     +lookup_sequential(hash String) Option~Interaction~
     +lookup_keyed(hash String) Option~Interaction~
   }
 
   class RunningHarness {
     +SocketAddr addr
-    +PathBuf cassette_path
+    +camino::Utf8PathBuf cassette_path
     +shutdown() Result
   }
 
@@ -857,15 +861,17 @@ Subcommands map directly to vertical-slice deliverables:
 Global CLI localization behaviour:
 
 - `--locale <LANGID>` allows explicit locale override for application messages
-  and localized diagnostics.
+  after full configuration merging.
 - `--fallback-locale <LANGID>` controls the deterministic fallback locale and
   defaults to `en-US`.
-- Without `--locale`, the binary uses `fallback_locale`.
+- Before CLI parsing, help, version, and parse-error localization uses
+  `SPYCATCHER_HARNESS_LOCALE`, then `SPYCATCHER_HARNESS_FALLBACK_LOCALE`, then
+  `en-US`.
 - `clap` parsing errors should be routed through
-  `localize_clap_error_with_command(..)` before rendering to users.
+  `localize_clap_error_with_command(...)` before rendering to users.
 
 Subcommand-specific config merging should be enabled via OrthoConfig to support
-per-command defaults in config files. [^9]
+per-command defaults in config files.[^9]
 
 ### Example CLI usage
 
@@ -888,7 +894,7 @@ spycatcher-harness replay \
 
 ### Example configuration file
 
-TOML is the default supported file format for OrthoConfig. [^10][^8]
+TOML is the default supported file format for OrthoConfig.[^10][^8]
 
 In replay configuration, `ttft_ms` is the time-to-first-token (TTFT) delay in
 milliseconds, and `tps` is tokens per second (TPS). In upstream configuration,
@@ -956,7 +962,7 @@ segments, for example `SPYCATCHER_HARNESS_CMDS_REPLAY_LOCALIZATION__LOCALE` and
 ### Observability
 
 VidaiMock advertises built-in Prometheus metrics and request tracing for
-simulation runs. [^11]
+simulation runs.[^11]
 
 The harness should provide, at minimum:
 
@@ -1049,23 +1055,26 @@ avoiding time commitments.
   - [ ] Startup locale negotiation is deterministic and tested for fallback
         behaviour.
   - [ ] One authoritative language loader is created at startup and reused.
-- [ ] 1.4.3. Localize CLI help and parse errors via OrthoConfig localizer hooks.
-  - [ ] CLI help output uses `Command::localize(&localizer)` with a Fluent
+- [x] 1.4.3. Localize CLI help, version, and parse errors via OrthoConfig
+      localizer hooks.
+  - [x] CLI help output uses `Command::localize(&localizer)` with a Fluent
         localizer implementation.
-  - [ ] `clap` parsing failures are rendered via
-        `localize_clap_error_with_command(..)`.
+  - [x] Clap version output is localized through the same pre-parse command
+        localization path.
+  - [x] `clap` parsing failures are rendered via
+        `localize_clap_error_with_command(...)`.
 
 ## Known risks and limitations
 
 - **Private VidaiMock fixture schema uncertainty**: VidaiMock advertises
   powerful simulation features and provider compatibility but its public
   description does not specify a recording feature or an on-disk fixture
-  schema. [^11] Mitigation: ship with native recording/replay first; add
+  schema.[^11] Mitigation: ship with native recording/replay first; add
   VidaiMock export/backend once the schema is confirmed from authoritative
   documentation.
 - **Streaming fidelity edge cases**: SSE proxying can break clients if frame
   boundaries or headers differ. OpenRouter’s comment frames and mid-stream
-  error reporting increase edge cases. [^2][^3] Mitigation: record raw byte
+  error reporting increase edge cases.[^2][^3] Mitigation: record raw byte
   transcript and replay it verbatim as an option; test against representative
   SSE clients.
 - **Request drift due to metadata**: Agents may include run IDs or timestamps
@@ -1078,7 +1087,7 @@ avoiding time commitments.
   profiles for core regressions.
 - **WireMock dependency pressure**: WireMock record/playback works well for
   generic HTTP but is not tailored for LLM streaming protocols, and adds
-  operational complexity. [^12][^13] Mitigation: keep WireMock integration
+  operational complexity.[^12][^13] Mitigation: keep WireMock integration
   optional and export-only; avoid requiring it for baseline harness operation.
 
 ## Implementation decisions

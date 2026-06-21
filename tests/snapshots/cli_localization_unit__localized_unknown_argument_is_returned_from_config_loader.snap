@@ -1,0 +1,10 @@
+---
+source: tests/cli_localization_unit.rs
+assertion_line: 122
+expression: error.to_string()
+---
+error: unknown argument: ⁨--not-a-flag⁩
+
+Usage: spycatcher-harness replay [OPTIONS]
+
+For more information, try '--help'.

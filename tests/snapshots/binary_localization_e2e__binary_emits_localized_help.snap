@@ -1,0 +1,36 @@
+---
+source: tests/binary_localization_e2e.rs
+expression: stdout
+---
+Deterministic record/replay harness for LLM API testing.
+⁨spycatcher-harness⁩ records upstream LLM API traffic into cassettes, replays
+cassette responses for repeatable tests, and verifies cassette integrity
+before those cassettes are used in automation.
+
+Usage: ⁨spycatcher-harness⁩ <COMMAND>
+
+Commands:
+  record  Proxy to upstream and record interactions.
+  replay  Replay interactions from a cassette.
+  verify  Verify cassette and configuration integrity.
+  help    Print this message or the help of the given subcommand(s)
+
+Options:
+  -h, --help
+          Print help (see a summary with '-h')
+
+  -V, --version
+          Print version
+
+Configuration precedence: CLI > env > config files > defaults.
+Subcommand defaults merge from the `cmds` namespace.
+Example:
+[cmds.record]
+  cassette_name = "session_a"
+[cmds.record.upstream]
+  kind = "openrouter"
+  base_url = "https://openrouter.ai/api/v1"
+  api_key_env = "OPENROUTER_API_KEY"
+Environment prefix: SPYCATCHER_HARNESS_CMDS_<SUBCOMMAND>_...
+Nested keys use double underscores, e.g.
+SPYCATCHER_HARNESS_CMDS_RECORD_UPSTREAM__BASE_URL.
