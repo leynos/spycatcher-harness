@@ -9,9 +9,8 @@ use axum::extract::{OriginalUri, State};
 use axum::http::{
     HeaderMap, HeaderName, HeaderValue, Method, Response, StatusCode, Uri, header::CONTENT_TYPE,
 };
-use log::warn;
 use serde_json::json;
-use tracing::{debug, info};
+use tracing::{debug, info, warn};
 
 use crate::cassette::{InteractionPosition, MismatchDiagnostic};
 use crate::http_exchange::{ObservedRequest, parse_json_bytes, selected_request_headers};

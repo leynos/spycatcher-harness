@@ -9,7 +9,7 @@ use std::sync::{
     atomic::{AtomicU64, Ordering},
 };
 
-use log::{debug, error, info, warn};
+use tracing::{debug, error, info, warn};
 
 use crate::cassette::{
     IgnorePathConfig, MatchOutcome, MismatchDiagnostic, RecordedRequest, RecordedResponse,
@@ -67,8 +67,7 @@ impl ReplayService {
         let recorded_request = canonicalize_observed_request(request)?;
         let observed_hash = recorded_hash(&recorded_request)?;
         let canonical_request = recorded_canonical_request(&recorded_request)?;
-        let response = self.match_recorded_response(observed_hash, canonical_request)?;
-        self.response_from_recorded(response, is_stream_request)
+        self.match_recorded_response(observed_hash, canonical_request, is_stream_request)
     }
 
     fn reject_unreplayable_request_shape(
@@ -97,40 +96,41 @@ impl ReplayService {
         &self,
         observed_hash: &str,
         canonical_request: &serde_json::Value,
-    ) -> Result<RecordedResponse, ReplayError> {
-        let decision = {
-            let mut guard = self.engine.lock().map_err(|error| {
-                error!(
-                    target: "spycatcher.harness.replay",
-                    "failed to lock replay match engine: {error:?}"
-                );
-                ReplayError::Internal
-            })?;
-            match guard.next_match(observed_hash, canonical_request) {
-                MatchOutcome::Matched {
-                    interaction_id,
-                    interaction,
-                } => ReplayMatchDecision::Matched {
-                    interaction_id,
-                    response: interaction.response.clone(),
-                },
-                MatchOutcome::Mismatch(diagnostic) => ReplayMatchDecision::Mismatch(diagnostic),
+        is_stream_request: bool,
+    ) -> Result<ReplayResponse, ReplayError> {
+        let mut guard = self.engine.lock().map_err(|error| {
+            error!(
+                target: "spycatcher.harness.replay",
+                "failed to lock replay match engine: {error:?}"
+            );
+            ReplayError::Internal
+        })?;
+
+        let recorded_response = match guard.peek_match(observed_hash, canonical_request) {
+            MatchOutcome::Matched { interaction, .. } => interaction.response.clone(),
+            MatchOutcome::Mismatch(diagnostic) => {
+                drop(guard);
+                self.log_mismatch(&diagnostic);
+                return Err(ReplayError::Mismatch(diagnostic));
             }
         };
 
-        match decision {
-            ReplayMatchDecision::Matched {
-                interaction_id,
-                response,
-            } => {
-                self.log_match(interaction_id, observed_hash);
-                Ok(response)
+        let response = self.response_from_recorded(recorded_response, is_stream_request)?;
+        let interaction_id = match guard.next_match(observed_hash, canonical_request) {
+            MatchOutcome::Matched { interaction_id, .. } => interaction_id,
+            MatchOutcome::Mismatch(diagnostic) => {
+                error!(
+                    target: "spycatcher.harness.replay",
+                    "failed to commit previously peeked replay match reason={}",
+                    diagnostic.reason_code()
+                );
+                return Err(ReplayError::Internal);
             }
-            ReplayMatchDecision::Mismatch(diagnostic) => {
-                self.log_mismatch(&diagnostic);
-                Err(ReplayError::Mismatch(diagnostic))
-            }
-        }
+        };
+        drop(guard);
+
+        self.log_match(interaction_id, observed_hash);
+        Ok(response)
     }
 
     fn log_match(&self, interaction_id: usize, observed_hash: &str) {
@@ -214,14 +214,6 @@ impl ReplayService {
             }
         }
     }
-}
-
-enum ReplayMatchDecision {
-    Matched {
-        interaction_id: usize,
-        response: RecordedResponse,
-    },
-    Mismatch(MismatchDiagnostic),
 }
 
 fn canonicalize_observed_request(request: ObservedRequest) -> Result<RecordedRequest, ReplayError> {

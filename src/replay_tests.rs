@@ -169,19 +169,17 @@ fn request_is_rejected_before_matching(
     let trigger = sample_observed_request(trigger_body);
 
     let error = service
-        .handle_chat_completions(trigger)
+        .handle_chat_completions(trigger.clone())
         .expect_err(expect_err_msg);
 
     assert_eq!(error, expected_error);
-    let expected_counters = if matches!(
-        expected_error,
-        ReplayError::StreamCassetteRequiredForStreamRequest
-    ) {
-        (1, 0)
-    } else {
-        (0, 0)
-    };
-    assert_eq!(service.counters(), expected_counters);
+    if expected_error == ReplayError::StreamCassetteRequiredForStreamRequest {
+        let retry_error = service
+            .handle_chat_completions(trigger)
+            .expect_err("retry should fail without consuming the interaction");
+        assert_eq!(retry_error, expected_error);
+    }
+    assert_eq!(service.counters(), (0, 0));
 }
 
 #[rstest]

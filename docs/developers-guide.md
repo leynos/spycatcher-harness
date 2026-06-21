@@ -251,8 +251,9 @@ mode, but with separate state and handlers:
   `POST /v1/chat/completions`.
 - `src/server/replay_stream.rs` owns Axum `Body` construction for replayed
   parsed SSE events. It preserves recorded event order, emits comment events as
-  SSE comments, emits data events as `data:` frames, and keeps cancellation
-  side-effect-free by pre-serializing small streams.
+  SSE comments, emits data events as `data:` frames, serializes every event to
+  bytes first, and only then chooses eager `Body::from` delivery or
+  cancellation-safe `Body::from_stream` delivery.
 - `src/replay.rs` owns the adapter-neutral request canonicalization, matcher
   advancement, response-shape classification, and typed replay body selection.
 
@@ -322,7 +323,7 @@ body construction and reqwest polling stay in server/upstream adapters.
 
 `src/cassette/stream_canonical.rs` provides
 `canonicalize_events(events, policy)` for stream-event comparison policies. The
-current policy can drop `StreamEvent::Comment` values before comparison so
+current policy can drop `StreamEvent::Comment` values before comparison, so
 verification-style tooling can ignore OpenRouter keep-alive comment drift
 without changing recorded data events. Replay request matching remains based on
 canonical request hashes; stream-event canonicalization is a helper for

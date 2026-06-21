@@ -6,7 +6,7 @@ regression testing. In record mode, both non-streaming and streaming
 (`"stream": true`) Chat Completions requests are proxied upstream and persisted
 to cassette. Replay mode serves matching non-stream responses and matching
 recorded Chat Completions SSE streams, including OpenRouter comment frames.
-Verify execution is not yet implemented.
+Verify is currently a CLI-only command for cassette and configuration checks.
 
 > **Breaking changes:** record-mode proxying changed raw header handling and
 > redaction defaults before the 0.1.0 release. See

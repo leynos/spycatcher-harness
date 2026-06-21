@@ -625,8 +625,8 @@ scenario green. Run `coderabbit review --agent`, clear findings, commit.
   replay, canonical-stream matching, and the deferred byte-faithful replay (task
   `2.1.3`). Cross-reference the new modules.
 - Update `docs/users-guide.md` to describe how stream replay behaves, that
-  comments survive, and the canonical-stream toggle's configuration name and
-  default.
+  comments survive, and that internal `StreamCanonicalPolicy` handles
+  comment-aware matching without exposing a CLI toggle in this milestone.
 - Update `docs/developers-guide.md` with the new module boundaries
   (`src/cassette/stream_canonical.rs`, `src/server/replay_stream.rs`) and the
   hexagonal seam between `ReplayBody` and the Axum adapter.

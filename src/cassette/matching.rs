@@ -95,18 +95,16 @@ pub struct ReplayMatchEngine {
     mode: MatchMode,
     /// Sequential mode: cursor tracking the next expected interaction index.
     sequential_cursor: usize,
-    /// Keyed mode: hash-to-indices map for efficient lookup.
+    /// Keyed mode hash-to-indices map.
     hash_to_indices: HashMap<String, Vec<usize>>,
-    /// Keyed mode: tracks consumed interactions.
+    /// Keyed mode consumed-interaction flags.
     consumed: Vec<bool>,
-    /// Stream-event comparison policy for future verification surfaces.
     stream_policy: StreamCanonicalPolicy,
 }
 
 /// Interaction data extracted from the cassette for matching purposes.
 #[derive(Debug, Clone)]
 struct InteractionData {
-    /// Stable hash of the canonical request for this interaction.
     stable_hash: String,
     /// Canonical request JSON value for diff generation.
     /// None indicates the interaction was recorded without canonical form.
@@ -246,13 +244,46 @@ impl ReplayMatchEngine {
         }
     }
 
-    fn sequential_match<'a>(
-        &'a mut self,
+    /// Inspects the next replay match before committing replay state.
+    #[must_use]
+    pub fn peek_match<'a>(
+        &'a self,
         observed_hash: &str,
         observed_canonical: &Value,
     ) -> MatchOutcome<'a> {
+        match self.mode {
+            MatchMode::SequentialStrict => self.sequential_peek(observed_hash, observed_canonical),
+            MatchMode::Keyed => self.keyed_peek(observed_hash),
+        }
+    }
+
+    fn sequential_peek<'a>(
+        &'a self,
+        observed_hash: &str,
+        observed_canonical: &Value,
+    ) -> MatchOutcome<'a> {
+        let idx = match self.sequential_candidate(observed_hash, observed_canonical) {
+            Ok(idx) => idx,
+            Err(diagnostic) => return MatchOutcome::Mismatch(diagnostic),
+        };
+        self.matched_at(idx, observed_hash)
+    }
+
+    fn keyed_peek<'a>(&'a self, observed_hash: &str) -> MatchOutcome<'a> {
+        let idx = match self.keyed_candidate(observed_hash) {
+            Ok(idx) => idx,
+            Err(diagnostic) => return MatchOutcome::Mismatch(diagnostic),
+        };
+        self.matched_at(idx, observed_hash)
+    }
+
+    fn sequential_candidate(
+        &self,
+        observed_hash: &str,
+        observed_canonical: &Value,
+    ) -> Result<usize, MismatchDiagnostic> {
         let Some(expected_data) = self.interactions.get(self.sequential_cursor) else {
-            return MatchOutcome::Mismatch(MismatchDiagnostic {
+            return Err(MismatchDiagnostic {
                 position: InteractionPosition::Exhausted(self.sequential_cursor),
                 expected_hash: String::new(),
                 observed_hash: observed_hash.to_owned(),
@@ -263,26 +294,13 @@ impl ReplayMatchEngine {
         let expected_hash = &expected_data.stable_hash;
 
         if observed_hash == expected_hash {
-            let Some(interaction) = self.cassette.interactions.get(self.sequential_cursor) else {
-                // This should never happen since self.interactions mirrors cassette.interactions
-                return MatchOutcome::Mismatch(MismatchDiagnostic {
-                    position: InteractionPosition::Expected(self.sequential_cursor),
-                    expected_hash: expected_hash.clone(),
-                    observed_hash: observed_hash.to_owned(),
-                    diff_summary: "internal error: cassette interaction missing".to_owned(),
-                });
-            };
-            self.sequential_cursor += 1;
-            MatchOutcome::Matched {
-                interaction_id: self.sequential_cursor - 1,
-                interaction,
-            }
+            Ok(self.sequential_cursor)
         } else {
             let diff_summary = expected_data.canonical_request.as_ref().map_or_else(
                 || "diff unavailable: expected interaction has no canonical_request".to_owned(),
                 |expected_canonical| canonical_diff_summary(expected_canonical, observed_canonical),
             );
-            MatchOutcome::Mismatch(MismatchDiagnostic {
+            Err(MismatchDiagnostic {
                 position: InteractionPosition::Expected(self.sequential_cursor),
                 expected_hash: expected_hash.clone(),
                 observed_hash: observed_hash.to_owned(),
@@ -291,13 +309,9 @@ impl ReplayMatchEngine {
         }
     }
 
-    fn keyed_match<'a>(
-        &'a mut self,
-        observed_hash: &str,
-        _observed_canonical: &Value,
-    ) -> MatchOutcome<'a> {
+    fn keyed_candidate(&self, observed_hash: &str) -> Result<usize, MismatchDiagnostic> {
         let Some(indices) = self.hash_to_indices.get(observed_hash) else {
-            return MatchOutcome::Mismatch(MismatchDiagnostic {
+            return Err(MismatchDiagnostic {
                 position: InteractionPosition::KeyedMiss(self.interactions.len()),
                 expected_hash: String::new(),
                 observed_hash: observed_hash.to_owned(),
@@ -307,7 +321,6 @@ impl ReplayMatchEngine {
             });
         };
 
-        // Find the first unconsumed interaction with this hash.
         for &idx in indices {
             let Some(&is_consumed) = self.consumed.get(idx) else {
                 continue;
@@ -316,22 +329,10 @@ impl ReplayMatchEngine {
                 continue;
             }
 
-            // Mark as consumed
-            if let Some(consumed_slot) = self.consumed.get_mut(idx) {
-                *consumed_slot = true;
-            }
-
-            // Return the matched interaction
-            if let Some(interaction) = self.cassette.interactions.get(idx) {
-                return MatchOutcome::Matched {
-                    interaction_id: idx,
-                    interaction,
-                };
-            }
+            return Ok(idx);
         }
 
-        // All interactions with this hash have been consumed.
-        MatchOutcome::Mismatch(MismatchDiagnostic {
+        Err(MismatchDiagnostic {
             position: InteractionPosition::KeyedMiss(self.interactions.len()),
             expected_hash: String::new(),
             observed_hash: observed_hash.to_owned(),
@@ -341,5 +342,58 @@ impl ReplayMatchEngine {
                 indices.len()
             ),
         })
+    }
+
+    fn matched_at<'a>(&'a self, idx: usize, observed_hash: &str) -> MatchOutcome<'a> {
+        let Some(interaction) = self.cassette.interactions.get(idx) else {
+            let expected_hash = self
+                .interactions
+                .get(idx)
+                .map_or(String::new(), |data| data.stable_hash.clone());
+            return MatchOutcome::Mismatch(MismatchDiagnostic {
+                position: InteractionPosition::Expected(idx),
+                expected_hash,
+                observed_hash: observed_hash.to_owned(),
+                diff_summary: "internal error: cassette interaction missing".to_owned(),
+            });
+        };
+        MatchOutcome::Matched {
+            interaction_id: idx,
+            interaction,
+        }
+    }
+
+    fn sequential_match<'a>(
+        &'a mut self,
+        observed_hash: &str,
+        observed_canonical: &Value,
+    ) -> MatchOutcome<'a> {
+        let idx = match self.sequential_candidate(observed_hash, observed_canonical) {
+            Ok(idx) => idx,
+            Err(diagnostic) => return MatchOutcome::Mismatch(diagnostic),
+        };
+        let Some(interaction) = self.cassette.interactions.get(idx) else {
+            return self.matched_at(idx, observed_hash);
+        };
+        self.sequential_cursor += 1;
+        MatchOutcome::Matched {
+            interaction_id: idx,
+            interaction,
+        }
+    }
+
+    fn keyed_match<'a>(
+        &'a mut self,
+        observed_hash: &str,
+        _observed_canonical: &Value,
+    ) -> MatchOutcome<'a> {
+        let idx = match self.keyed_candidate(observed_hash) {
+            Ok(idx) => idx,
+            Err(diagnostic) => return MatchOutcome::Mismatch(diagnostic),
+        };
+        if let Some(consumed_slot) = self.consumed.get_mut(idx) {
+            *consumed_slot = true;
+        }
+        self.matched_at(idx, observed_hash)
     }
 }

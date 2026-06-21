@@ -90,7 +90,10 @@ or canonical SSE reconstructed from recorded stream events without constructing
 an upstream client. Byte-faithful raw transcript replay remains roadmap task
 `2.1.3`. Verify mode remains a later slice. VidaiMock can be used as an
 optional replay backend to simulate time-to-first-token (TTFT), jitter, and
-chaos failure modes that it explicitly advertises.[^11]
+chaos failure modes that it explicitly advertises.[^11] Comment frames are
+preserved and re-emitted in replay output, but they do not participate in
+canonical stream matching; comment-only differences do not cause a stream
+transcript mismatch.
 
 A short diagram description follows. The diagram shows the record/replay data
 flow and the adapter boundary.
@@ -159,7 +162,8 @@ Key architectural points:
   - Replay mode supports recorded OpenAI-style stream responses by
     reserializing parsed stream events, preserving OpenRouter comment frames
     and data-event ordering. Byte-faithful raw transcript replay remains a
-    later roadmap task.
+    later roadmap task. Comment frames are replayed but excluded from canonical
+    stream matching.
 - **Replay no-network boundary**:
   - Replay application state owns a `ReplayMatchEngine` only. It does not hold
     `UpstreamConfig`, environment-variable readers, `ReqwestUpstreamClient`,
@@ -249,7 +253,9 @@ selected headers, then reserialize the recorded parsed `StreamEvent` values as
 SSE frames. Comment events are emitted as `: ...` frames, data events are
 emitted as `data: ...` frames, and recorded event order is preserved. If the
 cassette omits `content-type` for a stream response, the HTTP adapter inserts
-`text/event-stream`.
+`text/event-stream`. Comment frames do not participate in canonical stream
+matching, so comment-only differences are ignored while replay output still
+preserves recorded comments.
 
 Parsed-event stream replay is intentionally not byte-faithful: it emits a
 canonical SSE representation from the recorded event model rather than the raw
@@ -439,6 +445,8 @@ Replay strategy:
   - Comment events become `: ...` frames.
   - Data events become `data: ...` frames.
   - Event order is preserved.
+  - Comment frames are excluded from canonical stream matching; comment-only
+    differences do not cause a mismatch.
 - Replay inserts `text/event-stream` when a stream cassette omits a
   `content-type` response header.
 - Byte-faithful replay from raw transcript bytes remains roadmap task `2.1.3`.
