@@ -83,13 +83,14 @@ compatible API base, and records the full request/response exchange. OpenRouter
 documents its OpenAI-like request/response schema and that streaming is SSE
 with occasional comment payloads.[^1][^2]
 
-Replay-mode HTTP serving for non-stream `POST /v1/chat/completions`
-interactions is native in the harness as of task `1.3.2`. Replay starts a local
-server, loads the configured cassette read-only, matches inbound requests, and
-serves the recorded status, persisted selected headers, and body bytes without
-constructing an upstream client. Verify mode remains a later slice. VidaiMock
-can be used as an optional replay backend to simulate time-to-first-token
-(TTFT), jitter, and chaos failure modes that it explicitly advertises.[^11]
+Replay-mode HTTP serving for `POST /v1/chat/completions` interactions is native
+in the harness. Replay starts a local server, loads the configured cassette
+read-only, matches inbound requests, and serves recorded non-stream body bytes
+or canonical SSE reconstructed from recorded stream events without constructing
+an upstream client. Byte-faithful raw transcript replay remains roadmap task
+`2.1.3`. Verify mode remains a later slice. VidaiMock can be used as an
+optional replay backend to simulate time-to-first-token (TTFT), jitter, and
+chaos failure modes that it explicitly advertises.[^11]
 
 A short diagram description follows. The diagram shows the record/replay data
 flow and the adapter boundary.

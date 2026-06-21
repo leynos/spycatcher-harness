@@ -29,11 +29,10 @@ cassettes. After this task is delivered:
   recorded parsed events (including any recorded comment frames such as
   `: OPENROUTER PROCESSING`) in the order they were observed upstream, and the
   replay harness must not have made any upstream network call.
-- A new `MatchMode::SequentialCanonicalStream` option (working title; see
-  Decision Log) lets cassette consumers (verification tooling, future
-  byte-faithful replay) compare two stream-event sequences while ignoring
-  comment frames so that mid-stream keep-alive variance does not produce
-  spurious mismatches.
+- A new `StreamCanonicalPolicy` lets cassette consumers (verification tooling,
+  future byte-faithful replay) compare two stream-event sequences while
+  ignoring comment frames so that mid-stream keep-alive variance does not
+  produce spurious mismatches.
 - Documentation in `docs/users-guide.md`, `docs/developers-guide.md`, and
   `docs/spycatcher-harness-design.md` describes the new replay surface, the
   canonical-stream mode, and the remaining limitation that byte-faithful
@@ -385,14 +384,12 @@ Definitions for this plan:
   lines, so reproducing them would be lossy guessing. Byte-faithful
   reproduction of the raw transcript is task `2.1.3`'s scope.
 
-- Proposed decision: introduce
+- Implemented decision: introduce
   `StreamCanonicalPolicy { ignore_comments: bool }` as a domain value type,
   default `ignore_comments = false`, and thread it into `ReplayMatchEngine` via
-  an optional second argument or via a new
-  `MatchMode::SequentialCanonicalStream` variant if the user prefers a more
-  discoverable knob. Final choice deferred to the user during approval.
-  Rationale: keeps comment-aware comparison additive and avoids breaking
-  existing match-mode wiring.
+  `ReplayMatchEngine::with_policy(cassette, mode, policy)`. Rationale: keeps
+  comment-aware comparison additive and avoids breaking existing match-mode
+  wiring.
 
 - Proposed decision: extend `ReplayResponse` into an enum
   `ReplayBody { OneShot(Vec<u8>), Events(Vec<StreamEvent>) }` carried by a
@@ -504,8 +501,14 @@ Write the failing tests before any production code:
   `stream_response` from `tests/record_mode_proxying/helpers.rs` to drive a
   comment-laden record cassette.
 - Add a `proptest!` block in the canonical-stream test module asserting
-  that `canonicalize(canonicalize(events)) == canonicalize(events)` and that the
-  `Data`-only subsequence is preserved.
+  idempotence over `Vec<StreamEvent>` values:
+
+  ```rust
+  canonicalize_events(&canonicalize_events(&events, policy), policy)
+      == canonicalize_events(&events, policy)
+  ```
+
+  Also assert that the `Data`-only subsequence is preserved.
 
 Run focused failing suites with `tee` logs:
 
@@ -764,4 +767,9 @@ which the lockfile already contains.
 
 ## Revision note
 
-This plan was authored as a DRAFT on `2026-05-29`. No revisions yet.
+This plan was initially authored on `2026-05-29` and is now implementation
+complete for roadmap task `2.1.2`, pending final review closure. Revisions
+since the draft include completed milestone notes, the selected
+`StreamCanonicalPolicy` contract, parsed-event stream replay implementation
+details, canonical-stream property-test guidance, replay-handler error
+coverage, and final validation gate records.

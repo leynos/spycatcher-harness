@@ -256,6 +256,16 @@ mode, but with separate state and handlers:
 - `src/replay.rs` owns the adapter-neutral request canonicalization, matcher
   advancement, response-shape classification, and typed replay body selection.
 
+Comment-aware stream comparison belongs to the replay matching layer, not to
+external consumers or HTTP body construction. Use
+`ReplayMatchEngine::with_policy(cassette, mode, policy)` to configure a
+`StreamCanonicalPolicy`, and use `ReplayMatchEngine::stream_policy()` when a
+verification surface needs to read the configured policy. The Axum replay path
+still constructs response bodies from recorded events in
+`src/server/replay_stream.rs`; if a stream-shaped request matches a cassette
+entry that has no recorded stream response, `src/server/replay_handler.rs` maps
+the replay error to HTTP `501` with the `stream_cassette_required` error code.
+
 Replay state must not hold `UpstreamConfig`, `ReqwestUpstreamClient`, an
 environment provider, or any outbound transport trait. This is the compile-time
 boundary that keeps replay deterministic and no-network. The only mutable

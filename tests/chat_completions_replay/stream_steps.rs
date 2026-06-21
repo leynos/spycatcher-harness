@@ -2,15 +2,20 @@
 
 use std::error::Error;
 
+use camino::Utf8Path;
+use cap_std::{ambient_authority, fs_utf8::Dir};
 use rstest_bdd_macros::{given, then, when};
-use spycatcher_harness::cassette::{StreamCanonicalPolicy, StreamEvent, canonicalize_events};
+use spycatcher_harness::cassette::{
+    Cassette, IgnorePathConfig, Interaction, InteractionMetadata, RecordedRequest,
+    RecordedResponse, StreamCanonicalPolicy, StreamEvent, canonicalize_events,
+};
 
 use crate::chat_completions_replay::steps::{
     STREAMING_REQUEST, make_replay_config, send_replay_request, send_request_to_record_harness,
 };
 use crate::chat_completions_replay::support::{assert_response_error_kind, replay_response};
 use crate::chat_completions_replay::world::ReplayWorld;
-use crate::record_helpers::{StubUpstream, load_cassette};
+use crate::record_helpers::{StubUpstream, load_cassette, unique_cassette_path};
 
 #[given("a stub upstream that returns an OpenRouter stream for replay")]
 fn a_stub_upstream_that_returns_an_open_router_stream_for_replay(
@@ -21,6 +26,20 @@ fn a_stub_upstream_that_returns_an_open_router_stream_for_replay(
         .with_ref(|runtime| StubUpstream::start_stream(runtime, sample_stream_transcript()))
         .ok_or_else(|| std::io::Error::other("runtime must be set"))??;
     replay_world.upstream.set(upstream);
+    Ok(())
+}
+
+#[given("a replay-mode harness is configured from a stream-shaped non-stream cassette")]
+fn a_replay_mode_harness_is_configured_from_a_stream_shaped_non_stream_cassette(
+    replay_world: &ReplayWorld,
+) -> Result<(), Box<dyn Error>> {
+    let cassette_path = unique_cassette_path("stream-missing");
+    let cassette = stream_shaped_non_stream_cassette()?;
+    write_cassette(&cassette_path, &cassette)?;
+    replay_world.cassette_path.set(cassette_path.clone());
+    replay_world
+        .replay_config
+        .set(make_replay_config(&cassette_path)?);
     Ok(())
 }
 
@@ -62,7 +81,10 @@ fn the_replay_client_receives_the_recorded_stream_with_comment_frames(
     assert_eq!(response.status, 200);
     assert_eq!(response.body, sample_stream_transcript());
     assert!(response.headers.iter().any(|(name, value)| {
-        name.eq_ignore_ascii_case("content-type") && value.starts_with("text/event-stream")
+        name.eq_ignore_ascii_case("content-type")
+            && value.split(';').next().is_some_and(|media_type| {
+                media_type.trim().eq_ignore_ascii_case("text/event-stream")
+            })
     }));
     Ok(())
 }
@@ -106,6 +128,7 @@ fn canonical_stream_comparison_treats_the_streams_as_equivalent(
         .ok_or_else(|| std::io::Error::other("observed stream events must be set"))?;
     let policy = StreamCanonicalPolicy::ignore_comments();
 
+    assert_ne!(expected, observed);
     assert_eq!(
         canonicalize_events(&expected, policy),
         canonicalize_events(&observed, policy),
@@ -145,4 +168,52 @@ fn data(raw: &str) -> StreamEvent {
         raw: raw.to_owned(),
         parsed_json: None,
     }
+}
+
+fn stream_shaped_non_stream_cassette() -> Result<Cassette, Box<dyn Error>> {
+    let parsed_json = serde_json::from_slice(STREAMING_REQUEST)?;
+    let mut request = RecordedRequest {
+        method: "POST".to_owned(),
+        path: "/v1/chat/completions".to_owned(),
+        query: String::new(),
+        headers: vec![("content-type".to_owned(), "application/json".to_owned())],
+        body: STREAMING_REQUEST.to_vec(),
+        parsed_json: Some(parsed_json),
+        canonical_request: None,
+        stable_hash: None,
+    };
+    request.populate_canonical_fields(&IgnorePathConfig::default())?;
+    let mut cassette = Cassette::new();
+    cassette.interactions.push(Interaction {
+        request,
+        response: RecordedResponse::NonStream {
+            status: 200,
+            headers: Vec::new(),
+            body: b"not a stream".to_vec(),
+            parsed_json: None,
+        },
+        metadata: InteractionMetadata {
+            protocol_id: "openai.chat_completions.v1".to_owned(),
+            upstream_id: "test".to_owned(),
+            recorded_at: "2026-05-08T00:00:00Z".to_owned(),
+            relative_offset_ms: 0,
+        },
+    });
+    Ok(cassette)
+}
+
+fn write_cassette(path: &Utf8Path, cassette: &Cassette) -> Result<(), Box<dyn Error>> {
+    let root = Dir::open_ambient_dir(".", ambient_authority())?;
+    let parent = path
+        .parent()
+        .ok_or_else(|| std::io::Error::other(format!("cassette path needs parent: {path}")))?;
+    root.create_dir_all(parent)?;
+    let parent_dir = root.open_dir(parent)?;
+    let file_name = path
+        .file_name()
+        .ok_or_else(|| std::io::Error::other(format!("cassette path needs file name: {path}")))?;
+    let mut file = parent_dir.create(file_name)?;
+    cassette.write_to(&mut file)?;
+    file.sync_all()?;
+    Ok(())
 }

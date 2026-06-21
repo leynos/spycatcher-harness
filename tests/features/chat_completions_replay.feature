@@ -43,14 +43,10 @@ Feature: Chat completions replay
 
   Scenario: Replay rejects streaming requests when the cassette has no recording
     Given a stub upstream that returns a successful chat completion for replay
-    And a record-mode harness configured for replay setup
-    When the record harness is started
-    And the baseline non-stream request is sent to the record harness
-    And the record harness is stopped
-    And a replay-mode harness is configured from the recorded cassette
-    And the replay harness is started
+    And a replay-mode harness is configured from a stream-shaped non-stream cassette
+    When the replay harness is started
     And a streaming request is sent to the replay harness
-    Then the replay client receives a request mismatch diagnostic
+    Then the replay client receives a stream cassette required response
     And the replay harness is stopped
     And the replay stub upstream is stopped
 

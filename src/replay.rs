@@ -9,7 +9,7 @@ use std::sync::{
     atomic::{AtomicU64, Ordering},
 };
 
-use log::{error, info, warn};
+use log::{debug, error, info, warn};
 
 use crate::cassette::{
     IgnorePathConfig, MatchOutcome, MismatchDiagnostic, RecordedRequest, RecordedResponse,
@@ -181,6 +181,11 @@ impl ReplayService {
                     self.log_rejection("stream_cassette_required", CHAT_COMPLETIONS_PATH);
                     Err(ReplayError::StreamCassetteRequiredForStreamRequest)
                 } else {
+                    debug!(
+                        target: "spycatcher.harness.replay",
+                        "building replay response from recorded interaction \
+                         is_stream_request={is_stream_request} response_kind=non_stream",
+                    );
                     Ok(ReplayResponse {
                         status,
                         headers,
@@ -193,11 +198,20 @@ impl ReplayService {
                 headers,
                 events,
                 ..
-            } => Ok(ReplayResponse {
-                status,
-                headers,
-                body: ReplayBody::Events(events),
-            }),
+            } => {
+                debug!(
+                    target: "spycatcher.harness.replay",
+                    "building replay response from recorded interaction \
+                     is_stream_request={is_stream_request} response_kind=stream \
+                     event_count={}",
+                    events.len(),
+                );
+                Ok(ReplayResponse {
+                    status,
+                    headers,
+                    body: ReplayBody::Events(events),
+                })
+            }
         }
     }
 }
@@ -316,7 +330,9 @@ pub(crate) enum ReplayBody {
 pub(crate) enum ReplayError {
     /// The observed request does not match the next replayable interaction.
     Mismatch(MismatchDiagnostic),
-    /// Streaming replay is outside this task's scope.
+    /// Raw-transcript streaming replay is outside this task's scope.
+    // FIXME(task 2.1.3): return this when exact raw-transcript streaming replay
+    // errors are introduced.
     #[expect(
         dead_code,
         reason = "reserved for task 2.1.3 raw-transcript streaming replay errors"

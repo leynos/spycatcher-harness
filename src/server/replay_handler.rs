@@ -61,30 +61,20 @@ fn log_replay_request(method: &Method, uri: &Uri) {
 }
 
 fn build_replay_response(response: ReplayResponse) -> Response<axum::body::Body> {
-    let is_stream = matches!(response.body, ReplayBody::Events(_));
-    let mut built = Response::new(match response.body {
-        ReplayBody::OneShot(body) => axum::body::Body::from(body),
-        ReplayBody::Events(events) => build_stream_body(events),
-    });
-    *built.status_mut() = replay_status_code(response.status);
+    let ReplayResponse {
+        status,
+        headers,
+        body: replay_body,
+    } = response;
+    let (is_stream, axum_body) = match replay_body {
+        ReplayBody::OneShot(bytes) => (false, axum::body::Body::from(bytes)),
+        ReplayBody::Events(events) => (true, build_stream_body(events)),
+    };
+    let mut built = Response::new(axum_body);
+    *built.status_mut() = replay_status_code(status);
     let mut has_content_type = false;
-    for (name, value) in response.headers {
-        match (
-            HeaderName::try_from(name.as_str()),
-            HeaderValue::from_bytes(value.as_bytes()),
-        ) {
-            (Ok(header_name), Ok(header_value)) => {
-                has_content_type |= header_name == CONTENT_TYPE;
-                built.headers_mut().append(header_name, header_value);
-            }
-            _ => {
-                warn!(
-                    target: "spycatcher.harness.replay",
-                    "dropping unparseable replay response header name={name:?} value_len={}",
-                    value.len()
-                );
-            }
-        }
+    for (name, value) in headers {
+        add_replay_header(&mut built, &mut has_content_type, &name, &value);
     }
     if is_stream && !has_content_type {
         built
@@ -92,6 +82,30 @@ fn build_replay_response(response: ReplayResponse) -> Response<axum::body::Body>
             .insert(CONTENT_TYPE, HeaderValue::from_static("text/event-stream"));
     }
     built
+}
+
+fn add_replay_header(
+    built: &mut Response<axum::body::Body>,
+    has_content_type: &mut bool,
+    name: &str,
+    value: &str,
+) {
+    match (
+        HeaderName::try_from(name),
+        HeaderValue::from_bytes(value.as_bytes()),
+    ) {
+        (Ok(header_name), Ok(header_value)) => {
+            *has_content_type |= header_name == CONTENT_TYPE;
+            built.headers_mut().append(header_name, header_value);
+        }
+        _ => {
+            warn!(
+                target: "spycatcher.harness.replay",
+                "dropping unparseable replay response header name={name:?} value_len={}",
+                value.len()
+            );
+        }
+    }
 }
 
 fn replay_status_code(status: u16) -> StatusCode {
@@ -191,6 +205,8 @@ mod tests {
     //! Unit tests for replay-mode HTTP response construction.
 
     use super::*;
+
+    type TestResult = Result<(), Box<dyn std::error::Error>>;
 
     #[rstest::rstest]
     #[tokio::test]
@@ -311,28 +327,13 @@ mod tests {
             position.get("index").and_then(serde_json::Value::as_u64),
             Some(3)
         );
-        assert_eq!(
-            error
-                .get("expected_hash")
-                .and_then(serde_json::Value::as_str),
-            Some("expected"),
-        );
-        assert_eq!(
-            error
-                .get("observed_hash")
-                .and_then(serde_json::Value::as_str),
-            Some("observed"),
-        );
-        assert_eq!(
-            error
-                .get("diff_summary")
-                .and_then(serde_json::Value::as_str),
-            Some("changed model"),
-        );
+        assert_eq!(json_str(error, "expected_hash"), Some("expected"));
+        assert_eq!(json_str(error, "observed_hash"), Some("observed"));
+        assert_eq!(json_str(error, "diff_summary"), Some("changed model"));
     }
 
     #[tokio::test]
-    async fn mismatch_error_response_matches_snapshot() -> Result<(), Box<dyn std::error::Error>> {
+    async fn mismatch_error_response_matches_snapshot() -> TestResult {
         let diagnostic = MismatchDiagnostic {
             position: InteractionPosition::Expected(3),
             expected_hash: "expected".to_owned(),
@@ -348,8 +349,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn malformed_json_error_response_matches_snapshot()
-    -> Result<(), Box<dyn std::error::Error>> {
+    async fn malformed_json_error_response_matches_snapshot() -> TestResult {
         assert_error_response_snapshot(
             "malformed_json",
             build_replay_error_response(&ReplayError::MalformedJson),
@@ -359,7 +359,17 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn internal_error_response_matches_snapshot() -> Result<(), Box<dyn std::error::Error>> {
+    async fn stream_cassette_required_error_response_matches_snapshot() -> TestResult {
+        assert_error_response_snapshot(
+            "stream_cassette_required",
+            build_replay_error_response(&ReplayError::StreamCassetteRequiredForStreamRequest),
+            StatusCode::NOT_IMPLEMENTED,
+        )
+        .await
+    }
+
+    #[tokio::test]
+    async fn internal_error_response_matches_snapshot() -> TestResult {
         assert_error_response_snapshot(
             "internal",
             build_replay_error_response(&ReplayError::Internal),
@@ -372,7 +382,7 @@ mod tests {
         name: &str,
         response: Response<axum::body::Body>,
         expected_status: StatusCode,
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    ) -> TestResult {
         assert_eq!(response.status(), expected_status);
         let body = axum::body::to_bytes(response.into_body(), 2048).await?;
         let value = serde_json::json!({
@@ -382,5 +392,9 @@ mod tests {
         });
         insta::assert_json_snapshot!(name, value);
         Ok(())
+    }
+
+    fn json_str<'a>(value: &'a serde_json::Value, key: &str) -> Option<&'a str> {
+        value.get(key).and_then(serde_json::Value::as_str)
     }
 }
