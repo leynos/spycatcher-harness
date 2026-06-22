@@ -106,16 +106,16 @@ impl ReplayService {
             ReplayError::Internal
         })?;
 
-        let recorded_response = match guard.peek_match(observed_hash, canonical_request) {
-            MatchOutcome::Matched { interaction, .. } => interaction.response.clone(),
+        let response = match guard.peek_match(observed_hash, canonical_request) {
+            MatchOutcome::Matched { interaction, .. } => {
+                self.response_from_recorded(&interaction.response, is_stream_request)?
+            }
             MatchOutcome::Mismatch(diagnostic) => {
                 drop(guard);
                 self.log_mismatch(&diagnostic);
                 return Err(ReplayError::Mismatch(diagnostic));
             }
         };
-
-        let response = self.response_from_recorded(recorded_response, is_stream_request)?;
         let interaction_id = match guard.next_match(observed_hash, canonical_request) {
             MatchOutcome::Matched { interaction_id, .. } => interaction_id,
             MatchOutcome::Mismatch(diagnostic) => {
@@ -167,7 +167,7 @@ impl ReplayService {
 
     fn response_from_recorded(
         &self,
-        response: RecordedResponse,
+        response: &RecordedResponse,
         is_stream_request: bool,
     ) -> Result<ReplayResponse, ReplayError> {
         match response {
@@ -187,9 +187,9 @@ impl ReplayService {
                          is_stream_request={is_stream_request} response_kind=non_stream",
                     );
                     Ok(ReplayResponse {
-                        status,
-                        headers,
-                        body: ReplayBody::OneShot(body),
+                        status: *status,
+                        headers: headers.clone(),
+                        body: ReplayBody::OneShot(body.clone()),
                     })
                 }
             }
@@ -207,9 +207,9 @@ impl ReplayService {
                     events.len(),
                 );
                 Ok(ReplayResponse {
-                    status,
-                    headers,
-                    body: ReplayBody::Events(events),
+                    status: *status,
+                    headers: headers.clone(),
+                    body: ReplayBody::Events(events.clone()),
                 })
             }
         }

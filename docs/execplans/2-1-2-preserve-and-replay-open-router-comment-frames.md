@@ -17,8 +17,10 @@ Roadmap task `2.1.1` made the harness record OpenAI-style Server-Sent Events
 (SSE) streams to a cassette. Comment frames such as `: OPENROUTER PROCESSING`
 are already captured as typed `StreamEvent::Comment` entries, and the raw
 transcript bytes are persisted alongside. Replay of a streamed interaction
-still returns HTTP 501 `unsupported_stream` because roadmap tasks `2.1.2` and
-`2.1.3` had not landed.
+now uses parsed-event replay when a matching stream cassette exists. Stream
+requests matched to non-stream cassette entries return HTTP 501 with the
+`stream_cassette_required` error code; byte-faithful raw transcript replay
+remains roadmap task `2.1.3`.
 
 Task `2.1.2` ships the first replay path for streamed Chat Completions
 cassettes. After this task is delivered:
@@ -371,9 +373,9 @@ Definitions for this plan:
   response produces no cassette interaction. This was verified by a failing BDD
   run of `replay_rejects_streaming_requests_when_the_cassette_has_no_recording`
   where cassette loading found zero interactions. The scenario was revised to
-  assert the actual no-recording replay behaviour: a streaming request against
-  a cassette containing only a non-stream recording returns the existing 409
-  request-mismatch diagnostic.
+  assert the implemented replay behaviour: a streaming request against a
+  cassette containing only a matching non-stream recording returns HTTP 501
+  with the `stream_cassette_required` error code.
 
 ## Decision log
 
@@ -403,8 +405,8 @@ Definitions for this plan:
 - Proposed decision: replace the existing
   `Replay rejects streaming requests` BDD scenario with one that asserts
   successful comment-preserving replay. Add a new scenario for the "cassette
-  contains no stream interaction" mismatch path so the previous 501 invariant
-  is retained where it still applies.
+  contains no stream interaction" path so the dedicated
+  `stream_cassette_required` 501 invariant is retained where it applies.
 
 Record every decision (and every escalation) here as work proceeds.
 
@@ -417,11 +419,10 @@ Record every decision (and every escalation) here as work proceeds.
   `stream_policy()` for explicit canonical-stream policy. Rationale: this makes
   the comment-ignore comparison additive and keeps existing request matching
   unchanged.
-- Decision: A streaming request with no matching recorded stream interaction
-  remains a request mismatch (`409`) rather than a response-shape error
-  (`501`). Rationale: replay cannot inspect a response shape until request
-  canonical matching succeeds, and this preserves the existing matching
-  contract.
+- Decision: A streaming request that matches a non-stream cassette interaction
+  returns a response-shape error (`501`) with `stream_cassette_required`.
+  Rationale: the replay engine now peeks before committing match state, so it
+  can validate response shape without consuming the interaction.
 
 ## Outcomes & retrospective
 

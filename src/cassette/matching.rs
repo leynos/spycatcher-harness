@@ -1,8 +1,4 @@
 //! Replay matching engine for cassette interactions.
-//!
-//! This module implements the core replay matching logic that decides which
-//! recorded interaction to serve for an incoming request. It supports two
-//! matching modes: sequential strict (default) and keyed (hash-based).
 
 use std::collections::HashMap;
 
@@ -13,41 +9,36 @@ use crate::cassette::{Cassette, Interaction, StreamCanonicalPolicy};
 use crate::config::MatchMode;
 use crate::{HarnessError, HarnessResult};
 
-/// Diagnostic prefix for cassette exhaustion (no more interactions available).
+/// Diagnostic prefix for cassette exhaustion.
 pub const DIAGNOSTIC_EXHAUSTED: &str = "cassette-exhausted";
 
-/// Diagnostic prefix for no matching interaction found in keyed mode.
+/// Diagnostic prefix for no keyed-mode match.
 pub const DIAGNOSTIC_NO_MATCH: &str = "no-matching-interaction";
 
-/// Diagnostic prefix for interaction already consumed in keyed mode.
+/// Diagnostic prefix for a consumed keyed-mode match.
 pub const DIAGNOSTIC_CONSUMED: &str = "interaction-already-consumed";
 
-/// Disambiguates the position information carried in a [`MismatchDiagnostic`].
+/// Position information carried in a [`MismatchDiagnostic`].
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum InteractionPosition {
     /// The zero-based index of the next expected interaction (sequential mode).
     Expected(usize),
     /// The cassette is exhausted; value is the total number of interactions.
     Exhausted(usize),
-    /// Keyed mode: no interaction (or no unconsumed interaction) matched the
-    /// observed hash; value is the total number of interactions.
+    /// Keyed mode miss; value is the total number of interactions.
     KeyedMiss(usize),
 }
 
 /// Structured diagnostic for a replay mismatch.
-///
-/// Carries all information needed by the adapter layer to build an HTTP 409
-/// response body without coupling the domain to HTTP types.
 #[derive(Debug, Clone, PartialEq)]
 pub struct MismatchDiagnostic {
     /// Identifies which interaction (or bound) the mismatch relates to.
     pub position: InteractionPosition,
-    /// Stable hash of the expected canonical request (sequential mode) or
-    /// empty string (keyed mode miss).
+    /// Stable hash of the expected request, or empty for keyed misses.
     pub expected_hash: String,
-    /// Stable hash of the observed incoming request.
+    /// Stable hash of the incoming request.
     pub observed_hash: String,
-    /// Field-level diff summary of canonical request JSON.
+    /// Field-level canonical request JSON diff summary.
     pub diff_summary: String,
 }
 
@@ -83,8 +74,7 @@ pub enum MatchOutcome<'a> {
     Mismatch(MismatchDiagnostic),
 }
 
-/// Replay matching engine that consumes cassette interactions according to
-/// the configured match mode.
+/// Replay matching engine that consumes cassette interactions by match mode.
 #[derive(Debug)]
 pub struct ReplayMatchEngine {
     /// The cassette being replayed.
@@ -93,7 +83,7 @@ pub struct ReplayMatchEngine {
     interactions: Vec<InteractionData>,
     /// Current matching mode.
     mode: MatchMode,
-    /// Sequential mode: cursor tracking the next expected interaction index.
+    /// Sequential mode cursor.
     sequential_cursor: usize,
     /// Keyed mode hash-to-indices map.
     hash_to_indices: HashMap<String, Vec<usize>>,
@@ -102,7 +92,7 @@ pub struct ReplayMatchEngine {
     stream_policy: StreamCanonicalPolicy,
 }
 
-/// Interaction data extracted from the cassette for matching purposes.
+/// Interaction data extracted for matching.
 #[derive(Debug, Clone)]
 struct InteractionData {
     stable_hash: String,
@@ -119,19 +109,6 @@ impl ReplayMatchEngine {
     /// Returns [`HarnessError::InvalidCassette`] if any interaction in the
     /// cassette has a missing `stable_hash`. All interactions must have their
     /// stable hash populated before replay matching can begin.
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// use spycatcher_harness::cassette::{Cassette, ReplayMatchEngine};
-    /// use spycatcher_harness::config::MatchMode;
-    ///
-    /// fn main() -> Result<(), Box<dyn std::error::Error>> {
-    ///     let cassette = Cassette::new();
-    ///     let _engine = ReplayMatchEngine::new(cassette, MatchMode::SequentialStrict)?;
-    ///     Ok(())
-    /// }
-    /// ```
     pub fn new(cassette: Cassette, mode: MatchMode) -> HarnessResult<Self> {
         Self::with_policy(cassette, mode, StreamCanonicalPolicy::default())
     }
@@ -142,25 +119,6 @@ impl ReplayMatchEngine {
     ///
     /// Returns [`HarnessError::InvalidCassette`] if any interaction in the
     /// cassette has a missing `stable_hash`.
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// use spycatcher_harness::cassette::{
-    ///     Cassette, ReplayMatchEngine, StreamCanonicalPolicy,
-    /// };
-    /// use spycatcher_harness::config::MatchMode;
-    ///
-    /// fn main() -> Result<(), Box<dyn std::error::Error>> {
-    ///     let cassette = Cassette::new();
-    ///     let _engine = ReplayMatchEngine::with_policy(
-    ///         cassette,
-    ///         MatchMode::SequentialStrict,
-    ///         StreamCanonicalPolicy::ignore_comments(),
-    ///     )?;
-    ///     Ok(())
-    /// }
-    /// ```
     pub fn with_policy(
         cassette: Cassette,
         mode: MatchMode,
@@ -206,6 +164,19 @@ impl ReplayMatchEngine {
     }
 
     /// Returns the configured stream canonicalization policy.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// # use spycatcher_harness::cassette::{Cassette, ReplayMatchEngine, StreamCanonicalPolicy};
+    /// # use spycatcher_harness::config::MatchMode;
+    /// let policy = StreamCanonicalPolicy::ignore_comments();
+    /// let engine =
+    ///     ReplayMatchEngine::with_policy(Cassette::new(), MatchMode::SequentialStrict, policy)
+    ///         .expect("empty cassette is valid");
+    ///
+    /// assert_eq!(engine.stream_policy(), policy);
+    /// ```
     #[must_use]
     pub const fn stream_policy(&self) -> StreamCanonicalPolicy {
         self.stream_policy
@@ -214,24 +185,20 @@ impl ReplayMatchEngine {
     /// Attempts to match an incoming request against the cassette.
     ///
     /// In sequential strict mode, the request must match the next recorded
-    /// interaction in order. In keyed mode, the request matches the next
-    /// unconsumed interaction with the same hash.
+    /// interaction. In keyed mode, the request matches the next unconsumed
+    /// interaction with the same hash.
     ///
     /// # Examples
     ///
     /// ```rust
-    /// use spycatcher_harness::cassette::{Cassette, MatchOutcome, ReplayMatchEngine};
-    /// use spycatcher_harness::config::MatchMode;
-    ///
-    /// fn main() -> Result<(), Box<dyn std::error::Error>> {
-    ///     let mut engine = ReplayMatchEngine::new(Cassette::new(), MatchMode::SequentialStrict)?;
-    ///     let canonical_request = serde_json::json!({});
-    ///     match engine.next_match("abc123", &canonical_request) {
-    ///         MatchOutcome::Matched { interaction: _interaction, .. } => { /* use interaction */ }
-    ///         MatchOutcome::Mismatch(_diagnostic) => { /* handle mismatch */ }
-    ///     }
-    ///     Ok(())
-    /// }
+    /// # use spycatcher_harness::cassette::{Cassette, MatchOutcome, ReplayMatchEngine};
+    /// # use spycatcher_harness::config::MatchMode;
+    /// let mut engine =
+    ///     ReplayMatchEngine::new(Cassette::new(), MatchMode::SequentialStrict).unwrap();
+    /// assert!(matches!(
+    ///     engine.next_match("abc123", &serde_json::json!({})),
+    ///     MatchOutcome::Mismatch(_)
+    /// ));
     /// ```
     pub fn next_match<'a>(
         &'a mut self,
@@ -245,6 +212,24 @@ impl ReplayMatchEngine {
     }
 
     /// Inspects the next replay match before committing replay state.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// # use spycatcher_harness::cassette::{Cassette, MatchOutcome, ReplayMatchEngine};
+    /// # use spycatcher_harness::config::MatchMode;
+    /// let engine =
+    ///     ReplayMatchEngine::new(Cassette::new(), MatchMode::SequentialStrict).unwrap();
+    ///
+    /// assert!(matches!(
+    ///     engine.peek_match("abc123", &serde_json::json!({})),
+    ///     MatchOutcome::Mismatch(_)
+    /// ));
+    /// assert!(matches!(
+    ///     engine.peek_match("abc123", &serde_json::json!({})),
+    ///     MatchOutcome::Mismatch(_)
+    /// ));
+    /// ```
     #[must_use]
     pub fn peek_match<'a>(
         &'a self,
@@ -262,19 +247,25 @@ impl ReplayMatchEngine {
         observed_hash: &str,
         observed_canonical: &Value,
     ) -> MatchOutcome<'a> {
-        let idx = match self.sequential_candidate(observed_hash, observed_canonical) {
-            Ok(idx) => idx,
-            Err(diagnostic) => return MatchOutcome::Mismatch(diagnostic),
-        };
-        self.matched_at(idx, observed_hash)
+        self.outcome_from_candidate(
+            self.sequential_candidate(observed_hash, observed_canonical),
+            observed_hash,
+        )
     }
 
     fn keyed_peek<'a>(&'a self, observed_hash: &str) -> MatchOutcome<'a> {
-        let idx = match self.keyed_candidate(observed_hash) {
-            Ok(idx) => idx,
-            Err(diagnostic) => return MatchOutcome::Mismatch(diagnostic),
-        };
-        self.matched_at(idx, observed_hash)
+        self.outcome_from_candidate(self.keyed_candidate(observed_hash), observed_hash)
+    }
+
+    fn outcome_from_candidate<'a>(
+        &'a self,
+        candidate: Result<usize, MismatchDiagnostic>,
+        observed_hash: &str,
+    ) -> MatchOutcome<'a> {
+        match candidate {
+            Ok(idx) => self.matched_at(idx, observed_hash),
+            Err(diagnostic) => MatchOutcome::Mismatch(diagnostic),
+        }
     }
 
     fn sequential_candidate(

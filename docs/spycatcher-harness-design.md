@@ -93,7 +93,8 @@ optional replay backend to simulate time-to-first-token (TTFT), jitter, and
 chaos failure modes that it explicitly advertises.[^11] Comment frames are
 preserved and re-emitted in replay output, but they do not participate in
 canonical stream matching; comment-only differences do not cause a stream
-transcript mismatch.
+transcript mismatch. During replay, embedded newlines in comment and data
+payloads are serialized as one SSE field line per payload line.
 
 A short diagram description follows. The diagram shows the record/replay data
 flow and the adapter boundary.
@@ -251,8 +252,9 @@ HTTP status code, the persisted selected response headers in recorded order,
 and the stored body bytes. Stream responses return the recorded status and
 selected headers, then reserialize the recorded parsed `StreamEvent` values as
 SSE frames. Comment events are emitted as `: ...` frames, data events are
-emitted as `data: ...` frames, and recorded event order is preserved. If the
-cassette omits `content-type` for a stream response, the HTTP adapter inserts
+emitted as `data: ...` frames, multiline payloads are emitted as one field line
+per payload line, and recorded event order is preserved. If the cassette omits
+`content-type` for a stream response, the HTTP adapter inserts
 `text/event-stream`. Comment frames do not participate in canonical stream
 matching, so comment-only differences are ignored while replay output still
 preserves recorded comments.
@@ -444,6 +446,7 @@ Replay strategy:
 - Parsed-event replay emits SSE frames from recorded `StreamEvent` values:
   - Comment events become `: ...` frames.
   - Data events become `data: ...` frames.
+  - Multiline payloads become one SSE field line per payload line.
   - Event order is preserved.
   - Comment frames are excluded from canonical stream matching; comment-only
     differences do not cause a mismatch.
