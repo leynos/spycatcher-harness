@@ -242,6 +242,17 @@ impl ReplayMatchEngine {
         }
     }
 
+    fn outcome_from_candidate<'a>(
+        &'a self,
+        candidate: Result<usize, MismatchDiagnostic>,
+        observed_hash: &str,
+    ) -> MatchOutcome<'a> {
+        match candidate {
+            Ok(idx) => self.matched_at(idx, observed_hash),
+            Err(diagnostic) => MatchOutcome::Mismatch(diagnostic),
+        }
+    }
+
     fn sequential_peek<'a>(
         &'a self,
         observed_hash: &str,
@@ -255,17 +266,6 @@ impl ReplayMatchEngine {
 
     fn keyed_peek<'a>(&'a self, observed_hash: &str) -> MatchOutcome<'a> {
         self.outcome_from_candidate(self.keyed_candidate(observed_hash), observed_hash)
-    }
-
-    fn outcome_from_candidate<'a>(
-        &'a self,
-        candidate: Result<usize, MismatchDiagnostic>,
-        observed_hash: &str,
-    ) -> MatchOutcome<'a> {
-        match candidate {
-            Ok(idx) => self.matched_at(idx, observed_hash),
-            Err(diagnostic) => MatchOutcome::Mismatch(diagnostic),
-        }
     }
 
     fn sequential_candidate(

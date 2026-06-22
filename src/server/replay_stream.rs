@@ -62,8 +62,9 @@ fn serialize_event(event: &StreamEvent) -> Vec<u8> {
 }
 
 fn serialize_lines(prefix: &[u8], text: &str) -> Vec<u8> {
-    let mut bytes = Vec::with_capacity(text.len() + (prefix.len() + 1) * text.lines().count() + 1);
-    for line in text.split('\n') {
+    let lines: Vec<&str> = text.split('\n').collect();
+    let mut bytes = Vec::with_capacity(text.len() + (prefix.len() + 1) * lines.len() + 1);
+    for line in &lines {
         bytes.extend_from_slice(prefix);
         bytes.extend_from_slice(line.as_bytes());
         bytes.push(b'\n');

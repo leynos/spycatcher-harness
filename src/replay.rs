@@ -106,14 +106,17 @@ impl ReplayService {
             ReplayError::Internal
         })?;
 
-        let response = match guard.peek_match(observed_hash, canonical_request) {
-            MatchOutcome::Matched { interaction, .. } => {
-                self.response_from_recorded(&interaction.response, is_stream_request)?
-            }
-            MatchOutcome::Mismatch(diagnostic) => {
-                drop(guard);
-                self.log_mismatch(&diagnostic);
-                return Err(ReplayError::Mismatch(diagnostic));
+        let response = {
+            let peek = guard.peek_match(observed_hash, canonical_request);
+            match peek {
+                MatchOutcome::Matched { interaction, .. } => {
+                    self.response_from_recorded(&interaction.response, is_stream_request)?
+                }
+                MatchOutcome::Mismatch(diagnostic) => {
+                    drop(guard);
+                    self.log_mismatch(&diagnostic);
+                    return Err(ReplayError::Mismatch(diagnostic));
+                }
             }
         };
         let interaction_id = match guard.next_match(observed_hash, canonical_request) {
