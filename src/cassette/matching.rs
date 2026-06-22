@@ -236,36 +236,16 @@ impl ReplayMatchEngine {
         observed_hash: &str,
         observed_canonical: &Value,
     ) -> MatchOutcome<'a> {
-        match self.mode {
-            MatchMode::SequentialStrict => self.sequential_peek(observed_hash, observed_canonical),
-            MatchMode::Keyed => self.keyed_peek(observed_hash),
-        }
-    }
-
-    fn outcome_from_candidate<'a>(
-        &'a self,
-        candidate: Result<usize, MismatchDiagnostic>,
-        observed_hash: &str,
-    ) -> MatchOutcome<'a> {
+        let candidate = match self.mode {
+            MatchMode::SequentialStrict => {
+                self.sequential_candidate(observed_hash, observed_canonical)
+            }
+            MatchMode::Keyed => self.keyed_candidate(observed_hash),
+        };
         match candidate {
             Ok(idx) => self.matched_at(idx, observed_hash),
             Err(diagnostic) => MatchOutcome::Mismatch(diagnostic),
         }
-    }
-
-    fn sequential_peek<'a>(
-        &'a self,
-        observed_hash: &str,
-        observed_canonical: &Value,
-    ) -> MatchOutcome<'a> {
-        self.outcome_from_candidate(
-            self.sequential_candidate(observed_hash, observed_canonical),
-            observed_hash,
-        )
-    }
-
-    fn keyed_peek<'a>(&'a self, observed_hash: &str) -> MatchOutcome<'a> {
-        self.outcome_from_candidate(self.keyed_candidate(observed_hash), observed_hash)
     }
 
     fn sequential_candidate(
