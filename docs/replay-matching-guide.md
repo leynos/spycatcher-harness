@@ -17,6 +17,8 @@ recorded interaction to serve for each incoming replay request.
 | `SequentialStrict` | Default. Expects requests in recorded order; mismatches fail fast.                          |
 | `Keyed`            | Matches by request hash, consuming the next unused interaction with that hash in any order. |
 
+_Table 1: Replay matching mode variants._
+
 ### `ReplayMatchEngine`
 
 `ReplayMatchEngine` is constructed from a loaded `Cassette` and a `MatchMode`.
@@ -55,6 +57,8 @@ HTTP adapter to build a `409 Conflict` response:
 | `observed_hash` | Stable hash of the incoming request.                                                          |
 | `diff_summary`  | Field-level diff from `cassette::diff`, or a stable sentinel for exhaustion and keyed misses. |
 
+_Table 2: `MismatchDiagnostic` fields._
+
 `InteractionPosition` disambiguates the mismatch location:
 
 | Variant        | Meaning                                                                 |
@@ -62,6 +66,8 @@ HTTP adapter to build a `409 Conflict` response:
 | `Expected(n)`  | Sequential mode expected interaction index.                             |
 | `Exhausted(n)` | Sequential mode has no more interactions; `n` is the interaction count. |
 | `KeyedMiss(n)` | Keyed mode has no unconsumed matching interaction.                      |
+
+_Table 3: `InteractionPosition` variants._
 
 ### Diagnostic constants
 

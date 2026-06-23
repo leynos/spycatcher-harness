@@ -1129,9 +1129,9 @@ Decisions recorded during implementation that refine or clarify the design.
 
 The library uses `camino::Utf8PathBuf` for all path fields (
 `HarnessConfig.cassette_dir`, `RunningHarness.cassette_path`) rather than
-`std::path::PathBuf`. This follows the project coding standard in `AGENTS.md`
-which mandates `camino` over `std::path` for enhanced cross-platform support
-and UTF-8 path guarantees.
+`std::path::PathBuf`. This follows the project coding standard documented in
+[`developers-guide.md`](developers-guide.md), which mandates `camino` over
+`std::path` for enhanced cross-platform support and UTF-8 path guarantees.
 
 ### Crate structure (task 1.1.1)
 
@@ -1154,7 +1154,7 @@ annotation documenting this rationale.
 ### Layered subcommand loading scope (task 1.1.2)
 
 Task 1.1.2 implements layered loading with OrthoConfig's subcommand merge
-helpers (`load_and_merge_subcommand`) in a dedicated CLI adapter module (
+helpers (`load_and_merge_subcommand_for`) in a dedicated CLI adapter module (
 `src/cli.rs`). The implementation currently scopes file loading to the
 `cmds.<subcommand>` namespace plus subcommand-specific environment variables:
 

@@ -3,7 +3,7 @@
 This guide records test dependency rationale and test layout conventions for
 the Spycatcher harness.
 
-## Dev-Dependencies
+## Dev-dependencies
 
 - `insta` pins human-readable diagnostics and cassette JSON snapshots. Review
   snapshot updates with `cargo insta review`.
@@ -21,7 +21,7 @@ Do not replace temporary cassette fixtures with fixed paths. A future in-memory
 cassette store can remove the temporary filesystem dependency once
 `RecordService` accepts cassette reader/appender traits generically.
 
-## Test Structure
+## Test structure
 
 Unit tests live beside production code under `#[cfg(test)]` modules. Use an
 inline `mod tests` block for small suites and sibling `*_tests.rs` files when a
@@ -41,7 +41,7 @@ tests/
 Each BDD suite has a `.feature` file in `tests/features/`, a `*_bdd.rs`
 entrypoint, and optional suite-local step, world, fixture, and helper modules.
 
-## Running Tests
+## Running tests
 
 Use Makefile targets for local gates:
 

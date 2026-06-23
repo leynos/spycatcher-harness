@@ -75,8 +75,8 @@ Primary project documentation:
   amended.
 - `docs/complexity-antipatterns-and-refactoring-strategies.md` — apply when
   replay code pushes a module towards the 400-line cap.
-- `docs/ortho-config-users-guide.md` — configuration wording for the new
-  canonical-stream knob.
+- `docs/developers-guide.md` — internal `StreamCanonicalPolicy` wording for
+  comment-aware replay matching.
 - `docs/rstest-bdd-users-guide.md` — feature files, worlds, scenario state, and
   step-definition structure.
 - `docs/documentation-style-guide.md` — en-GB Oxford spelling, table and

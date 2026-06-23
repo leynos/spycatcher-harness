@@ -34,13 +34,13 @@ pub enum InteractionPosition {
 pub struct MismatchDiagnostic {
     /// Identifies which interaction (or bound) the mismatch relates to.
     pub position: InteractionPosition,
-    /// Stable hash of the expected request, or empty when no single expected
-    /// interaction exists.
+    /// Stable hash of the expected request, or empty for keyed misses and
+    /// exhaustion.
     pub expected_hash: String,
     /// Stable hash of the incoming request.
     pub observed_hash: String,
-    /// Field-level canonical request JSON diff, or a stable diagnostic
-    /// sentinel for exhaustion and keyed misses.
+    /// Field-level canonical request JSON diff summary, or bounded diagnostic
+    /// text for exhaustion, no-match, consumed, and internal-error paths.
     pub diff_summary: String,
 }
 
@@ -105,7 +105,6 @@ struct InteractionData {
 
 impl ReplayMatchEngine {
     /// Creates a new engine from a loaded cassette and match mode.
-    ///
     /// # Errors
     ///
     /// Returns [`HarnessError::InvalidCassette`] if any interaction in the
@@ -116,6 +115,19 @@ impl ReplayMatchEngine {
     }
 
     /// Creates a new engine with explicit stream canonicalization policy.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use spycatcher_harness::cassette::{Cassette, ReplayMatchEngine, StreamCanonicalPolicy};
+    /// use spycatcher_harness::config::MatchMode;
+    ///
+    /// let policy = StreamCanonicalPolicy::ignore_comments();
+    /// let engine = ReplayMatchEngine::with_policy(Cassette::new(), MatchMode::SequentialStrict, policy)
+    ///     .expect("empty cassette is valid");
+    ///
+    /// assert_eq!(engine.stream_policy(), policy);
+    /// ```
     ///
     /// # Errors
     ///
@@ -173,9 +185,8 @@ impl ReplayMatchEngine {
     /// # use spycatcher_harness::cassette::{Cassette, ReplayMatchEngine, StreamCanonicalPolicy};
     /// # use spycatcher_harness::config::MatchMode;
     /// let policy = StreamCanonicalPolicy::ignore_comments();
-    /// let engine =
-    ///     ReplayMatchEngine::with_policy(Cassette::new(), MatchMode::SequentialStrict, policy)
-    ///         .expect("empty cassette is valid");
+    /// let engine = ReplayMatchEngine::with_policy(Cassette::new(), MatchMode::SequentialStrict, policy)
+    ///     .expect("empty cassette is valid");
     ///
     /// assert_eq!(engine.stream_policy(), policy);
     /// ```
@@ -218,32 +229,21 @@ impl ReplayMatchEngine {
     /// # Examples
     ///
     /// ```rust
-    /// # use spycatcher_harness::cassette::{
-    /// #     Cassette, Interaction, InteractionMetadata, MatchOutcome, RecordedRequest,
-    /// #     RecordedResponse, ReplayMatchEngine,
-    /// # };
+    /// # use spycatcher_harness::cassette::{Cassette, Interaction, InteractionMetadata, MatchOutcome, RecordedRequest, RecordedResponse, ReplayMatchEngine};
     /// # use spycatcher_harness::config::MatchMode;
     /// let mut cassette = Cassette::new();
     /// cassette.append(Interaction {
     ///     request: RecordedRequest {
     ///         method: "POST".to_owned(),
     ///         path: "/v1/chat/completions".to_owned(),
-    ///         query: String::new(),
-    ///         headers: Vec::new(),
-    ///         body: Vec::new(),
+    ///         query: String::new(), headers: Vec::new(), body: Vec::new(),
     ///         parsed_json: None,
     ///         canonical_request: Some(serde_json::json!({"method": "POST"})),
     ///         stable_hash: Some("hash_a".to_owned()),
     ///     },
-    ///     response: RecordedResponse::NonStream {
-    ///         status: 200,
-    ///         headers: Vec::new(),
-    ///         body: Vec::new(),
-    ///         parsed_json: None,
-    ///     },
+    ///     response: RecordedResponse::NonStream { status: 200, headers: Vec::new(), body: Vec::new(), parsed_json: None },
     ///     metadata: InteractionMetadata {
-    ///         protocol_id: "openai_chat".to_owned(),
-    ///         upstream_id: "openai".to_owned(),
+    ///         protocol_id: "openai_chat".to_owned(), upstream_id: "openai".to_owned(),
     ///         recorded_at: "2026-06-23T00:00:00Z".to_owned(),
     ///         relative_offset_ms: 0,
     ///     },
