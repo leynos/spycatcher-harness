@@ -331,10 +331,12 @@ layer to map to an HTTP 409 response:
 - `interaction_id: usize` — zero-based index of the expected interaction
   (sequential strict mode) or the total interaction count (keyed mode miss).
 - `expected_hash: String` — stable hash of the expected canonical request
-  (sequential strict mode) or empty string (keyed mode miss).
+  (sequential strict mode) or empty string when no single expected interaction
+  exists.
 - `observed_hash: String` — stable hash of the observed incoming request.
 - `diff_summary: String` — field-level diff summary of the two canonical
-  request JSON values, prefixed with a diagnostic constant (see below).
+  request JSON values, or a stable diagnostic sentinel for exhaustion and keyed
+  misses.
 
 **Diagnostic constants.** The `diff_summary` field in mismatch diagnostics is
 prefixed with a stable, parseable token so that adapters can branch on failure

@@ -34,11 +34,13 @@ pub enum InteractionPosition {
 pub struct MismatchDiagnostic {
     /// Identifies which interaction (or bound) the mismatch relates to.
     pub position: InteractionPosition,
-    /// Stable hash of the expected request, or empty for keyed misses.
+    /// Stable hash of the expected request, or empty when no single expected
+    /// interaction exists.
     pub expected_hash: String,
     /// Stable hash of the incoming request.
     pub observed_hash: String,
-    /// Field-level canonical request JSON diff summary.
+    /// Field-level canonical request JSON diff, or a stable diagnostic
+    /// sentinel for exhaustion and keyed misses.
     pub diff_summary: String,
 }
 
@@ -216,18 +218,46 @@ impl ReplayMatchEngine {
     /// # Examples
     ///
     /// ```rust
-    /// # use spycatcher_harness::cassette::{Cassette, MatchOutcome, ReplayMatchEngine};
+    /// # use spycatcher_harness::cassette::{
+    /// #     Cassette, Interaction, InteractionMetadata, MatchOutcome, RecordedRequest,
+    /// #     RecordedResponse, ReplayMatchEngine,
+    /// # };
     /// # use spycatcher_harness::config::MatchMode;
-    /// let engine =
-    ///     ReplayMatchEngine::new(Cassette::new(), MatchMode::SequentialStrict).unwrap();
+    /// let mut cassette = Cassette::new();
+    /// cassette.append(Interaction {
+    ///     request: RecordedRequest {
+    ///         method: "POST".to_owned(),
+    ///         path: "/v1/chat/completions".to_owned(),
+    ///         query: String::new(),
+    ///         headers: Vec::new(),
+    ///         body: Vec::new(),
+    ///         parsed_json: None,
+    ///         canonical_request: Some(serde_json::json!({"method": "POST"})),
+    ///         stable_hash: Some("hash_a".to_owned()),
+    ///     },
+    ///     response: RecordedResponse::NonStream {
+    ///         status: 200,
+    ///         headers: Vec::new(),
+    ///         body: Vec::new(),
+    ///         parsed_json: None,
+    ///     },
+    ///     metadata: InteractionMetadata {
+    ///         protocol_id: "openai_chat".to_owned(),
+    ///         upstream_id: "openai".to_owned(),
+    ///         recorded_at: "2026-06-23T00:00:00Z".to_owned(),
+    ///         relative_offset_ms: 0,
+    ///     },
+    /// });
+    /// let mut engine = ReplayMatchEngine::new(cassette, MatchMode::SequentialStrict).unwrap();
+    /// let canonical = serde_json::json!({"method": "POST"});
     ///
     /// assert!(matches!(
-    ///     engine.peek_match("abc123", &serde_json::json!({})),
-    ///     MatchOutcome::Mismatch(_)
+    ///     engine.peek_match("hash_a", &canonical),
+    ///     MatchOutcome::Matched { interaction_id: 0, .. }
     /// ));
     /// assert!(matches!(
-    ///     engine.peek_match("abc123", &serde_json::json!({})),
-    ///     MatchOutcome::Mismatch(_)
+    ///     engine.next_match("hash_a", &canonical),
+    ///     MatchOutcome::Matched { interaction_id: 0, .. }
     /// ));
     /// ```
     #[must_use]

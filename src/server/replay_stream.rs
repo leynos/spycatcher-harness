@@ -4,6 +4,7 @@
 //! events into canonical Server-Sent Events bytes for Axum response bodies.
 
 use axum::body::{Body, Bytes};
+use tracing::debug;
 
 use crate::cassette::StreamEvent;
 
@@ -31,14 +32,40 @@ const EAGER_STREAM_LIMIT_BYTES: usize = 64 * 1024;
 /// # let _: Body = body;
 /// ```
 pub(crate) fn build_stream_body(events: Vec<StreamEvent>) -> Body {
+    let event_count = events.len();
+    let comment_count = events
+        .iter()
+        .filter(|event| matches!(event, StreamEvent::Comment { .. }))
+        .count();
+    let data_count = event_count - comment_count;
     let chunks = events
         .into_iter()
         .map(|event| Bytes::from(serialize_event(&event)))
         .collect::<Vec<_>>();
     let total_len = chunks.iter().map(Bytes::len).sum::<usize>();
     if total_len <= EAGER_STREAM_LIMIT_BYTES {
+        debug!(
+            target: "spycatcher.harness.replay_stream",
+            delivery = "eager",
+            event_count,
+            comment_count,
+            data_count,
+            total_len,
+            eager_limit = EAGER_STREAM_LIMIT_BYTES,
+            "building eager replay stream body"
+        );
         Body::from(concat_chunks(chunks, total_len))
     } else {
+        debug!(
+            target: "spycatcher.harness.replay_stream",
+            delivery = "streamed",
+            event_count,
+            comment_count,
+            data_count,
+            total_len,
+            eager_limit = EAGER_STREAM_LIMIT_BYTES,
+            "building streamed replay body"
+        );
         // The error type exists only to satisfy `Body::from_stream`; the
         // stream iterates pre-serialized chunks and cannot fail.
         let stream = futures_util::stream::iter(chunks.into_iter().map(Ok::<_, std::io::Error>));

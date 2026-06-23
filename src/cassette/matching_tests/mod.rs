@@ -4,4 +4,5 @@ mod construction;
 mod diagnostic;
 mod fixtures;
 mod keyed;
+mod peek;
 mod sequential;

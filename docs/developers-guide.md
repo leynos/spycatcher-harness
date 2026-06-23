@@ -378,7 +378,7 @@ Current record-mode review residuals are tracked as deliberate follow-ups:
   including tests that reload persisted cassette contents. A post-test
   verification checks that `target/test-record-service/` remains empty.
 
-## Replay Matching And Extension Guides
+## Replay matching and extension guides
 
 See [`replay-matching-guide.md`](replay-matching-guide.md) for
 `ReplayMatchEngine`, `MatchOutcome`, diagnostics, diff support, and extension

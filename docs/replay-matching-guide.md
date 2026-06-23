@@ -3,7 +3,7 @@
 This guide describes the replay matching subsystem and extension conventions
 that were split out of the developer's guide to keep both documents scannable.
 
-## Replay Matching Architecture
+## Replay matching architecture
 
 The replay matching subsystem lives in `cassette::matching` and decides which
 recorded interaction to serve for each incoming replay request.
@@ -48,12 +48,12 @@ or exhausted hashes return `MismatchDiagnostic`.
 `MismatchDiagnostic` is domain-internal and contains the fields needed by the
 HTTP adapter to build a `409 Conflict` response:
 
-| Field           | Purpose                                                         |
-| --------------- | --------------------------------------------------------------- |
-| `position`      | Identifies which interaction or bound the mismatch relates to.  |
-| `expected_hash` | Stable hash of the expected request, or empty for keyed misses. |
-| `observed_hash` | Stable hash of the incoming request.                            |
-| `diff_summary`  | Field-level diff produced by `cassette::diff`.                  |
+| Field           | Purpose                                                                                       |
+| --------------- | --------------------------------------------------------------------------------------------- |
+| `position`      | Identifies which interaction or bound the mismatch relates to.                                |
+| `expected_hash` | Stable hash of the expected request, or empty when no single expected interaction exists.     |
+| `observed_hash` | Stable hash of the incoming request.                                                          |
+| `diff_summary`  | Field-level diff from `cassette::diff`, or a stable sentinel for exhaustion and keyed misses. |
 
 `InteractionPosition` disambiguates the mismatch location:
 
@@ -63,20 +63,20 @@ HTTP adapter to build a `409 Conflict` response:
 | `Exhausted(n)` | Sequential mode has no more interactions; `n` is the interaction count. |
 | `KeyedMiss(n)` | Keyed mode has no unconsumed matching interaction.                      |
 
-### Diagnostic Constants
+### Diagnostic constants
 
 - `DIAGNOSTIC_EXHAUSTED`: no more interactions are available.
 - `DIAGNOSTIC_NO_MATCH`: keyed mode found no interaction for the hash.
 - `DIAGNOSTIC_CONSUMED`: keyed mode found only consumed interactions.
 
-### Relationship To HTTP Errors
+### Relationship to HTTP errors
 
 The matching domain returns `MatchOutcome::Mismatch`; it does not know about
 HTTP. The replay adapter maps mismatches to request-mismatch responses and maps
 stream-shaped requests matched to non-stream cassette entries to the dedicated
 `stream_cassette_required` 501 path after a non-consuming peek.
 
-### Supporting Module: `diff`
+### Supporting module: `diff`
 
 `cassette::diff::canonical_diff_summary` compares two `serde_json::Value` trees
 and produces newline-separated change lines:
@@ -88,7 +88,7 @@ and produces newline-separated change lines:
 Diff determinism depends on the `serde_json` `preserve_order` feature described
 in [`developers-guide.md`](developers-guide.md).
 
-## Extension Guidelines
+## Extension guidelines
 
 - Place unit tests in a `#[cfg(test)]` module or sibling `*_tests.rs` file.
 - For BDD scenarios, add a `.feature` file in `tests/features/` and wire it

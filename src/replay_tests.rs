@@ -1,5 +1,8 @@
 //! Unit tests for adapter-neutral replay orchestration.
 
+#[path = "replay_tests/concurrent_stream.rs"]
+mod concurrent_stream;
+
 use super::*;
 use crate::cassette::{
     Cassette, CassetteFormatVersion, Interaction, InteractionMetadata, RecordedResponse,
@@ -317,4 +320,71 @@ fn cassette_with_duplicate_requests(
         format_version: CassetteFormatVersion::SUPPORTED,
         interactions,
     })
+}
+
+fn cassette_with_duplicate_stream_requests(
+    request: ObservedRequest,
+    count: usize,
+) -> Result<Cassette, crate::cassette::CanonicalError> {
+    let mut recorded = RecordedRequest {
+        method: request.method,
+        path: request.path,
+        query: request.query,
+        headers: request.headers,
+        body: request.body,
+        parsed_json: request.parsed_json,
+        canonical_request: None,
+        stable_hash: None,
+    };
+    recorded.populate_canonical_fields(&IgnorePathConfig::default())?;
+    let interactions = (0..count)
+        .map(|index| {
+            let response_id = format!("stream-response-{index}");
+            Interaction {
+                request: recorded.clone(),
+                response: RecordedResponse::Stream {
+                    status: 200,
+                    headers: Vec::new(),
+                    events: vec![
+                        StreamEvent::Comment {
+                            text: format!("before-{response_id}"),
+                        },
+                        StreamEvent::Data {
+                            raw: response_id,
+                            parsed_json: None,
+                        },
+                    ],
+                    raw_transcript: Vec::new(),
+                    timing: None,
+                },
+                metadata: InteractionMetadata {
+                    protocol_id: "openai.chat_completions.v1".to_owned(),
+                    upstream_id: "test".to_owned(),
+                    recorded_at: "2026-05-08T00:00:00Z".to_owned(),
+                    relative_offset_ms: index as u64,
+                },
+            }
+        })
+        .collect();
+
+    Ok(Cassette {
+        format_version: CassetteFormatVersion::SUPPORTED,
+        interactions,
+    })
+}
+
+fn assert_stream_event_order(events: &[StreamEvent]) -> String {
+    match events {
+        [
+            StreamEvent::Comment { text },
+            StreamEvent::Data {
+                raw,
+                parsed_json: None,
+            },
+        ] => {
+            assert_eq!(text, &format!("before-{raw}"));
+            raw.clone()
+        }
+        other => panic!("expected ordered comment and data events, got {other:?}"),
+    }
 }
