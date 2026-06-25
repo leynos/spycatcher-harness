@@ -123,9 +123,7 @@ impl ReplayMatchEngine {
     /// use spycatcher_harness::config::MatchMode;
     ///
     /// let policy = StreamCanonicalPolicy::ignore_comments();
-    /// let engine = ReplayMatchEngine::with_policy(Cassette::new(), MatchMode::SequentialStrict, policy)
-    ///     .expect("empty cassette is valid");
-    ///
+    /// let engine = ReplayMatchEngine::with_policy(Cassette::new(), MatchMode::SequentialStrict, policy).unwrap();
     /// assert_eq!(engine.stream_policy(), policy);
     /// ```
     ///
@@ -185,9 +183,7 @@ impl ReplayMatchEngine {
     /// # use spycatcher_harness::cassette::{Cassette, ReplayMatchEngine, StreamCanonicalPolicy};
     /// # use spycatcher_harness::config::MatchMode;
     /// let policy = StreamCanonicalPolicy::ignore_comments();
-    /// let engine = ReplayMatchEngine::with_policy(Cassette::new(), MatchMode::SequentialStrict, policy)
-    ///     .expect("empty cassette is valid");
-    ///
+    /// let engine = ReplayMatchEngine::with_policy(Cassette::new(), MatchMode::SequentialStrict, policy).unwrap();
     /// assert_eq!(engine.stream_policy(), policy);
     /// ```
     #[must_use]
@@ -206,12 +202,8 @@ impl ReplayMatchEngine {
     /// ```rust
     /// # use spycatcher_harness::cassette::{Cassette, MatchOutcome, ReplayMatchEngine};
     /// # use spycatcher_harness::config::MatchMode;
-    /// let mut engine =
-    ///     ReplayMatchEngine::new(Cassette::new(), MatchMode::SequentialStrict).unwrap();
-    /// assert!(matches!(
-    ///     engine.next_match("abc123", &serde_json::json!({})),
-    ///     MatchOutcome::Mismatch(_)
-    /// ));
+    /// let mut engine = ReplayMatchEngine::new(Cassette::new(), MatchMode::SequentialStrict).unwrap();
+    /// assert!(matches!(engine.next_match("abc123", &serde_json::json!({})), MatchOutcome::Mismatch(_)));
     /// ```
     pub fn next_match<'a>(
         &'a mut self,
@@ -233,32 +225,19 @@ impl ReplayMatchEngine {
     /// # use spycatcher_harness::config::MatchMode;
     /// let mut cassette = Cassette::new();
     /// cassette.append(Interaction {
-    ///     request: RecordedRequest {
-    ///         method: "POST".to_owned(),
-    ///         path: "/v1/chat/completions".to_owned(),
-    ///         query: String::new(), headers: Vec::new(), body: Vec::new(),
-    ///         parsed_json: None,
-    ///         canonical_request: Some(serde_json::json!({"method": "POST"})),
-    ///         stable_hash: Some("hash_a".to_owned()),
-    ///     },
-    ///     response: RecordedResponse::NonStream { status: 200, headers: Vec::new(), body: Vec::new(), parsed_json: None },
-    ///     metadata: InteractionMetadata {
-    ///         protocol_id: "openai_chat".to_owned(), upstream_id: "openai".to_owned(),
-    ///         recorded_at: "2026-06-23T00:00:00Z".to_owned(),
-    ///         relative_offset_ms: 0,
-    ///     },
+    ///     request: RecordedRequest { method: "POST".to_owned(), path: "/v1/chat/completions".to_owned(),
+    ///         query: String::new(), headers: Vec::new(), body: Vec::new(), parsed_json: None,
+    ///         canonical_request: Some(serde_json::json!({"method": "POST"})), stable_hash: Some("hash_a".to_owned()) },
+    ///     response: RecordedResponse::NonStream { status: 200, headers: Vec::new(), body: Vec::new(),
+    ///         parsed_json: None },
+    ///     metadata: InteractionMetadata { protocol_id: "openai_chat".to_owned(), upstream_id: "openai".to_owned(),
+    ///         recorded_at: "2026-06-23T00:00:00Z".to_owned(), relative_offset_ms: 0 },
     /// });
     /// let mut engine = ReplayMatchEngine::new(cassette, MatchMode::SequentialStrict).unwrap();
     /// let canonical = serde_json::json!({"method": "POST"});
     ///
-    /// assert!(matches!(
-    ///     engine.peek_match("hash_a", &canonical),
-    ///     MatchOutcome::Matched { interaction_id: 0, .. }
-    /// ));
-    /// assert!(matches!(
-    ///     engine.next_match("hash_a", &canonical),
-    ///     MatchOutcome::Matched { interaction_id: 0, .. }
-    /// ));
+    /// assert!(matches!(engine.peek_match("hash_a", &canonical), MatchOutcome::Matched { interaction_id: 0, .. }));
+    /// assert!(matches!(engine.next_match("hash_a", &canonical), MatchOutcome::Matched { interaction_id: 0, .. }));
     /// ```
     #[must_use]
     pub fn peek_match<'a>(
@@ -275,6 +254,27 @@ impl ReplayMatchEngine {
         match candidate {
             Ok(idx) => self.matched_at(idx, observed_hash),
             Err(diagnostic) => MatchOutcome::Mismatch(diagnostic),
+        }
+    }
+
+    pub(crate) fn commit_match(&mut self, interaction_id: usize) -> bool {
+        match self.mode {
+            MatchMode::SequentialStrict if self.sequential_cursor == interaction_id => {
+                self.sequential_cursor += 1;
+                true
+            }
+            MatchMode::Keyed => {
+                let Some(consumed_slot) = self.consumed.get_mut(interaction_id) else {
+                    return false;
+                };
+                if *consumed_slot {
+                    false
+                } else {
+                    *consumed_slot = true;
+                    true
+                }
+            }
+            MatchMode::SequentialStrict => false,
         }
     }
 

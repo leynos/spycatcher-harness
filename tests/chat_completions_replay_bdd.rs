@@ -4,11 +4,7 @@ use rstest::fixture;
 use rstest_bdd_macros::scenario;
 
 mod chat_completions_replay;
-#[expect(
-    dead_code,
-    reason = "the replay suite reuses only part of the record-mode integration helper module"
-)]
-#[path = "record_mode_proxying/helpers.rs"]
+#[path = "chat_completions_replay/record_helpers.rs"]
 mod record_helpers;
 
 use chat_completions_replay::world::ReplayWorld;

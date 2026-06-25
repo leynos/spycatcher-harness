@@ -106,12 +106,16 @@ impl ReplayService {
             ReplayError::Internal
         })?;
 
-        let response = {
+        let (interaction_id, response) = {
             let peek = guard.peek_match(observed_hash, canonical_request);
             match peek {
-                MatchOutcome::Matched { interaction, .. } => {
-                    self.response_from_recorded(&interaction.response, is_stream_request)?
-                }
+                MatchOutcome::Matched {
+                    interaction_id,
+                    interaction,
+                } => (
+                    interaction_id,
+                    self.response_from_recorded(&interaction.response, is_stream_request)?,
+                ),
                 MatchOutcome::Mismatch(diagnostic) => {
                     drop(guard);
                     self.log_mismatch(&diagnostic);
@@ -119,17 +123,13 @@ impl ReplayService {
                 }
             }
         };
-        let interaction_id = match guard.next_match(observed_hash, canonical_request) {
-            MatchOutcome::Matched { interaction_id, .. } => interaction_id,
-            MatchOutcome::Mismatch(diagnostic) => {
-                error!(
-                    target: "spycatcher.harness.replay",
-                    "failed to commit previously peeked replay match reason={}",
-                    diagnostic.reason_code()
-                );
-                return Err(ReplayError::Internal);
-            }
-        };
+        if !guard.commit_match(interaction_id) {
+            error!(
+                target: "spycatcher.harness.replay",
+                "failed to commit previously peeked replay match interaction_id={interaction_id}"
+            );
+            return Err(ReplayError::Internal);
+        }
         drop(guard);
 
         self.log_match(interaction_id, observed_hash);
