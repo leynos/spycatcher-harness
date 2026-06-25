@@ -19,6 +19,10 @@ use crate::http_exchange::ObservedRequest;
 use crate::protocol::{
     CHAT_COMPLETIONS_PATH, CHAT_COMPLETIONS_PROTOCOL_ID, is_streaming_chat_completions_request,
 };
+use crate::replay_observability::{
+    ReplayMetricLabels, record_replay_commit_failure, record_replay_mismatch,
+    record_replay_rejection, record_replay_request,
+};
 
 /// Thread-safe replay orchestration boundary.
 #[derive(Debug, Clone)]
@@ -57,6 +61,16 @@ impl ReplayService {
         )
     }
 
+    /// Returns bounded replay metric labels for this service.
+    #[must_use]
+    pub(crate) fn metric_labels(&self) -> ReplayMetricLabels {
+        ReplayMetricLabels::new(
+            self.context.cassette.clone(),
+            self.context.protocol,
+            CHAT_COMPLETIONS_PATH,
+        )
+    }
+
     /// Replays one chat completions request from the cassette.
     pub(crate) fn handle_chat_completions(
         &self,
@@ -82,7 +96,10 @@ impl ReplayService {
         }
     }
 
-    fn log_rejection(&self, outcome: &str, path: &str) {
+    fn log_rejection(&self, outcome: &'static str, path: &str) {
+        let labels = self.metric_labels();
+        record_replay_request(&labels, outcome);
+        record_replay_rejection(&labels, outcome);
         warn!(
             target: "spycatcher.harness.replay",
             "replay request rejected mode=replay protocol={protocol} outcome={outcome} \
@@ -124,6 +141,9 @@ impl ReplayService {
             }
         };
         if !guard.commit_match(interaction_id) {
+            let labels = self.metric_labels();
+            record_replay_request(&labels, "commit_failure");
+            record_replay_commit_failure(&labels);
             error!(
                 target: "spycatcher.harness.replay",
                 "failed to commit previously peeked replay match interaction_id={interaction_id}"
@@ -137,6 +157,7 @@ impl ReplayService {
     }
 
     fn log_match(&self, interaction_id: usize, observed_hash: &str) {
+        record_replay_request(&self.metric_labels(), "matched");
         let matched_count = self.matched_count.fetch_add(1, Ordering::Relaxed) + 1;
         let mismatch_count = self.mismatch_count.load(Ordering::Relaxed);
         info!(
@@ -151,6 +172,9 @@ impl ReplayService {
     }
 
     fn log_mismatch(&self, diagnostic: &MismatchDiagnostic) {
+        let labels = self.metric_labels();
+        record_replay_request(&labels, "mismatch");
+        record_replay_mismatch(&labels, diagnostic.reason_code());
         let mismatch_count = self.mismatch_count.fetch_add(1, Ordering::Relaxed) + 1;
         let matched_count = self.matched_count.load(Ordering::Relaxed);
         warn!(

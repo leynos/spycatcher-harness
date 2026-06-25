@@ -5,9 +5,12 @@
 
 use axum::body::{Body, Bytes};
 use futures_util::{StreamExt, stream};
-use tracing::debug;
+use tracing::{debug, debug_span};
 
 use crate::cassette::StreamEvent;
+use crate::replay_observability::{
+    MODE_REPLAY, ReplayMetricLabels, StreamDeliveryMode, record_stream_delivery,
+};
 
 /// Soft size limit for eager stream replay buffers.
 const EAGER_STREAM_LIMIT_BYTES: usize = 64 * 1024;
@@ -32,13 +35,24 @@ const EAGER_STREAM_LIMIT_BYTES: usize = 64 * 1024;
 /// }]);
 /// # let _: Body = body;
 /// ```
-pub(crate) fn build_stream_body(events: Vec<StreamEvent>) -> Body {
+pub(crate) fn build_stream_body(events: Vec<StreamEvent>, labels: &ReplayMetricLabels) -> Body {
     let event_count = events.len();
     let comment_count = events
         .iter()
         .filter(|event| matches!(event, StreamEvent::Comment { .. }))
         .count();
     let data_count = event_count - comment_count;
+    let span = debug_span!(
+        "replay_stream_render",
+        mode = MODE_REPLAY,
+        protocol = labels.protocol,
+        route = labels.route,
+        cassette = %labels.cassette,
+        event_count,
+        comment_count,
+        data_count,
+    );
+    let _span_guard = span.enter();
     let mut chunks = Vec::new();
     let mut total_len = 0;
     let mut remaining_events = events.into_iter();
@@ -46,9 +60,11 @@ pub(crate) fn build_stream_body(events: Vec<StreamEvent>) -> Body {
         let chunk = Bytes::from(serialize_event(&event));
         let next_len = total_len + chunk.len();
         if next_len > EAGER_STREAM_LIMIT_BYTES {
+            let delivery = StreamDeliveryMode::Streamed;
+            record_stream_delivery(labels, delivery, event_count);
             debug!(
                 target: "spycatcher.harness.replay_stream",
-                delivery = "streamed",
+                delivery = delivery.as_str(),
                 event_count,
                 comment_count,
                 data_count,
@@ -71,9 +87,11 @@ pub(crate) fn build_stream_body(events: Vec<StreamEvent>) -> Body {
         chunks.push(chunk);
     }
 
+    let delivery = StreamDeliveryMode::Eager;
+    record_stream_delivery(labels, delivery, event_count);
     debug!(
         target: "spycatcher.harness.replay_stream",
-        delivery = "eager",
+        delivery = delivery.as_str(),
         event_count,
         comment_count,
         data_count,
@@ -120,11 +138,12 @@ mod tests {
     use rstest::rstest;
 
     use super::*;
+    use crate::protocol::{CHAT_COMPLETIONS_PATH, CHAT_COMPLETIONS_PROTOCOL_ID};
 
     #[rstest]
     #[tokio::test]
     async fn parsed_event_replay_emits_data_frames() {
-        let body = build_stream_body(vec![data("{\"id\":\"chunk\"}"), data("[DONE]")]);
+        let body = build_stream_body(vec![data("{\"id\":\"chunk\"}"), data("[DONE]")], &labels());
 
         let bytes = to_bytes(body, 1024).await.expect("body should be readable");
 
@@ -137,11 +156,14 @@ mod tests {
     #[rstest]
     #[tokio::test]
     async fn parsed_event_replay_emits_comment_frames_in_order() {
-        let body = build_stream_body(vec![
-            data("{\"id\":\"first\"}"),
-            comment("OPENROUTER PROCESSING"),
-            data("[DONE]"),
-        ]);
+        let body = build_stream_body(
+            vec![
+                data("{\"id\":\"first\"}"),
+                comment("OPENROUTER PROCESSING"),
+                data("[DONE]"),
+            ],
+            &labels(),
+        );
 
         let bytes = to_bytes(body, 1024).await.expect("body should be readable");
 
@@ -154,7 +176,7 @@ mod tests {
     #[rstest]
     #[tokio::test]
     async fn empty_event_list_produces_empty_body() {
-        let body = build_stream_body(Vec::new());
+        let body = build_stream_body(Vec::new(), &labels());
 
         let bytes = to_bytes(body, 1024).await.expect("body should be readable");
 
@@ -164,7 +186,7 @@ mod tests {
     #[rstest]
     #[tokio::test]
     async fn parsed_event_replay_splits_multiline_payloads() {
-        let body = build_stream_body(vec![data("alpha\nbeta"), comment("one\ntwo")]);
+        let body = build_stream_body(vec![data("alpha\nbeta"), comment("one\ntwo")], &labels());
 
         let bytes = to_bytes(body, 1024).await.expect("body should be readable");
 
@@ -177,7 +199,10 @@ mod tests {
     #[rstest]
     #[tokio::test]
     async fn eager_stream_limit_includes_boundary_size() {
-        let body = build_stream_body(vec![data(&"x".repeat(EAGER_STREAM_LIMIT_BYTES - 8))]);
+        let body = build_stream_body(
+            vec![data(&"x".repeat(EAGER_STREAM_LIMIT_BYTES - 8))],
+            &labels(),
+        );
 
         let bytes = to_bytes(body, EAGER_STREAM_LIMIT_BYTES + 1)
             .await
@@ -189,7 +214,10 @@ mod tests {
     #[rstest]
     #[tokio::test]
     async fn oversized_stream_body_remains_readable() {
-        let body = build_stream_body(vec![data(&"x".repeat(EAGER_STREAM_LIMIT_BYTES - 7))]);
+        let body = build_stream_body(
+            vec![data(&"x".repeat(EAGER_STREAM_LIMIT_BYTES - 7))],
+            &labels(),
+        );
 
         let bytes = to_bytes(body, EAGER_STREAM_LIMIT_BYTES + 2)
             .await
@@ -230,6 +258,14 @@ mod tests {
             raw: raw.to_owned(),
             parsed_json: None,
         }
+    }
+
+    fn labels() -> ReplayMetricLabels {
+        ReplayMetricLabels::new(
+            "test-cassette".to_owned(),
+            CHAT_COMPLETIONS_PROTOCOL_ID,
+            CHAT_COMPLETIONS_PATH,
+        )
     }
 
     fn stream_event_with_newlines() -> impl Strategy<Value = StreamEvent> {
