@@ -328,15 +328,14 @@ The method returns a `MatchOutcome<'_>` enum:
 The `MismatchDiagnostic` type carries structured information for the adapter
 layer to map to an HTTP 409 response:
 
-- `interaction_id: usize` — zero-based index of the expected interaction
-  (sequential strict mode) or the total interaction count (keyed mode miss).
-- `expected_hash: String` — stable hash of the expected canonical request
-  (sequential strict mode) or empty string when no single expected interaction
-  exists.
+- `position: InteractionPosition` — structured position information for the
+  expected interaction, cassette exhaustion, or keyed-mode miss.
+- `expected_hash: String` — stable hash of the expected canonical request, or
+  empty string for keyed misses and exhaustion cases.
 - `observed_hash: String` — stable hash of the observed incoming request.
 - `diff_summary: String` — field-level diff summary of the two canonical
-  request JSON values, or a stable diagnostic sentinel for exhaustion and keyed
-  misses.
+  request JSON values, or bounded diagnostic text for exhaustion, no-match,
+  consumed, and internal-error paths.
 
 **Diagnostic constants.** The `diff_summary` field in mismatch diagnostics is
 prefixed with a stable, parseable token so that adapters can branch on failure

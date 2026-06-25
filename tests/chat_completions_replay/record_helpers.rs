@@ -110,9 +110,9 @@ impl StubUpstream {
         runtime: &tokio::runtime::Runtime,
     ) -> Result<(), Box<dyn Error>> {
         runtime.block_on(async move {
-            if let Some(sender) = self.shutdown.take()
-                && sender.send(()).is_err()
-            {}
+            if let Some(sender) = self.shutdown.take() {
+                sender.send(()).unwrap_or(());
+            }
             self.task
                 .await
                 .map_err(|error| std::io::Error::other(format!("stub join failed: {error}")))??;
@@ -133,10 +133,6 @@ enum StubResponse {
     Stream(Vec<u8>),
 }
 
-#[expect(
-    clippy::expect_used,
-    reason = "fail fast on poisoned mutex during integration tests"
-)]
 async fn stub_handler(
     State(state): State<StubState>,
     headers: HeaderMap,
@@ -154,11 +150,10 @@ async fn stub_handler(
             .collect(),
         body: body.to_vec(),
     };
-    state
-        .seen_requests
-        .lock()
-        .expect("captured requests mutex should not be poisoned")
-        .push(captured);
+    let Ok(mut seen_requests) = state.seen_requests.lock() else {
+        return internal_error_response("captured requests mutex is poisoned");
+    };
+    seen_requests.push(captured);
 
     match state.response {
         StubResponse::Json(response_body) => json_response(response_body),
@@ -190,6 +185,12 @@ fn stream_response(transcript: &[u8]) -> Response<Body> {
         .map(|chunk| Ok::<_, std::io::Error>(Bytes::copy_from_slice(chunk)))
         .collect::<Vec<_>>();
     build_response(response_headers, Body::from_stream(stream::iter(chunks)))
+}
+
+fn internal_error_response(message: &str) -> Response<Body> {
+    let mut response = Response::new(Body::from(message.to_owned()));
+    *response.status_mut() = StatusCode::INTERNAL_SERVER_ERROR;
+    response
 }
 
 fn build_response(headers: HeaderMap, body: Body) -> Response<Body> {

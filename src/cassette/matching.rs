@@ -121,7 +121,6 @@ impl ReplayMatchEngine {
     /// ```rust
     /// use spycatcher_harness::cassette::{Cassette, ReplayMatchEngine, StreamCanonicalPolicy};
     /// use spycatcher_harness::config::MatchMode;
-    ///
     /// let policy = StreamCanonicalPolicy::ignore_comments();
     /// let engine = ReplayMatchEngine::with_policy(Cassette::new(), MatchMode::SequentialStrict, policy).unwrap();
     /// assert_eq!(engine.stream_policy(), policy);
@@ -196,7 +195,6 @@ impl ReplayMatchEngine {
     /// In sequential strict mode, the request must match the next recorded
     /// interaction. In keyed mode, the request matches the next unconsumed
     /// interaction with the same hash.
-    ///
     /// # Examples
     ///
     /// ```rust
@@ -235,7 +233,6 @@ impl ReplayMatchEngine {
     /// });
     /// let mut engine = ReplayMatchEngine::new(cassette, MatchMode::SequentialStrict).unwrap();
     /// let canonical = serde_json::json!({"method": "POST"});
-    ///
     /// assert!(matches!(engine.peek_match("hash_a", &canonical), MatchOutcome::Matched { interaction_id: 0, .. }));
     /// assert!(matches!(engine.next_match("hash_a", &canonical), MatchOutcome::Matched { interaction_id: 0, .. }));
     /// ```
@@ -259,7 +256,10 @@ impl ReplayMatchEngine {
 
     pub(crate) fn commit_match(&mut self, interaction_id: usize) -> bool {
         match self.mode {
-            MatchMode::SequentialStrict if self.sequential_cursor == interaction_id => {
+            MatchMode::SequentialStrict
+                if self.sequential_cursor == interaction_id
+                    && self.interactions.get(interaction_id).is_some() =>
+            {
                 self.sequential_cursor += 1;
                 true
             }

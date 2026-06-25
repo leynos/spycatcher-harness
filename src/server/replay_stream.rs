@@ -4,6 +4,7 @@
 //! events into canonical Server-Sent Events bytes for Axum response bodies.
 
 use axum::body::{Body, Bytes};
+use futures_util::{StreamExt, stream};
 use tracing::debug;
 
 use crate::cassette::StreamEvent;
@@ -38,45 +39,55 @@ pub(crate) fn build_stream_body(events: Vec<StreamEvent>) -> Body {
         .filter(|event| matches!(event, StreamEvent::Comment { .. }))
         .count();
     let data_count = event_count - comment_count;
-    let total_len = events.iter().map(serialized_event_len).sum::<usize>();
-    if total_len <= EAGER_STREAM_LIMIT_BYTES {
-        debug!(
-            target: "spycatcher.harness.replay_stream",
-            delivery = "eager",
-            event_count,
-            comment_count,
-            data_count,
-            total_len,
-            eager_limit = EAGER_STREAM_LIMIT_BYTES,
-            "building eager replay stream body"
-        );
-        Body::from(serialize_events(events, total_len))
-    } else {
-        debug!(
-            target: "spycatcher.harness.replay_stream",
-            delivery = "streamed",
-            event_count,
-            comment_count,
-            data_count,
-            total_len,
-            eager_limit = EAGER_STREAM_LIMIT_BYTES,
-            "building streamed replay body"
-        );
-        // The error type exists only to satisfy `Body::from_stream`; event
-        // serialization is infallible and happens lazily per yielded chunk.
-        let stream = futures_util::stream::iter(
-            events
-                .into_iter()
-                .map(|event| Ok::<_, std::io::Error>(Bytes::from(serialize_event(&event)))),
-        );
-        Body::from_stream(stream)
+    let mut chunks = Vec::new();
+    let mut total_len = 0;
+    let mut remaining_events = events.into_iter();
+    while let Some(event) = remaining_events.next() {
+        let chunk = Bytes::from(serialize_event(&event));
+        let next_len = total_len + chunk.len();
+        if next_len > EAGER_STREAM_LIMIT_BYTES {
+            debug!(
+                target: "spycatcher.harness.replay_stream",
+                delivery = "streamed",
+                event_count,
+                comment_count,
+                data_count,
+                buffered_len = total_len,
+                eager_limit = EAGER_STREAM_LIMIT_BYTES,
+                "building streamed replay body"
+            );
+            let prefix_stream = stream::iter(
+                chunks
+                    .into_iter()
+                    .chain(std::iter::once(chunk))
+                    .map(Ok::<_, std::io::Error>),
+            );
+            let remaining_stream = stream::iter(remaining_events.map(|stream_event| {
+                Ok::<_, std::io::Error>(Bytes::from(serialize_event(&stream_event)))
+            }));
+            return Body::from_stream(prefix_stream.chain(remaining_stream));
+        }
+        total_len = next_len;
+        chunks.push(chunk);
     }
+
+    debug!(
+        target: "spycatcher.harness.replay_stream",
+        delivery = "eager",
+        event_count,
+        comment_count,
+        data_count,
+        total_len,
+        eager_limit = EAGER_STREAM_LIMIT_BYTES,
+        "building eager replay stream body"
+    );
+    Body::from(concat_chunks(chunks, total_len))
 }
 
-fn serialize_events(events: Vec<StreamEvent>, total_len: usize) -> Bytes {
+fn concat_chunks(chunks: Vec<Bytes>, total_len: usize) -> Bytes {
     let mut body = Vec::with_capacity(total_len);
-    for event in events {
-        body.extend_from_slice(&serialize_event(&event));
+    for chunk in chunks {
+        body.extend_from_slice(&chunk);
     }
     Bytes::from(body)
 }
@@ -98,17 +109,6 @@ fn serialize_lines(prefix: &[u8], text: &str) -> Vec<u8> {
     }
     bytes.push(b'\n');
     bytes
-}
-
-fn serialized_event_len(event: &StreamEvent) -> usize {
-    match event {
-        StreamEvent::Comment { text } => serialized_lines_len(b": ", text),
-        StreamEvent::Data { raw, .. } => serialized_lines_len(b"data: ", raw),
-    }
-}
-
-fn serialized_lines_len(prefix: &[u8], text: &str) -> usize {
-    text.len() + (prefix.len() + 1) * text.split('\n').count() + 1
 }
 
 #[cfg(test)]
