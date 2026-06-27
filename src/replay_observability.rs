@@ -47,47 +47,61 @@ impl StreamDeliveryMode {
 
 /// Records a replay request outcome.
 pub(crate) fn record_replay_request(labels: &ReplayMetricLabels, outcome: &'static str) {
-    counter!(
-        "spycatcher.replay.requests.total",
-        "protocol" => labels.protocol,
-        "route" => labels.route,
-        "outcome" => outcome,
-    )
-    .increment(1);
+    increment_replay_counter("spycatcher.replay.requests.total", labels, outcome, None);
 }
 
 /// Records a replay request mismatch.
 pub(crate) fn record_replay_mismatch(labels: &ReplayMetricLabels, reason: &'static str) {
-    counter!(
+    increment_replay_counter(
         "spycatcher.replay.mismatches.total",
-        "protocol" => labels.protocol,
-        "route" => labels.route,
-        "outcome" => "mismatch",
-        "reason" => reason,
-    )
-    .increment(1);
+        labels,
+        "mismatch",
+        Some(reason),
+    );
 }
 
 /// Records a replay request rejection.
 pub(crate) fn record_replay_rejection(labels: &ReplayMetricLabels, outcome: &'static str) {
-    counter!(
-        "spycatcher.replay.rejections.total",
-        "protocol" => labels.protocol,
-        "route" => labels.route,
-        "outcome" => outcome,
-    )
-    .increment(1);
+    increment_replay_counter("spycatcher.replay.rejections.total", labels, outcome, None);
 }
 
 /// Records a replay match commit failure.
 pub(crate) fn record_replay_commit_failure(labels: &ReplayMetricLabels) {
-    counter!(
+    increment_replay_counter(
         "spycatcher.replay.commit_failures.total",
-        "protocol" => labels.protocol,
-        "route" => labels.route,
-        "outcome" => "commit_failure",
-    )
-    .increment(1);
+        labels,
+        "commit_failure",
+        None,
+    );
+}
+
+fn increment_replay_counter(
+    metric_name: &'static str,
+    labels: &ReplayMetricLabels,
+    outcome: &'static str,
+    reason: Option<&'static str>,
+) {
+    match reason {
+        Some(reason_label) => {
+            counter!(
+                metric_name,
+                "protocol" => labels.protocol,
+                "route" => labels.route,
+                "outcome" => outcome,
+                "reason" => reason_label,
+            )
+            .increment(1);
+        }
+        None => {
+            counter!(
+                metric_name,
+                "protocol" => labels.protocol,
+                "route" => labels.route,
+                "outcome" => outcome,
+            )
+            .increment(1);
+        }
+    }
 }
 
 /// Records replay stream delivery metrics.
