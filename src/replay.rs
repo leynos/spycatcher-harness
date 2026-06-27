@@ -63,12 +63,8 @@ impl ReplayService {
 
     /// Returns bounded replay metric labels for this service.
     #[must_use]
-    pub(crate) fn metric_labels(&self) -> ReplayMetricLabels {
-        ReplayMetricLabels::new(
-            self.context.cassette.clone(),
-            self.context.protocol,
-            CHAT_COMPLETIONS_PATH,
-        )
+    pub(crate) const fn metric_labels(&self) -> ReplayMetricLabels {
+        ReplayMetricLabels::new(self.context.protocol, CHAT_COMPLETIONS_PATH)
     }
 
     /// Replays one chat completions request from the cassette.

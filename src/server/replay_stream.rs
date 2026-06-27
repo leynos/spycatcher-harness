@@ -47,7 +47,6 @@ pub(crate) fn build_stream_body(events: Vec<StreamEvent>, labels: &ReplayMetricL
         mode = MODE_REPLAY,
         protocol = labels.protocol,
         route = labels.route,
-        cassette = %labels.cassette,
         event_count,
         comment_count,
         data_count,
@@ -261,11 +260,7 @@ mod tests {
     }
 
     fn labels() -> ReplayMetricLabels {
-        ReplayMetricLabels::new(
-            "test-cassette".to_owned(),
-            CHAT_COMPLETIONS_PROTOCOL_ID,
-            CHAT_COMPLETIONS_PATH,
-        )
+        ReplayMetricLabels::new(CHAT_COMPLETIONS_PROTOCOL_ID, CHAT_COMPLETIONS_PATH)
     }
 
     fn stream_event_with_newlines() -> impl Strategy<Value = StreamEvent> {

@@ -11,8 +11,6 @@ pub(crate) const MODE_REPLAY: &str = "replay";
 /// Bounded labels shared by replay-mode metrics.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ReplayMetricLabels {
-    /// Configured cassette name.
-    pub(crate) cassette: String,
     /// Stable protocol identifier.
     pub(crate) protocol: &'static str,
     /// Stable route path.
@@ -22,12 +20,8 @@ pub(crate) struct ReplayMetricLabels {
 impl ReplayMetricLabels {
     /// Creates a replay metric label set.
     #[must_use]
-    pub(crate) const fn new(cassette: String, protocol: &'static str, route: &'static str) -> Self {
-        Self {
-            cassette,
-            protocol,
-            route,
-        }
+    pub(crate) const fn new(protocol: &'static str, route: &'static str) -> Self {
+        Self { protocol, route }
     }
 }
 
@@ -55,7 +49,6 @@ impl StreamDeliveryMode {
 pub(crate) fn record_replay_request(labels: &ReplayMetricLabels, outcome: &'static str) {
     counter!(
         "spycatcher.replay.requests.total",
-        "cassette" => labels.cassette.clone(),
         "protocol" => labels.protocol,
         "route" => labels.route,
         "outcome" => outcome,
@@ -67,7 +60,6 @@ pub(crate) fn record_replay_request(labels: &ReplayMetricLabels, outcome: &'stat
 pub(crate) fn record_replay_mismatch(labels: &ReplayMetricLabels, reason: &'static str) {
     counter!(
         "spycatcher.replay.mismatches.total",
-        "cassette" => labels.cassette.clone(),
         "protocol" => labels.protocol,
         "route" => labels.route,
         "outcome" => "mismatch",
@@ -80,7 +72,6 @@ pub(crate) fn record_replay_mismatch(labels: &ReplayMetricLabels, reason: &'stat
 pub(crate) fn record_replay_rejection(labels: &ReplayMetricLabels, outcome: &'static str) {
     counter!(
         "spycatcher.replay.rejections.total",
-        "cassette" => labels.cassette.clone(),
         "protocol" => labels.protocol,
         "route" => labels.route,
         "outcome" => outcome,
@@ -92,7 +83,6 @@ pub(crate) fn record_replay_rejection(labels: &ReplayMetricLabels, outcome: &'st
 pub(crate) fn record_replay_commit_failure(labels: &ReplayMetricLabels) {
     counter!(
         "spycatcher.replay.commit_failures.total",
-        "cassette" => labels.cassette.clone(),
         "protocol" => labels.protocol,
         "route" => labels.route,
         "outcome" => "commit_failure",
@@ -109,7 +99,6 @@ pub(crate) fn record_stream_delivery(
     let delivery_label = delivery.as_str();
     counter!(
         "spycatcher.replay.stream.responses.total",
-        "cassette" => labels.cassette.clone(),
         "protocol" => labels.protocol,
         "route" => labels.route,
         "delivery" => delivery_label,
@@ -118,7 +107,6 @@ pub(crate) fn record_stream_delivery(
     .increment(1);
     counter!(
         "spycatcher.replay.stream.delivery.total",
-        "cassette" => labels.cassette.clone(),
         "protocol" => labels.protocol,
         "route" => labels.route,
         "delivery" => delivery_label,
@@ -127,7 +115,6 @@ pub(crate) fn record_stream_delivery(
     .increment(1);
     histogram!(
         "spycatcher.replay.stream.events",
-        "cassette" => labels.cassette.clone(),
         "protocol" => labels.protocol,
         "route" => labels.route,
         "delivery" => delivery_label,
@@ -159,5 +146,6 @@ mod tests {
     #[rstest::rstest]
     fn event_count_uses_bounded_u32_histogram_value() {
         assert_eq!(bounded_event_count(42), 42);
+        assert_eq!(bounded_event_count(usize::MAX), u32::MAX);
     }
 }

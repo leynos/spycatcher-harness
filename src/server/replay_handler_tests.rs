@@ -151,34 +151,21 @@ async fn mismatch_error_response_matches_snapshot() -> TestResult {
     .await
 }
 
+#[rstest::rstest]
+#[case("malformed_json", ReplayError::MalformedJson, StatusCode::BAD_REQUEST)]
+#[case(
+    "stream_cassette_required",
+    ReplayError::StreamCassetteRequiredForStreamRequest,
+    StatusCode::NOT_IMPLEMENTED
+)]
+#[case("internal", ReplayError::Internal, StatusCode::BAD_GATEWAY)]
 #[tokio::test]
-async fn malformed_json_error_response_matches_snapshot() -> TestResult {
-    assert_error_response_snapshot(
-        "malformed_json",
-        build_replay_error_response(&ReplayError::MalformedJson),
-        StatusCode::BAD_REQUEST,
-    )
-    .await
-}
-
-#[tokio::test]
-async fn stream_cassette_required_error_response_matches_snapshot() -> TestResult {
-    assert_error_response_snapshot(
-        "stream_cassette_required",
-        build_replay_error_response(&ReplayError::StreamCassetteRequiredForStreamRequest),
-        StatusCode::NOT_IMPLEMENTED,
-    )
-    .await
-}
-
-#[tokio::test]
-async fn internal_error_response_matches_snapshot() -> TestResult {
-    assert_error_response_snapshot(
-        "internal",
-        build_replay_error_response(&ReplayError::Internal),
-        StatusCode::BAD_GATEWAY,
-    )
-    .await
+async fn replay_error_response_matches_snapshot(
+    #[case] name: &str,
+    #[case] error: ReplayError,
+    #[case] expected_status: StatusCode,
+) -> TestResult {
+    assert_error_response_snapshot(name, build_replay_error_response(&error), expected_status).await
 }
 
 async fn assert_error_response_snapshot(
@@ -198,11 +185,7 @@ async fn assert_error_response_snapshot(
 }
 
 fn labels() -> ReplayMetricLabels {
-    ReplayMetricLabels::new(
-        "test-cassette".to_owned(),
-        CHAT_COMPLETIONS_PROTOCOL_ID,
-        CHAT_COMPLETIONS_PATH,
-    )
+    ReplayMetricLabels::new(CHAT_COMPLETIONS_PROTOCOL_ID, CHAT_COMPLETIONS_PATH)
 }
 
 fn json_str<'a>(value: &'a serde_json::Value, key: &str) -> Option<&'a str> {
