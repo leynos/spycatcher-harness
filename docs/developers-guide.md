@@ -77,18 +77,19 @@ configuration, module layout, internal abstractions, and review residuals.
 The library crate (`src/lib.rs`) contains the following top-level public and
 internal modules:
 
-| Module     | Purpose                                                                    |
-| ---------- | -------------------------------------------------------------------------- |
-| `cassette` | Schema, canonicalization, hashing, matching, diff, filesystem persistence  |
-| `cli`      | CLI argument parsing via `clap`                                            |
-| `config`   | `HarnessConfig`, `UpstreamConfig`, `RedactionConfig`, and related types    |
-| `error`    | `HarnessError` enum and `HarnessResult` alias                              |
-| `i18n`     | Internationalization via Fluent                                            |
-| `protocol` | Protocol identifiers and request-shape helpers                             |
-| `replay`   | Adapter-neutral replay service and replay error types                      |
-| `server`   | Axum HTTP servers: routing, handlers, state, graceful shutdown             |
-| `sse`      | Incremental Server-Sent Events parser used by stream recording             |
-| `upstream` | Outbound HTTP adapter: URL construction, secret resolution, reqwest client |
+| Module                 | Purpose                                                                    |
+| ---------------------- | -------------------------------------------------------------------------- |
+| `cassette`             | Schema, canonicalization, hashing, matching, diff, filesystem persistence  |
+| `cli`                  | CLI argument parsing via `clap`                                            |
+| `config`               | `HarnessConfig`, `UpstreamConfig`, `RedactionConfig`, and related types    |
+| `error`                | `HarnessError` enum and `HarnessResult` alias                              |
+| `i18n`                 | Internationalization via Fluent                                            |
+| `protocol`             | Protocol identifiers and request-shape helpers                             |
+| `replay`               | Adapter-neutral replay service and replay error types                      |
+| `replay_observability` | Replay-mode metrics labels and emitters                                    |
+| `server`               | Axum HTTP servers: routing, handlers, state, graceful shutdown             |
+| `sse`                  | Incremental Server-Sent Events parser used by stream recording             |
+| `upstream`             | Outbound HTTP adapter: URL construction, secret resolution, reqwest client |
 
 _Table 1: Top-level library modules._
 
@@ -196,6 +197,14 @@ boundary that keeps replay deterministic and no-network. The only mutable
 replay state is the `ReplayMatchEngine`, guarded by a narrow `Mutex` in
 `ReplayService`; the guard is held only while calling `next_match`, and never
 across an `.await`.
+
+Replay observability lives in `src/replay_observability.rs`. That module owns
+the bounded metric label type, replay-mode constants, and metric emitters used
+by `ReplayService`, `replay_handler`, and `replay_stream`. It emits through the
+`metrics` facade only; library code must not install recorders or exporters.
+Keep metric labels low-cardinality (`protocol`, `route`, `outcome`, `reason`,
+and stream `delivery`). Cassette names, hashes, interaction identifiers, and
+user input belong in tracing fields or logs, not metric labels.
 
 ### `Clock` and `SystemClock` (`src/server/record_metadata.rs`)
 
