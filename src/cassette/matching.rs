@@ -122,7 +122,7 @@ impl ReplayMatchEngine {
     /// use spycatcher_harness::cassette::{Cassette, ReplayMatchEngine, StreamCanonicalPolicy};
     /// use spycatcher_harness::config::MatchMode;
     /// let policy = StreamCanonicalPolicy::ignore_comments();
-    /// let engine = ReplayMatchEngine::with_policy(Cassette::new(), MatchMode::SequentialStrict, policy).expect("empty cassette");
+    /// let engine = ReplayMatchEngine::with_policy(Cassette::new(), MatchMode::SequentialStrict, policy).expect("empty cassette should create replay match engine with stream policy");
     /// assert_eq!(engine.stream_policy(), policy);
     /// ```
     ///
@@ -182,7 +182,7 @@ impl ReplayMatchEngine {
     /// # use spycatcher_harness::cassette::{Cassette, ReplayMatchEngine, StreamCanonicalPolicy};
     /// # use spycatcher_harness::config::MatchMode;
     /// let policy = StreamCanonicalPolicy::ignore_comments();
-    /// let engine = ReplayMatchEngine::with_policy(Cassette::new(), MatchMode::SequentialStrict, policy).expect("empty cassette");
+    /// let engine = ReplayMatchEngine::with_policy(Cassette::new(), MatchMode::SequentialStrict, policy).expect("empty cassette should create replay match engine with stream policy");
     /// assert_eq!(engine.stream_policy(), policy);
     /// ```
     #[must_use]
@@ -200,7 +200,7 @@ impl ReplayMatchEngine {
     /// ```rust
     /// # use spycatcher_harness::cassette::{Cassette, MatchOutcome, ReplayMatchEngine};
     /// # use spycatcher_harness::config::MatchMode;
-    /// let mut engine = ReplayMatchEngine::new(Cassette::new(), MatchMode::SequentialStrict).expect("empty cassette");
+    /// let mut engine = ReplayMatchEngine::new(Cassette::new(), MatchMode::SequentialStrict).expect("empty cassette should create replay match engine");
     /// assert!(matches!(engine.next_match("abc123", &serde_json::json!({})), MatchOutcome::Mismatch(_)));
     /// ```
     pub fn next_match<'a>(
@@ -231,7 +231,7 @@ impl ReplayMatchEngine {
     ///     metadata: InteractionMetadata { protocol_id: "openai_chat".to_owned(), upstream_id: "openai".to_owned(),
     ///         recorded_at: "2026-06-23T00:00:00Z".to_owned(), relative_offset_ms: 0 },
     /// });
-    /// let mut engine = ReplayMatchEngine::new(cassette, MatchMode::SequentialStrict).expect("hashed cassette");
+    /// let mut engine = ReplayMatchEngine::new(cassette, MatchMode::SequentialStrict).expect("hashed cassette should create replay match engine");
     /// let canonical = serde_json::json!({"method": "POST"});
     /// assert!(matches!(engine.peek_match("hash_a", &canonical), MatchOutcome::Matched { interaction_id: 0, .. }));
     /// assert!(matches!(engine.next_match("hash_a", &canonical), MatchOutcome::Matched { interaction_id: 0, .. }));

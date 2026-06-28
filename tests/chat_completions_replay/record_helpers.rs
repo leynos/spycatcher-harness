@@ -201,7 +201,7 @@ fn build_response(headers: HeaderMap, body: Body) -> Response<Body> {
 }
 
 async fn wait_for_shutdown(shutdown_rx: oneshot::Receiver<()>) {
-    drop(shutdown_rx.await);
+    let _shutdown_result = shutdown_rx.await;
 }
 
 pub(crate) fn send_request(
