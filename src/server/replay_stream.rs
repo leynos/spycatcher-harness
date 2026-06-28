@@ -132,7 +132,12 @@ fn serialize_lines(prefix: &[u8], text: &str) -> Vec<u8> {
 mod tests {
     //! Unit tests for replay stream serialization.
 
+    use std::sync::{Arc, Mutex};
+
     use axum::body::to_bytes;
+    use metrics::{
+        Counter, CounterFn, Gauge, Histogram, Key, KeyName, Metadata, Recorder, SharedString, Unit,
+    };
     use proptest::prelude::*;
     use rstest::rstest;
 
@@ -219,6 +224,30 @@ mod tests {
         .expect("body should be readable");
     }
 
+    #[rstest]
+    #[tokio::test]
+    async fn oversized_stream_body_records_streamed_delivery_metric() {
+        let recorder = StreamMetricRecorder::default();
+        let _recorder_guard = metrics::set_default_local_recorder(&recorder);
+
+        let body = build_stream_body(
+            vec![data(&"x".repeat(EAGER_STREAM_LIMIT_BYTES - 7))],
+            &labels(),
+        );
+        let _bytes = to_bytes(body, EAGER_STREAM_LIMIT_BYTES + 2)
+            .await
+            .expect("body should be readable");
+
+        assert!(
+            recorder.has_counter_with_label(
+                "spycatcher.replay.stream.delivery.total",
+                "delivery",
+                StreamDeliveryMode::Streamed.as_str(),
+            ),
+            "over-limit stream replay should record streamed delivery",
+        );
+    }
+
     proptest! {
         #[test]
         fn serialized_stream_event_lines_keep_sse_prefix(
@@ -268,6 +297,77 @@ mod tests {
 
     fn labels() -> ReplayMetricLabels {
         ReplayMetricLabels::new(CHAT_COMPLETIONS_PROTOCOL_ID, CHAT_COMPLETIONS_PATH)
+    }
+
+    #[derive(Default)]
+    struct StreamMetricRecorder {
+        counters: Arc<Mutex<Vec<Key>>>,
+    }
+
+    impl StreamMetricRecorder {
+        fn has_counter_with_label(
+            &self,
+            metric_name: &str,
+            label_key: &str,
+            label_value: &str,
+        ) -> bool {
+            let counters = match self.counters.lock() {
+                Ok(counters) => counters,
+                Err(poisoned) => poisoned.into_inner(),
+            };
+            counters.iter().any(|key| {
+                key.name() == metric_name
+                    && key
+                        .labels()
+                        .any(|label| label.key() == label_key && label.value() == label_value)
+            })
+        }
+    }
+
+    impl Recorder for StreamMetricRecorder {
+        fn describe_counter(&self, _key: KeyName, _unit: Option<Unit>, _description: SharedString) {
+        }
+
+        fn describe_gauge(&self, _key: KeyName, _unit: Option<Unit>, _description: SharedString) {}
+
+        fn describe_histogram(
+            &self,
+            _key: KeyName,
+            _unit: Option<Unit>,
+            _description: SharedString,
+        ) {
+        }
+
+        fn register_counter(&self, key: &Key, _metadata: &Metadata<'_>) -> Counter {
+            Counter::from_arc(Arc::new(StreamMetricCounter {
+                key: key.clone(),
+                counters: Arc::clone(&self.counters),
+            }))
+        }
+
+        fn register_gauge(&self, _key: &Key, _metadata: &Metadata<'_>) -> Gauge {
+            Gauge::noop()
+        }
+
+        fn register_histogram(&self, _key: &Key, _metadata: &Metadata<'_>) -> Histogram {
+            Histogram::noop()
+        }
+    }
+
+    struct StreamMetricCounter {
+        key: Key,
+        counters: Arc<Mutex<Vec<Key>>>,
+    }
+
+    impl CounterFn for StreamMetricCounter {
+        fn increment(&self, _value: u64) {
+            match self.counters.lock() {
+                Ok(mut counters) => counters.push(self.key.clone()),
+                Err(poisoned) => poisoned.into_inner().push(self.key.clone()),
+            }
+        }
+
+        fn absolute(&self, _value: u64) {}
     }
 
     fn stream_event_with_newlines() -> impl Strategy<Value = StreamEvent> {
