@@ -11,10 +11,8 @@ use crate::{HarnessError, HarnessResult};
 
 /// Diagnostic prefix for cassette exhaustion.
 pub const DIAGNOSTIC_EXHAUSTED: &str = "cassette-exhausted";
-
 /// Diagnostic prefix for no keyed-mode match.
 pub const DIAGNOSTIC_NO_MATCH: &str = "no-matching-interaction";
-
 /// Diagnostic prefix for a consumed keyed-mode match.
 pub const DIAGNOSTIC_CONSUMED: &str = "interaction-already-consumed";
 
@@ -34,13 +32,11 @@ pub enum InteractionPosition {
 pub struct MismatchDiagnostic {
     /// Identifies which interaction (or bound) the mismatch relates to.
     pub position: InteractionPosition,
-    /// Stable hash of the expected request, or empty for keyed misses and
-    /// exhaustion.
+    /// Stable hash of the expected request, or empty for keyed misses and exhaustion.
     pub expected_hash: String,
     /// Stable hash of the incoming request.
     pub observed_hash: String,
-    /// Field-level canonical request JSON diff summary, or bounded diagnostic
-    /// text for exhaustion, no-match, consumed, and internal-error paths.
+    /// Field-level canonical request JSON diff summary or bounded diagnostic text.
     pub diff_summary: String,
 }
 
@@ -81,15 +77,10 @@ pub enum MatchOutcome<'a> {
 pub struct ReplayMatchEngine {
     /// The cassette being replayed.
     cassette: Cassette,
-    /// Extracted interaction data for matching.
     interactions: Vec<InteractionData>,
-    /// Current matching mode.
     mode: MatchMode,
-    /// Sequential mode cursor.
     sequential_cursor: usize,
-    /// Keyed mode hash-to-indices map.
     hash_to_indices: HashMap<String, Vec<usize>>,
-    /// Keyed mode consumed-interaction flags.
     consumed: Vec<bool>,
     stream_policy: StreamCanonicalPolicy,
 }
@@ -99,17 +90,26 @@ pub struct ReplayMatchEngine {
 struct InteractionData {
     stable_hash: String,
     /// Canonical request JSON value for diff generation.
-    /// None indicates the interaction was recorded without canonical form.
+    /// None means the interaction was recorded without canonical form.
     canonical_request: Option<Value>,
 }
 
 impl ReplayMatchEngine {
     /// Creates a new engine from a loaded cassette and match mode.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use spycatcher_harness::cassette::{Cassette, MatchOutcome, ReplayMatchEngine};
+    /// use spycatcher_harness::config::MatchMode;
+    /// let mut engine = ReplayMatchEngine::new(Cassette::new(), MatchMode::SequentialStrict).expect("empty cassette should create replay match engine");
+    /// assert!(matches!(engine.next_match("missing", &serde_json::json!({})), MatchOutcome::Mismatch(_)));
+    /// ```
+    ///
     /// # Errors
     ///
-    /// Returns [`HarnessError::InvalidCassette`] if any interaction in the
-    /// cassette has a missing `stable_hash`. All interactions must have their
-    /// stable hash populated before replay matching can begin.
+    /// Returns [`HarnessError::InvalidCassette`] if any interaction is missing
+    /// `stable_hash`.
     pub fn new(cassette: Cassette, mode: MatchMode) -> HarnessResult<Self> {
         Self::with_policy(cassette, mode, StreamCanonicalPolicy::default())
     }
