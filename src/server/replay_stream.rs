@@ -198,31 +198,25 @@ mod tests {
     #[rstest]
     #[tokio::test]
     async fn eager_stream_limit_includes_boundary_size() {
-        let body = build_stream_body(
-            vec![data(&"x".repeat(EAGER_STREAM_LIMIT_BYTES - 8))],
-            &labels(),
-        );
-
-        let bytes = to_bytes(body, EAGER_STREAM_LIMIT_BYTES + 1)
-            .await
-            .expect("body should be readable");
-
-        assert_eq!(bytes.len(), EAGER_STREAM_LIMIT_BYTES);
+        assert_stream_body_len_for_payload(
+            EAGER_STREAM_LIMIT_BYTES - 8,
+            EAGER_STREAM_LIMIT_BYTES + 1,
+            EAGER_STREAM_LIMIT_BYTES,
+        )
+        .await
+        .expect("body should be readable");
     }
 
     #[rstest]
     #[tokio::test]
     async fn oversized_stream_body_remains_readable() {
-        let body = build_stream_body(
-            vec![data(&"x".repeat(EAGER_STREAM_LIMIT_BYTES - 7))],
-            &labels(),
-        );
-
-        let bytes = to_bytes(body, EAGER_STREAM_LIMIT_BYTES + 2)
-            .await
-            .expect("body should be readable");
-
-        assert_eq!(bytes.len(), EAGER_STREAM_LIMIT_BYTES + 1);
+        assert_stream_body_len_for_payload(
+            EAGER_STREAM_LIMIT_BYTES - 7,
+            EAGER_STREAM_LIMIT_BYTES + 2,
+            EAGER_STREAM_LIMIT_BYTES + 1,
+        )
+        .await
+        .expect("body should be readable");
     }
 
     proptest! {
@@ -257,6 +251,19 @@ mod tests {
             raw: raw.to_owned(),
             parsed_json: None,
         }
+    }
+
+    async fn assert_stream_body_len_for_payload(
+        payload_len: usize,
+        read_limit: usize,
+        expected_len: usize,
+    ) -> Result<(), axum::Error> {
+        let body = build_stream_body(vec![data(&"x".repeat(payload_len))], &labels());
+
+        let bytes = to_bytes(body, read_limit).await?;
+
+        assert_eq!(bytes.len(), expected_len);
+        Ok(())
     }
 
     fn labels() -> ReplayMetricLabels {
