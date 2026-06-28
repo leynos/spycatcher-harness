@@ -9,14 +9,20 @@ use std::sync::{
     atomic::{AtomicU64, Ordering},
 };
 
-use log::{error, info, warn};
+use tracing::{debug, error, info, warn};
 
 use crate::cassette::{
     IgnorePathConfig, MatchOutcome, MismatchDiagnostic, RecordedRequest, RecordedResponse,
-    ReplayMatchEngine,
+    ReplayMatchEngine, StreamEvent,
 };
 use crate::http_exchange::ObservedRequest;
-use crate::protocol::{CHAT_COMPLETIONS_PROTOCOL_ID, is_streaming_chat_completions_request};
+use crate::protocol::{
+    CHAT_COMPLETIONS_PATH, CHAT_COMPLETIONS_PROTOCOL_ID, is_streaming_chat_completions_request,
+};
+use crate::replay_observability::{
+    ReplayMetricLabels, record_replay_commit_failure, record_replay_mismatch,
+    record_replay_rejection, record_replay_request,
+};
 
 /// Thread-safe replay orchestration boundary.
 #[derive(Debug, Clone)]
@@ -55,27 +61,30 @@ impl ReplayService {
         )
     }
 
-    /// Replays one non-stream chat completions request from the cassette.
+    /// Returns bounded replay metric labels for this service.
+    #[must_use]
+    pub(crate) const fn metric_labels(&self) -> ReplayMetricLabels {
+        ReplayMetricLabels::new(self.context.protocol, CHAT_COMPLETIONS_PATH)
+    }
+
+    /// Replays one chat completions request from the cassette.
     pub(crate) fn handle_chat_completions(
         &self,
         request: ObservedRequest,
     ) -> Result<ReplayResponse, ReplayError> {
+        let is_stream_request = is_streaming_chat_completions_request(request.parsed_json.as_ref());
         self.reject_unreplayable_request_shape(&request)?;
         let recorded_request = canonicalize_observed_request(request)?;
         let observed_hash = recorded_hash(&recorded_request)?;
         let canonical_request = recorded_canonical_request(&recorded_request)?;
-        let response = self.match_recorded_response(observed_hash, canonical_request)?;
-        self.response_from_recorded(response)
+        self.match_recorded_response(observed_hash, canonical_request, is_stream_request)
     }
 
     fn reject_unreplayable_request_shape(
         &self,
         request: &ObservedRequest,
     ) -> Result<(), ReplayError> {
-        if is_streaming_chat_completions_request(request.parsed_json.as_ref()) {
-            self.log_rejection("unsupported_stream", &request.path);
-            Err(ReplayError::UnsupportedStream)
-        } else if request.parsed_json.is_none() {
+        if request.parsed_json.is_none() {
             self.log_rejection("malformed_json", &request.path);
             Err(ReplayError::MalformedJson)
         } else {
@@ -83,7 +92,10 @@ impl ReplayService {
         }
     }
 
-    fn log_rejection(&self, outcome: &str, path: &str) {
+    fn log_rejection(&self, outcome: &'static str, path: &str) {
+        let labels = self.metric_labels();
+        record_replay_request(&labels, outcome);
+        record_replay_rejection(&labels, outcome);
         warn!(
             target: "spycatcher.harness.replay",
             "replay request rejected mode=replay protocol={protocol} outcome={outcome} \
@@ -97,43 +109,51 @@ impl ReplayService {
         &self,
         observed_hash: &str,
         canonical_request: &serde_json::Value,
-    ) -> Result<RecordedResponse, ReplayError> {
-        let decision = {
-            let mut guard = self.engine.lock().map_err(|error| {
-                error!(
-                    target: "spycatcher.harness.replay",
-                    "failed to lock replay match engine: {error:?}"
-                );
-                ReplayError::Internal
-            })?;
-            match guard.next_match(observed_hash, canonical_request) {
+        is_stream_request: bool,
+    ) -> Result<ReplayResponse, ReplayError> {
+        let mut guard = self.engine.lock().map_err(|error| {
+            error!(
+                target: "spycatcher.harness.replay",
+                "failed to lock replay match engine: {error:?}"
+            );
+            ReplayError::Internal
+        })?;
+
+        let (interaction_id, response) = {
+            let peek = guard.peek_match(observed_hash, canonical_request);
+            match peek {
                 MatchOutcome::Matched {
                     interaction_id,
                     interaction,
-                } => ReplayMatchDecision::Matched {
+                } => (
                     interaction_id,
-                    response: interaction.response.clone(),
-                },
-                MatchOutcome::Mismatch(diagnostic) => ReplayMatchDecision::Mismatch(diagnostic),
+                    self.response_from_recorded(&interaction.response, is_stream_request)?,
+                ),
+                MatchOutcome::Mismatch(diagnostic) => {
+                    drop(guard);
+                    self.log_mismatch(&diagnostic);
+                    return Err(ReplayError::Mismatch(diagnostic));
+                }
             }
         };
-
-        match decision {
-            ReplayMatchDecision::Matched {
-                interaction_id,
-                response,
-            } => {
-                self.log_match(interaction_id, observed_hash);
-                Ok(response)
-            }
-            ReplayMatchDecision::Mismatch(diagnostic) => {
-                self.log_mismatch(&diagnostic);
-                Err(ReplayError::Mismatch(diagnostic))
-            }
+        if !guard.commit_match(interaction_id) {
+            let labels = self.metric_labels();
+            record_replay_request(&labels, "commit_failure");
+            record_replay_commit_failure(&labels);
+            error!(
+                target: "spycatcher.harness.replay",
+                "failed to commit previously peeked replay match interaction_id={interaction_id}"
+            );
+            return Err(ReplayError::Internal);
         }
+        drop(guard);
+
+        self.log_match(interaction_id, observed_hash);
+        Ok(response)
     }
 
     fn log_match(&self, interaction_id: usize, observed_hash: &str) {
+        record_replay_request(&self.metric_labels(), "matched");
         let matched_count = self.matched_count.fetch_add(1, Ordering::Relaxed) + 1;
         let mismatch_count = self.mismatch_count.load(Ordering::Relaxed);
         info!(
@@ -148,6 +168,9 @@ impl ReplayService {
     }
 
     fn log_mismatch(&self, diagnostic: &MismatchDiagnostic) {
+        let labels = self.metric_labels();
+        record_replay_request(&labels, "mismatch");
+        record_replay_mismatch(&labels, diagnostic.reason_code());
         let mismatch_count = self.mismatch_count.fetch_add(1, Ordering::Relaxed) + 1;
         let matched_count = self.matched_count.load(Ordering::Relaxed);
         warn!(
@@ -167,7 +190,8 @@ impl ReplayService {
 
     fn response_from_recorded(
         &self,
-        response: RecordedResponse,
+        response: &RecordedResponse,
+        is_stream_request: bool,
     ) -> Result<ReplayResponse, ReplayError> {
         match response {
             RecordedResponse::NonStream {
@@ -175,31 +199,44 @@ impl ReplayService {
                 headers,
                 body,
                 ..
-            } => Ok(ReplayResponse {
+            } => {
+                if is_stream_request {
+                    self.log_rejection("stream_cassette_required", CHAT_COMPLETIONS_PATH);
+                    Err(ReplayError::StreamCassetteRequiredForStreamRequest)
+                } else {
+                    debug!(
+                        target: "spycatcher.harness.replay",
+                        "building replay response from recorded interaction \
+                         is_stream_request={is_stream_request} response_kind=non_stream",
+                    );
+                    Ok(ReplayResponse {
+                        status: *status,
+                        headers: headers.clone(),
+                        body: ReplayBody::OneShot(body.clone()),
+                    })
+                }
+            }
+            RecordedResponse::Stream {
                 status,
                 headers,
-                body,
-            }),
-            RecordedResponse::Stream { .. } => {
-                warn!(
+                events,
+                ..
+            } => {
+                debug!(
                     target: "spycatcher.harness.replay",
-                    "replay response rejected mode=replay protocol={protocol} \
-                     outcome=unsupported_stream cassette={cassette}",
-                    protocol = self.context.protocol,
-                    cassette = self.context.cassette,
+                    "building replay response from recorded interaction \
+                     is_stream_request={is_stream_request} response_kind=stream \
+                     event_count={}",
+                    events.len(),
                 );
-                Err(ReplayError::UnsupportedStream)
+                Ok(ReplayResponse {
+                    status: *status,
+                    headers: headers.clone(),
+                    body: ReplayBody::Events(events.clone()),
+                })
             }
         }
     }
-}
-
-enum ReplayMatchDecision {
-    Matched {
-        interaction_id: usize,
-        response: RecordedResponse,
-    },
-    Mismatch(MismatchDiagnostic),
 }
 
 fn canonicalize_observed_request(request: ObservedRequest) -> Result<RecordedRequest, ReplayError> {
@@ -290,8 +327,17 @@ pub(crate) struct ReplayResponse {
     pub(crate) status: u16,
     /// Persisted selected response headers in recorded order.
     pub(crate) headers: Vec<(String, String)>,
-    /// Raw recorded body bytes.
-    pub(crate) body: Vec<u8>,
+    /// Recorded body data.
+    pub(crate) body: ReplayBody,
+}
+
+/// Replay body data independent of the inbound HTTP framework.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) enum ReplayBody {
+    /// Raw recorded body bytes for non-stream responses.
+    OneShot(Vec<u8>),
+    /// Parsed stream events preserved in observed order.
+    Events(Vec<StreamEvent>),
 }
 
 /// Request-level replay failures reported to the HTTP adapter.
@@ -299,8 +345,16 @@ pub(crate) struct ReplayResponse {
 pub(crate) enum ReplayError {
     /// The observed request does not match the next replayable interaction.
     Mismatch(MismatchDiagnostic),
-    /// Streaming replay is outside this task's scope.
+    /// Raw-transcript streaming replay is outside this task's scope.
+    // FIXME(task 2.1.3): return this when exact raw-transcript streaming replay
+    // errors are introduced.
+    #[expect(
+        dead_code,
+        reason = "reserved for task 2.1.3 raw-transcript streaming replay errors"
+    )]
     UnsupportedStream,
+    /// A streaming request matched a non-stream cassette interaction.
+    StreamCassetteRequiredForStreamRequest,
     /// Chat completions replay requires a valid JSON request body.
     MalformedJson,
     /// An internal replay invariant or lock failed.

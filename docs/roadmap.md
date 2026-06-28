@@ -162,13 +162,13 @@ units with explicit dependencies and completion criteria.
   - Design references:
     [Streaming capture and replay](spycatcher-harness-design.md#streaming-capture-and-replay).
 
-- [ ] 2.1.2. Preserve OpenRouter comment frames and replay deterministically.
+- [x] 2.1.2. Preserve OpenRouter comment frames and replay deterministically.
   - Depends on: 2.1.1.
   - Success criteria:
-    - [ ] Comment frames are recorded as typed stream events.
-    - [ ] Matching logic ignores comment frames when configured for canonical
+    - [x] Comment frames are recorded as typed stream events.
+    - [x] Matching logic ignores comment frames when configured for canonical
           matching.
-    - [ ] Replay can emit recorded comment frames without changing non-comment
+    - [x] Replay can emit recorded comment frames without changing non-comment
           event ordering.
   - Design references:
     [Streaming capture and replay](spycatcher-harness-design.md#streaming-capture-and-replay),

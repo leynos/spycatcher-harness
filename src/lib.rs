@@ -29,6 +29,7 @@ mod http_exchange;
 pub mod i18n;
 pub mod protocol;
 pub mod replay;
+mod replay_observability;
 pub mod server;
 mod sse;
 pub mod upstream;

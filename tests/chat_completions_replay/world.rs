@@ -6,6 +6,7 @@ use camino::Utf8PathBuf;
 use rstest_bdd::Slot;
 use rstest_bdd_macros::ScenarioState;
 
+use spycatcher_harness::cassette::StreamEvent;
 use spycatcher_harness::{HarnessConfig, RunningHarness};
 
 use crate::record_helpers::{ClientResponse, StubUpstream};
@@ -25,6 +26,8 @@ pub(crate) struct ReplayWorld {
     pub(crate) record_response: Slot<ClientResponse>,
     pub(crate) replay_response: Slot<ClientResponse>,
     pub(crate) upstream: Slot<StubUpstream>,
+    pub(crate) canonical_expected: Slot<Vec<StreamEvent>>,
+    pub(crate) canonical_observed: Slot<Vec<StreamEvent>>,
 }
 
 impl Default for ReplayWorld {
@@ -41,6 +44,8 @@ impl Default for ReplayWorld {
             record_response: Slot::default(),
             replay_response: Slot::default(),
             upstream: Slot::default(),
+            canonical_expected: Slot::default(),
+            canonical_observed: Slot::default(),
         }
     }
 }

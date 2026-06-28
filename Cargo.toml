@@ -21,6 +21,7 @@ eyre = "0.6.12"
 i18n-embed = { version = "0.16.0", features = ["fluent-system"] }
 log = "0.4.25"
 futures-util = "0.3.31"
+metrics = "0.24.2"
 ortho_config = "0.8.0"
 percent-encoding = "2.3.2"
 reqwest = { version = "0.13.3", default-features = false, features = ["http2", "json", "rustls"] }

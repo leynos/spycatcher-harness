@@ -83,13 +83,18 @@ compatible API base, and records the full request/response exchange. OpenRouter
 documents its OpenAI-like request/response schema and that streaming is SSE
 with occasional comment payloads.[^1][^2]
 
-Replay-mode HTTP serving for non-stream `POST /v1/chat/completions`
-interactions is native in the harness as of task `1.3.2`. Replay starts a local
-server, loads the configured cassette read-only, matches inbound requests, and
-serves the recorded status, persisted selected headers, and body bytes without
-constructing an upstream client. Verify mode remains a later slice. VidaiMock
-can be used as an optional replay backend to simulate time-to-first-token
-(TTFT), jitter, and chaos failure modes that it explicitly advertises.[^11]
+Replay-mode HTTP serving for `POST /v1/chat/completions` interactions is native
+in the harness. Replay starts a local server, loads the configured cassette
+read-only, matches inbound requests, and serves recorded non-stream body bytes
+or canonical SSE reconstructed from recorded stream events without constructing
+an upstream client. Byte-faithful raw transcript replay remains roadmap task
+`2.1.3`. Verify mode remains a later slice. VidaiMock can be used as an
+optional replay backend to simulate time-to-first-token (TTFT), jitter, and
+chaos failure modes that it explicitly advertises.[^11] Comment frames are
+preserved and re-emitted in replay output, but they do not participate in
+canonical stream matching; comment-only differences do not cause a stream
+transcript mismatch. During replay, embedded newlines in comment and data
+payloads are serialized as one SSE field line per payload line.
 
 A short diagram description follows. The diagram shows the record/replay data
 flow and the adapter boundary.
@@ -155,9 +160,11 @@ Key architectural points:
   - Record mode supports OpenAI-style `data:` SSE streams by proxying upstream
     byte chunks downstream while recording raw transcript bytes, parsed stream
     events, and timing metadata.
-  - Replay mode still rejects `stream: true` requests and matched stream
-    cassette responses with an explicit "not implemented yet" response until
-    streaming replay lands.
+  - Replay mode supports recorded OpenAI-style stream responses by
+    reserializing parsed stream events, preserving OpenRouter comment frames
+    and data-event ordering. Byte-faithful raw transcript replay remains a
+    later roadmap task. Comment frames are replayed but excluded from canonical
+    stream matching.
 - **Replay no-network boundary**:
   - Replay application state owns a `ReplayMatchEngine` only. It does not hold
     `UpstreamConfig`, environment-variable readers, `ReqwestUpstreamClient`,
@@ -239,20 +246,35 @@ recorded request intentionally reflects what the client sent to the harness,
 not the enriched outbound upstream request after bearer-token injection and
 configured `extra_headers`.
 
-Replay of non-stream chat completions reconstructs exactly the HTTP data that
-the cassette persisted: the recorded status when it is a valid HTTP status
-code, the persisted selected response headers in recorded order, and the stored
-body bytes. Replay intentionally does not reconstruct transport framing,
-hop-by-hop headers, or `content-length` because those are not part of the
-cassette contract. If an inbound replay request mismatches, the HTTP adapter
-returns `409 Conflict` with `request_mismatch` diagnostics derived from
+Replay of chat completions reconstructs the HTTP data that the cassette
+persisted. Non-stream responses return the recorded status when it is a valid
+HTTP status code, the persisted selected response headers in recorded order,
+and the stored body bytes. Stream responses return the recorded status and
+selected headers, then reserialize the recorded parsed `StreamEvent` values as
+SSE frames. Comment events are emitted as `: ...` frames, data events are
+emitted as `data: ...` frames, multiline payloads are emitted as one field line
+per payload line, and recorded event order is preserved. If the cassette omits
+`content-type` for a stream response, the HTTP adapter inserts
+`text/event-stream`. Comment frames do not participate in canonical stream
+matching, so comment-only differences are ignored while replay output still
+preserves recorded comments.
+
+Parsed-event stream replay is intentionally not byte-faithful: it emits a
+canonical SSE representation from the recorded event model rather than the raw
+`raw_transcript` bytes. Byte-faithful replay of exact upstream framing remains
+roadmap task `2.1.3`.
+
+Replay intentionally does not reconstruct transport framing, hop-by-hop
+headers, or `content-length` because those are not part of the cassette
+contract. If an inbound replay request mismatches, the HTTP adapter returns
+`409 Conflict` with `request_mismatch` diagnostics derived from
 `MismatchDiagnostic`. Replay rejects malformed or non-JSON request bodies with
 `400 Bad Request` before matching because body-less canonicalization would
 otherwise give different malformed byte sequences the same replay key. If a
-request asks for `stream: true`, or a manually authored cassette contains a
-stream response for a matched request, replay returns `501 Not Implemented`.
-Record mode accepts `stream: true` and stores a `RecordedResponse::Stream`
-after a clean upstream SSE completion.
+`stream: true` request matches a manually authored non-stream response, replay
+returns HTTP `501 Not Implemented` with `stream_cassette_required`. Record mode
+accepts `stream: true` and stores a `RecordedResponse::Stream` after a clean
+upstream SSE completion.
 
 ### Matching modes
 
@@ -306,13 +328,14 @@ The method returns a `MatchOutcome<'_>` enum:
 The `MismatchDiagnostic` type carries structured information for the adapter
 layer to map to an HTTP 409 response:
 
-- `interaction_id: usize` — zero-based index of the expected interaction
-  (sequential strict mode) or the total interaction count (keyed mode miss).
-- `expected_hash: String` — stable hash of the expected canonical request
-  (sequential strict mode) or empty string (keyed mode miss).
+- `position: InteractionPosition` — structured position information for the
+  expected interaction, cassette exhaustion, or keyed-mode miss.
+- `expected_hash: String` — stable hash of the expected canonical request, or
+  empty string for keyed misses and exhaustion cases.
 - `observed_hash: String` — stable hash of the observed incoming request.
 - `diff_summary: String` — field-level diff summary of the two canonical
-  request JSON values, prefixed with a diagnostic constant (see below).
+  request JSON values, or bounded diagnostic text for exhaustion, no-match,
+  consumed, and internal-error paths.
 
 **Diagnostic constants.** The `diff_summary` field in mismatch diagnostics is
 prefixed with a stable, parseable token so that adapters can branch on failure
@@ -421,9 +444,16 @@ Implemented recording strategy for OpenAI-style SSE:
 
 Replay strategy:
 
-- Not yet implemented for streams. Record-mode stream cassettes intentionally
-  return `501 Not Implemented` in replay until roadmap task `2.1.3`.
-- Later work should emit SSE frames from the recorded transcript.
+- Parsed-event replay emits SSE frames from recorded `StreamEvent` values:
+  - Comment events become `: ...` frames.
+  - Data events become `data: ...` frames.
+  - Multiline payloads become one SSE field line per payload line.
+  - Event order is preserved.
+  - Comment frames are excluded from canonical stream matching; comment-only
+    differences do not cause a mismatch.
+- Replay inserts `text/event-stream` when a stream cassette omits a
+  `content-type` response header.
+- Byte-faithful replay from raw transcript bytes remains roadmap task `2.1.3`.
 - Provide a configuration flag to apply “physics” timing:
   - TTFT delay before first token.
   - Inter-chunk spacing (fixed or recorded).
@@ -1098,9 +1128,9 @@ Decisions recorded during implementation that refine or clarify the design.
 
 The library uses `camino::Utf8PathBuf` for all path fields (
 `HarnessConfig.cassette_dir`, `RunningHarness.cassette_path`) rather than
-`std::path::PathBuf`. This follows the project coding standard in `AGENTS.md`
-which mandates `camino` over `std::path` for enhanced cross-platform support
-and UTF-8 path guarantees.
+`std::path::PathBuf`. This follows the project coding standard documented in
+[`developers-guide.md`](developers-guide.md), which mandates `camino` over
+`std::path` for enhanced cross-platform support and UTF-8 path guarantees.
 
 ### Crate structure (task 1.1.1)
 
@@ -1123,7 +1153,7 @@ annotation documenting this rationale.
 ### Layered subcommand loading scope (task 1.1.2)
 
 Task 1.1.2 implements layered loading with OrthoConfig's subcommand merge
-helpers (`load_and_merge_subcommand`) in a dedicated CLI adapter module (
+helpers (`load_and_merge_subcommand_for`) in a dedicated CLI adapter module (
 `src/cli.rs`). The implementation currently scopes file loading to the
 `cmds.<subcommand>` namespace plus subcommand-specific environment variables:
 
