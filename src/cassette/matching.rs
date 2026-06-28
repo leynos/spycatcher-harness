@@ -75,7 +75,6 @@ pub enum MatchOutcome<'a> {
 /// Replay matching engine that consumes cassette interactions by match mode.
 #[derive(Debug)]
 pub struct ReplayMatchEngine {
-    /// The cassette being replayed.
     cassette: Cassette,
     interactions: Vec<InteractionData>,
     mode: MatchMode,
@@ -85,15 +84,11 @@ pub struct ReplayMatchEngine {
     stream_policy: StreamCanonicalPolicy,
 }
 
-/// Interaction data extracted for matching.
 #[derive(Debug, Clone)]
 struct InteractionData {
     stable_hash: String,
-    /// Canonical request JSON value for diff generation.
-    /// None means the interaction was recorded without canonical form.
     canonical_request: Option<Value>,
 }
-
 impl ReplayMatchEngine {
     /// Creates a new engine from a loaded cassette and match mode.
     ///
@@ -140,8 +135,11 @@ impl ReplayMatchEngine {
             let stable_hash = interaction.request.stable_hash.clone().ok_or_else(|| {
                 HarnessError::InvalidCassette {
                     message: format!(
-                        "interaction at index {idx} has no stable_hash; \
-                             all interactions must be hashed before replay"
+                        concat!(
+                            "interaction at index {} has no stable_hash; ",
+                            "all interactions must be hashed before replay"
+                        ),
+                        idx
                     ),
                 }
             })?;
@@ -338,8 +336,7 @@ impl ReplayMatchEngine {
             expected_hash: String::new(),
             observed_hash: observed_hash.to_owned(),
             diff_summary: format!(
-                "{DIAGNOSTIC_CONSUMED}: all interactions with hash {observed_hash} have already been consumed; \
-                 cassette contains {} interaction(s) with this hash",
+                "{DIAGNOSTIC_CONSUMED}: all interactions with hash {observed_hash} have already been consumed; cassette contains {} interaction(s) with this hash",
                 indices.len()
             ),
         })
