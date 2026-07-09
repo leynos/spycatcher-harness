@@ -36,7 +36,7 @@ test: ## Run tests with warnings treated as errors
 target/%/$(TARGET): ## Build binary in debug or release mode
 	$(CARGO) build $(BUILD_JOBS) $(if $(findstring release,$(@)),--release) --bin $(TARGET)
 
-lint: ## Run Clippy with warnings denied
+lint: ## Run Clippy and the Whitaker Dylint suite with warnings denied
 	RUSTDOCFLAGS="$(RUSTDOC_FLAGS)" $(CARGO) doc --no-deps
 	$(CARGO) clippy $(CLIPPY_FLAGS)
 	PATH="$(CARGO_BIN):$(LOCAL_BIN):$$PATH" RUSTFLAGS="$(RUST_FLAGS)" $(WHITAKER) --all -- $(CARGO_FLAGS)
