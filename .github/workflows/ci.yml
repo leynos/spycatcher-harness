@@ -13,7 +13,7 @@ jobs:
     env:
       CARGO_TERM_COLOR: always
       BUILD_PROFILE: debug
-      WHITAKER_INSTALLER_VERSION: '0.2.1'
+      WHITAKER_INSTALLER_VERSION: '0.2.5'
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
       - name: Setup Rust
@@ -36,10 +36,13 @@ jobs:
           key: whitaker-installer-${{ runner.os }}-${{ runner.arch }}-${{ env.WHITAKER_INSTALLER_VERSION }}
       - name: Install Whitaker
         run: |
-          if command -v whitaker-installer >/dev/null 2>&1; then
-            echo "whitaker-installer already present; skipping cargo binstall"
-          else
-            cargo binstall --no-confirm whitaker-installer@${{ env.WHITAKER_INSTALLER_VERSION }}
+          if ! command -v whitaker-installer >/dev/null 2>&1; then
+            if cargo binstall --version >/dev/null 2>&1; then
+              cargo binstall --no-confirm --locked "whitaker-installer@${WHITAKER_INSTALLER_VERSION}"
+            else
+              echo "cargo-binstall unavailable; building whitaker-installer from crates.io"
+              cargo install --locked whitaker-installer --version "${WHITAKER_INSTALLER_VERSION}"
+            fi
           fi
           whitaker-installer
       - name: Lint
