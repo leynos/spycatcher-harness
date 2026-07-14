@@ -387,8 +387,8 @@ Recommended approach:
   - Optionally coerce numeric types (avoid `1` vs `1.0` drift).
 - Serialize with a canonical serializer (sorted object keys, stable float
   formatting).
-- Hash (SHA-256) over:
-  `method + path + canonical_query + canonical_json`.
+- Hash (SHA-256) the UTF-8 encoding of the compact canonical JSON request
+  envelope.
 
 Current implementation notes:
 
@@ -396,8 +396,11 @@ Current implementation notes:
   `spycatcher_harness::cassette::canonicalize`,
   `spycatcher_harness::cassette::stable_hash`, and
   `RecordedRequest::populate_canonical_fields`.
-- Hash input is the UTF-8 byte stream
-  `METHOD\n{method}\nPATH\n{path}\nQUERY\n{query}\nBODY\n{body}`.
+- Hash input is the UTF-8 encoding of the compact JSON envelope
+  `{"method":<METHOD_JSON_STRING>,"path":<PATH_JSON_STRING>,"canonical_query":<QUERY_JSON_STRING>,"canonical_body":<BODY_JSON_VALUE_OR_NULL>}`.
+  Members are emitted in that fixed order, strings use JSON escaping, a
+  non-JSON body is represented by JSON `null`, and no insignificant whitespace
+  or trailing newline is emitted.
 - Methods are uppercased before hashing.
 - Query parameters decode percent triplets, preserve literal `+`, sort by key
   then value, then re-encoded with uppercase hex escapes.

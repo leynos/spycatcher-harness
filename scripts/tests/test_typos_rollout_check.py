@@ -71,7 +71,7 @@ class TestPhrasePolicyChecker:
         )
 
         (tmp_path / ".typos-oxendict-base.toml").unlink()
-        with pytest.raises(FileNotFoundError, match="docs/developers-guide.md"):
+        with pytest.raises(FileNotFoundError, match=r"docs/developers-guide\.md"):
             checker.load_policy(tmp_path)
 
     def test_checker_preserves_boundaries_masking_and_exclusions(

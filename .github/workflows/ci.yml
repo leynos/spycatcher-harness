@@ -13,6 +13,7 @@ jobs:
     env:
       CARGO_TERM_COLOR: always
       BUILD_PROFILE: debug
+      MERMAN_CLI_VERSION: '0.7.0'
       WHITAKER_INSTALLER_VERSION: '0.2.5'
       CS_ACCESS_TOKEN: ${{ secrets.CS_ACCESS_TOKEN || '' }}
       CODESCENE_CLI_SHA256: ${{ vars.CODESCENE_CLI_SHA256 || '' }}
@@ -21,11 +22,16 @@ jobs:
         with:
           fetch-depth: 0
       - name: Setup Rust for Merman
-        uses: dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9
+        run: rustup toolchain install 1.95.0
+      - name: Cache Merman CLI
+        id: cache-merman-cli
+        uses: actions/cache@cdf6c1fa76f9f475f3d7449005a359c84ca0f306
         with:
-          toolchain: '1.95.0'
+          path: ~/.cargo/bin/merman-cli
+          key: merman-cli-${{ runner.os }}-${{ runner.arch }}-${{ env.MERMAN_CLI_VERSION }}
       - name: Install Merman CLI
-        run: cargo +1.95.0 install merman-cli --version '=0.7.0' --locked
+        if: steps.cache-merman-cli.outputs.cache-hit != 'true'
+        run: cargo +1.95.0 install merman-cli --version "=${MERMAN_CLI_VERSION}" --locked
       - name: Setup Rust
         uses: leynos/shared-actions/.github/actions/setup-rust@927edd45ae77be4251a8a18ca9eb5613a2e32cbd
       - name: Setup uv

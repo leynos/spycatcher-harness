@@ -6,8 +6,10 @@ the Spycatcher harness.
 
 ## Spelling policy
 
-Run `make spelling` to enforce en-GB-oxendict spelling in tracked Markdown.
-The generated and tracked `typos.toml` starts from the shared Oxford dictionary.
+Run `make spelling` to enforce en-GB-oxendict spelling. The dictionary-based
+Typos scan checks tracked Markdown, while the phrase-correction check covers the
+whole tracked repository, including Rust and Python files. The generated and
+tracked `typos.toml` starts from the shared Oxford dictionary.
 The shared `typos-config-builder` CLI refreshes an untracked local cache only
 when the authoritative copy is newer, so a valid tracked configuration remains
 usable in a network-restricted checkout.
