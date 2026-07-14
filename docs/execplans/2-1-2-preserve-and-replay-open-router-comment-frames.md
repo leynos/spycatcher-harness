@@ -490,7 +490,7 @@ Write the failing tests before any production code:
     `content-type: text/event-stream` when the cassette omits it,
   - parsed-event replay propagates the recorded status code,
   - empty event lists produce an empty body and a 200 status without
-    synthesising `[DONE]`.
+    synthesizing `[DONE]`.
 - In `tests/features/chat_completions_replay.feature` replace the
   `Replay rejects streaming requests` scenario with two scenarios:
   - `Replay emits a recorded OpenRouter stream including comment frames`,
@@ -695,7 +695,7 @@ Quality criteria:
   `${ACTION}-spycatcher-harness-2-1-2.out` keeps repeated runs from shadowing
   earlier evidence; rerun with a fresh suffix when iterating.
 
-## Artifacts and notes
+## Artefacts and notes
 
 Populate with the most informative transcripts during execution. Capture
 expected and observed output for each milestone so the next reader can verify

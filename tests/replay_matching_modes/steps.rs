@@ -8,7 +8,7 @@ use spycatcher_harness::config::MatchMode;
 use super::fixtures::{InteractionSpec, build_cassette};
 use super::helpers::{
     check_matched_count, check_mode_order, check_response_set, extract_response_id,
-    initialise_engine, run_requests,
+    initialize_engine, run_requests,
 };
 use super::world::MatchingWorld;
 
@@ -105,14 +105,14 @@ fn a_cassette_with_one_recorded_interaction(
 fn the_replay_engine_is_in_sequential_strict_mode(
     matching_world: &MatchingWorld,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    initialise_engine(matching_world, MatchMode::SequentialStrict)
+    initialize_engine(matching_world, MatchMode::SequentialStrict)
 }
 
 #[given("the replay engine is in keyed mode")]
 fn the_replay_engine_is_in_keyed_mode(
     matching_world: &MatchingWorld,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    initialise_engine(matching_world, MatchMode::Keyed)
+    initialize_engine(matching_world, MatchMode::Keyed)
 }
 
 #[when("three requests arrive with matching hashes in recorded order")]

@@ -20,17 +20,33 @@ jobs:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
         with:
           fetch-depth: 0
+      - name: Setup Rust for Merman
+        uses: dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9
+        with:
+          toolchain: '1.95.0'
+      - name: Install Merman CLI
+        run: cargo +1.95.0 install merman-cli --version '=0.7.0' --locked
       - name: Setup Rust
         uses: leynos/shared-actions/.github/actions/setup-rust@927edd45ae77be4251a8a18ca9eb5613a2e32cbd
+      - name: Setup uv
+        uses: astral-sh/setup-uv@c5680ec91f7b9b91406fab4ded5d45245abf7b67
+      - name: Install Nixie
+        run: uv tool install nixie-cli==1.1.0
       - name: Format
         run: make check-fmt
+      - name: Spelling
+        run: make spelling
       - name: Markdown lint
         uses: DavidAnson/markdownlint-cli2-action@8de2aa07cae85fd17c0b35642db70cf5495f1d25
         with:
           globs: |
             **/*.md
+            !**/.uv-cache/**
+            !**/.uv-tools/**
             !**/target/**
             !**/dist/**
+      - name: Validate Mermaid diagrams
+        run: make nixie
       - name: Cache Whitaker installer
         uses: actions/cache@cdf6c1fa76f9f475f3d7449005a359c84ca0f306
         with:

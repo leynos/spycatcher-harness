@@ -1,0 +1,21 @@
+# Repository-specific exceptions to the shared en-GB-oxendict policy.
+
+schema = 1
+
+[oxford]
+stems = []
+
+[words]
+accepted = []
+
+[words.corrections]
+
+[patterns]
+ignore = [
+  # Preserve formal upstream documentation names across line wrapping.
+  'Azure\s+Architecture\s+Center\s+\|\s+Microsoft\s+Learn',
+  'GitHub\s+Flavored\s+Markdown',
+]
+
+[files]
+exclude = []

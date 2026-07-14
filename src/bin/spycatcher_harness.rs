@@ -108,11 +108,11 @@ fn select_cli_localizer() -> (&'static str, Arc<dyn Localizer>) {
     }
 }
 
-/// Constructs a [`FluentLanguageLoader`] from layered localisation
+/// Constructs a [`FluentLanguageLoader`] from layered localization
 /// configuration.
 ///
 /// Computes a locale plan (requested locale then fallback, or fallback-only
-/// when `locale` is unset), selects embedded harness localisations via
+/// when `locale` is unset), selects embedded harness localizations via
 /// [`i18n_embed::select`], and uses the last entry in the plan as the Fluent
 /// fallback locale.
 ///

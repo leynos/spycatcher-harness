@@ -90,7 +90,7 @@ Observable success:
   crate does not currently expose an `OrthoConfigDocs` root type or generate
   documentation artefacts. Severity: low. Likelihood: high. Mitigation: treat
   this as a decision point; either wire the metadata because there is an
-  existing artifact workflow, or explicitly document why it is not part of this
+  existing artefact workflow, or explicitly document why it is not part of this
   upgrade.
 
 ## Progress

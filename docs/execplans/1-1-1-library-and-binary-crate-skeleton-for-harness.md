@@ -233,7 +233,7 @@ Key terms:
   cassette errors, request mismatches, upstream failures, and I/O errors.
 - **`HarnessConfig`**: the top-level configuration struct controlling listen
   address, mode, protocol, matching, cassette location, upstream settings,
-  redaction, replay timing, and localisation.
+  redaction, replay timing, and localization.
 
 The design document (`docs/spycatcher-harness-design.md`) defines the public
 API surface at section "Public library API surface" and the module layout at
@@ -303,7 +303,7 @@ with `rstest`-based tests.
 
 In `src/error.rs`:
 
-- Parameterised test for all five error variant display strings using
+- Parameterized test for all five error variant display strings using
   `#[rstest]` with `#[case]`.
 - Test that `HarnessError` implements `std::error::Error`.
 
@@ -464,7 +464,7 @@ The only destructive action is deleting `src/main.rs`. This is safe because the
 file contains only the placeholder stub and its replacement
 (`src/bin/spycatcher_harness.rs`) is created before deletion.
 
-## Artifacts and notes
+## Artefacts and notes
 
 ### Error enum shape
 
@@ -538,7 +538,7 @@ Feature: Harness startup and shutdown
 
 ### Dev-dependencies
 
-- `rstest = "0.25.0"` — fixtures and parameterised tests.
+- `rstest = "0.25.0"` — fixtures and parameterized tests.
 - `rstest-bdd = "0.1.0"` — BDD scenario framework (`Slot`, `ScenarioState`).
 - `rstest-bdd-macros = "0.1.0"` — procedural macros (`#[given]`, `#[when]`,
   `#[then]`, `#[scenario]`, `ScenarioState`).

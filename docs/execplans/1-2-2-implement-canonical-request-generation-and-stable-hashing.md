@@ -300,7 +300,7 @@ Internal helpers (private):
 - `remove_pointer(value: &mut Value, tokens: &[String])` — removes a single
   parsed JSON Pointer path from a mutable `Value`.
 
-The implemented hash input byte string is the labeled UTF-8 sequence:
+The implemented hash input byte string is the labelled UTF-8 sequence:
 
 ```plaintext
 METHOD\n{method}\nPATH\n{path}\nQUERY\n{canonical_query}\nBODY\n{canonical_json}
@@ -651,7 +651,7 @@ The `sha2` dependency addition is idempotent (Cargo deduplicates). Test
 fixtures use unique cassette names with UUIDs, preventing cross-run
 interference.
 
-## Artifacts and notes
+## Artefacts and notes
 
 ### Hash input format specification
 

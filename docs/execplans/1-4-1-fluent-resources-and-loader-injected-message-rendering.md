@@ -582,7 +582,7 @@ If implementation would require changing `start_harness(cfg)`, stop before
 making that change. Record the proposed signature and alternatives in
 `Decision Log`, then ask for approval.
 
-## Artifacts and notes
+## Artefacts and notes
 
 Wyvern agent team findings used for this draft:
 

@@ -728,7 +728,7 @@ from that stage's starting point is safe.
 Test fixtures use deterministic, hardcoded cassettes with known hashes,
 avoiding cross-run interference.
 
-## Artifacts and notes
+## Artefacts and notes
 
 ### `MismatchDiagnostic` field specification
 

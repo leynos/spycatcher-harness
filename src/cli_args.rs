@@ -12,7 +12,7 @@ use url::Url;
 use crate::config;
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
-/// Serialisable locale and fallback-locale fields threaded through `OrthoConfig`
+/// Serializable locale and fallback-locale fields threaded through `OrthoConfig`
 /// subcommand merging.
 pub(super) struct LocalizationArgs {
     pub(super) locale: Option<String>,
@@ -20,7 +20,7 @@ pub(super) struct LocalizationArgs {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-/// Serialisable upstream configuration fields for the `record` subcommand.
+/// Serializable upstream configuration fields for the `record` subcommand.
 pub(super) struct RecordUpstreamArgs {
     #[serde(default)]
     kind: RecordUpstreamKind,
