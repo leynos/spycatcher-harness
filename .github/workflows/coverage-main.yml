@@ -24,7 +24,7 @@ jobs:
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
       - name: Setup Rust
-        uses: leynos/shared-actions/.github/actions/setup-rust@927edd45ae77be4251a8a18ca9eb5613a2e32cbd
+        uses: leynos/shared-actions/.github/actions/setup-rust@dfddcb6cf53a2583e55bf0c3536c01ed1f67dc16
       - name: Generate coverage
         uses: leynos/shared-actions/.github/actions/generate-coverage@927edd45ae77be4251a8a18ca9eb5613a2e32cbd
         with:
