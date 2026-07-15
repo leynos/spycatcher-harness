@@ -220,7 +220,8 @@ canonicalization pipeline:
    optionally coerce numeric types.
 4. Serialize with a canonical serializer: sorted object keys, stable float
    formatting.
-5. Hash (SHA-256) over: `method + path + canonical_query + canonical_json`.
+5. Hash (SHA-256) the UTF-8 encoding of the compact canonical JSON request
+   envelope.
 
 ## Plan of work
 
@@ -300,15 +301,18 @@ Internal helpers (private):
 - `remove_pointer(value: &mut Value, tokens: &[String])` — removes a single
   parsed JSON Pointer path from a mutable `Value`.
 
-The implemented hash input byte string is the labeled UTF-8 sequence:
+The implemented hash input is the UTF-8 encoding of the compact canonical JSON
+request envelope described in the authoritative specification below. Its
+members are emitted in the fixed order `method`, `path`, `canonical_query`,
+`canonical_body`.
 
 ```plaintext
-METHOD\n{method}\nPATH\n{path}\nQUERY\n{canonical_query}\nBODY\n{canonical_json}
+{"method":<METHOD_JSON_STRING>,"path":<PATH_JSON_STRING>,"canonical_query":<QUERY_JSON_STRING>,"canonical_body":<BODY_JSON_VALUE_OR_NULL>}
 ```
 
-When `canonical_body` is `None` (non-JSON request), the body component is
-empty. This ensures that non-JSON requests still produce stable hashes based on
-method, path, and query.
+When `canonical_body` is `None` (non-JSON request), the envelope contains
+`"canonical_body":null`. This ensures that non-JSON requests still produce
+stable hashes based on method, path, and query.
 
 Go/no-go: the module compiles (`cargo check`) without errors. No tests yet.
 
@@ -482,9 +486,8 @@ Go/no-go: `make test` passes with all BDD scenarios green.
 
 Update `docs/spycatcher-harness-design.md`:
 
-- In the "Canonicalization and hashing" section, record the final hash input
-  format
-  (`method + "\n" + path + "\n" + canonical_query + "\n" + canonical_json_bytes`).
+- In the "Canonicalization and hashing" section, record that the final hash
+  input is the UTF-8 encoding of the compact canonical JSON request envelope.
 - Record the ignore-path semantics (JSON Pointer, no array index support in
   this release).
 - Record the canonical JSON serialization rules (sorted keys, compact form,
@@ -651,32 +654,31 @@ The `sha2` dependency addition is idempotent (Cargo deduplicates). Test
 fixtures use unique cassette names with UUIDs, preventing cross-run
 interference.
 
-## Artifacts and notes
+## Artefacts and notes
 
 ### Hash input format specification
 
-The SHA-256 hash input is the byte concatenation of:
+The SHA-256 hash input is the UTF-8 encoding of this compact JSON envelope:
 
 ```plaintext
-<METHOD>\n<PATH>\n<CANONICAL_QUERY>\n<CANONICAL_JSON_BYTES>
+{"method":<METHOD_JSON_STRING>,"path":<PATH_JSON_STRING>,"canonical_query":<QUERY_JSON_STRING>,"canonical_body":<BODY_JSON_VALUE_OR_NULL>}
 ```
 
 Where:
 
-- `<METHOD>` is the HTTP method in uppercase ASCII (for example `POST`).
-- `<PATH>` is the request path without query string (for example
-  `/v1/chat/completions`).
-- `<CANONICAL_QUERY>` is the query string after parsing, sorting by key then
-  value, and re-encoding (for example `model=gpt-4&stream=true`). Empty if no
-  query parameters.
-- `<CANONICAL_JSON_BYTES>` is the compact JSON serialization of the
-  normalized request body with sorted keys, or empty (zero bytes) if the
-  request body is not JSON.
+- `<METHOD_JSON_STRING>` is the JSON string for the uppercase HTTP method (for
+  example `"POST"`).
+- `<PATH_JSON_STRING>` is the JSON string for the request path without query
+  string (for example `"/v1/chat/completions"`).
+- `<QUERY_JSON_STRING>` is the JSON string for the query after parsing, sorting
+  by key then value, and re-encoding (for example
+  `"model=gpt-4&stream=true"`). It is empty when there are no query parameters.
+- `<BODY_JSON_VALUE_OR_NULL>` is the normalized request body with sorted keys,
+  or JSON `null` when the request body is not JSON.
 
-Each component is separated by a single newline byte (`0x0A`). The trailing
-newline before `<CANONICAL_JSON_BYTES>` is always present even when the JSON
-component is empty, ensuring that the hash input for a non-JSON request is
-distinguishable from a request whose JSON body serializes to an empty string.
+Members are emitted in the fixed order shown above. String values use JSON
+escaping. The envelope contains no insignificant whitespace and has no trailing
+newline.
 
 ### Canonical JSON serialization rules
 

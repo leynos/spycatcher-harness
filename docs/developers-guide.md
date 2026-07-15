@@ -4,6 +4,21 @@ This guide documents build configuration choices, dependency rationale,
 internal module layout, and test structure patterns for contributors working on
 the Spycatcher harness.
 
+## Spelling policy
+
+Run `make spelling` to enforce en-GB-oxendict spelling. The dictionary-based
+Typos scan checks tracked Markdown, while the phrase-correction check covers the
+whole tracked repository, including Rust and Python files. The generated and
+tracked `typos.toml` starts from the shared Oxford dictionary.
+The shared `typos-config-builder` CLI refreshes an untracked local cache only
+when the authoritative copy is newer, so a valid tracked configuration remains
+usable in a network-restricted checkout.
+
+Keep repository-specific identifiers and deliberate quotations in
+`typos.local.toml`. Run `make spelling-config-write` to regenerate the tracked
+configuration and `make spelling-config` to verify it. Never edit generated
+entries by hand.
+
 ## Build configuration
 
 ### `serde_json` `preserve_order` feature

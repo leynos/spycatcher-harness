@@ -194,7 +194,7 @@ fn is_valid_ignore_path(path: &str) -> bool {
 /// Computes the stable SHA-256 hash for a canonical request.
 ///
 /// The hash input is the canonical JSON serialization of the envelope:
-/// `{"canonical_body":...,"canonical_query":...,"method":...,"path":...}`.
+/// `{"method":...,"path":...,"canonical_query":...,"canonical_body":...}`.
 ///
 /// # Examples
 ///

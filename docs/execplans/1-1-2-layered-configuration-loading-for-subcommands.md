@@ -375,9 +375,9 @@ Quality criteria:
 - Do not mark roadmap item `1.1.2` done until all gates pass in the same final
   revision.
 
-## Artifacts and notes
+## Artefacts and notes
 
-Expected new or modified artifacts during implementation:
+Expected new or modified artefacts during implementation:
 
 - Adapter-side configuration loader and mapper module(s).
 - Unit test module(s) for layered precedence and `cmds.<subcommand>` merge

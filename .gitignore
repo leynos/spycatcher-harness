@@ -1,3 +1,7 @@
 target/
 **/*.rs.bk
 .memdb/
+.typos-oxendict-base.json
+.typos-oxendict-base.toml
+.uv-cache/
+.uv-tools/

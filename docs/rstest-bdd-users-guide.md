@@ -84,7 +84,7 @@ The feature file lives within the crate (commonly under `tests/features/`). The
 path to this file will be referenced by the `#[scenario]` macro in the test
 code.
 
-### Internationalised scenarios
+### Internationalized scenarios
 
 `rstest-bdd` reads the optional `# language: <code>` directive that appears at
 the top of a feature file. When a locale is specified, the parser uses that

@@ -6,7 +6,7 @@ use spycatcher_harness::config::MatchMode;
 
 use super::world::MatchingWorld;
 
-pub(super) fn initialise_engine(
+pub(super) fn initialize_engine(
     matching_world: &MatchingWorld,
     mode: MatchMode,
 ) -> Result<(), Box<dyn std::error::Error>> {

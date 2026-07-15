@@ -33,7 +33,7 @@ pub struct HarnessConfig {
     ///
     /// `Mode::Verify` runs cassette and configuration validation flows.
     pub mode: Mode,
-    /// Localisation settings.
+    /// Localization settings.
     pub localization: LocalizationConfig,
     /// Protocol to expose.
     pub protocol: Protocol,
@@ -171,7 +171,7 @@ pub enum UpstreamKind {
     OpenRouter,
 }
 
-/// Localisation settings for the harness.
+/// Localization settings for the harness.
 #[derive(Debug, Clone)]
 pub struct LocalizationConfig {
     /// Explicit locale override (e.g. `"en-GB"`).

@@ -5,7 +5,7 @@
 //! It covers:
 //!
 //! - Cassette-name precedence (CLI > env > config file > default) for `replay`.
-//! - Localisation-field precedence for `locale` and `fallback_locale` across all
+//! - Localization-field precedence for `locale` and `fallback_locale` across all
 //!   three subcommands (`record`, `replay`, `verify`).
 //! - Property-based validation that arbitrary syntactically valid BCP 47 language
 //!   identifiers are accepted without error.

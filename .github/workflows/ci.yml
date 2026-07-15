@@ -13,6 +13,7 @@ jobs:
     env:
       CARGO_TERM_COLOR: always
       BUILD_PROFILE: debug
+      MERMAN_CLI_VERSION: '0.7.0'
       WHITAKER_INSTALLER_VERSION: '0.2.5'
       CS_ACCESS_TOKEN: ${{ secrets.CS_ACCESS_TOKEN || '' }}
       CODESCENE_CLI_SHA256: ${{ vars.CODESCENE_CLI_SHA256 || '' }}
@@ -20,17 +21,38 @@ jobs:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
         with:
           fetch-depth: 0
+      - name: Setup Rust for Merman
+        run: rustup toolchain install 1.95.0
+      - name: Cache Merman CLI
+        id: cache-merman-cli
+        uses: actions/cache@cdf6c1fa76f9f475f3d7449005a359c84ca0f306
+        with:
+          path: ~/.cargo/bin/merman-cli
+          key: merman-cli-${{ runner.os }}-${{ runner.arch }}-${{ env.MERMAN_CLI_VERSION }}
+      - name: Install Merman CLI
+        if: steps.cache-merman-cli.outputs.cache-hit != 'true'
+        run: cargo +1.95.0 install merman-cli --version "=${MERMAN_CLI_VERSION}" --locked
       - name: Setup Rust
         uses: leynos/shared-actions/.github/actions/setup-rust@927edd45ae77be4251a8a18ca9eb5613a2e32cbd
+      - name: Setup uv
+        uses: astral-sh/setup-uv@c5680ec91f7b9b91406fab4ded5d45245abf7b67
+      - name: Install Nixie
+        run: uv tool install nixie-cli==1.1.0
       - name: Format
         run: make check-fmt
+      - name: Spelling
+        run: make spelling
       - name: Markdown lint
         uses: DavidAnson/markdownlint-cli2-action@8de2aa07cae85fd17c0b35642db70cf5495f1d25
         with:
           globs: |
             **/*.md
+            !**/.uv-cache/**
+            !**/.uv-tools/**
             !**/target/**
             !**/dist/**
+      - name: Validate Mermaid diagrams
+        run: make nixie
       - name: Cache Whitaker installer
         uses: actions/cache@cdf6c1fa76f9f475f3d7449005a359c84ca0f306
         with:
@@ -58,13 +80,14 @@ jobs:
           format: lcov
           use-cargo-nextest: 'false'
           with-ratchet: 'true'
-      # The `mode: check` step is deliberately not wired in yet: CodeScene
-      # project 77452 has no coverage-gates configuration, so
-      # `cs-coverage check` fails every run with "HTTP call succeeded,
-      # but the received project-config isn't valid. Lacks the gates
-      # configuration." — a CodeScene-side per-project setting, not a CI
-      # defect (ddlint#287 and chutoro#156 hit the byte-identical error).
-      # Add the check step in a fast-follow PR once coverage-main.yml has
-      # uploaded to main at least once and the gate is confirmed to
-      # resolve, or once CodeScene confirms the project's coverage gate
-      # is enabled.
+      - name: Check coverage against CodeScene gates
+        env:
+          CS_ACCESS_TOKEN: ${{ secrets.CS_ACCESS_TOKEN }}
+        if: github.event_name == 'pull_request' && env.CS_ACCESS_TOKEN != ''
+        uses: leynos/shared-actions/.github/actions/upload-codescene-coverage@927edd45ae77be4251a8a18ca9eb5613a2e32cbd
+        with:
+          format: lcov
+          mode: check
+          project-url: https://api.codescene.io/v2/projects/77452
+          access-token: ${{ env.CS_ACCESS_TOKEN }}
+          installer-checksum: ${{ vars.CODESCENE_CLI_SHA256 }}
