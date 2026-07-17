@@ -14,7 +14,7 @@ jobs:
       CARGO_TERM_COLOR: always
       BUILD_PROFILE: debug
       MERMAN_CLI_VERSION: '0.7.0'
-      WHITAKER_INSTALLER_VERSION: '0.2.5'
+      WHITAKER_INSTALLER_VERSION: '0.2.6'
       CS_ACCESS_TOKEN: ${{ secrets.CS_ACCESS_TOKEN || '' }}
       CODESCENE_CLI_SHA256: ${{ vars.CODESCENE_CLI_SHA256 || '' }}
     steps:
