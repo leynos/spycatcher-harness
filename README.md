@@ -1,5 +1,8 @@
 # Spycatcher Harness
 
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](
+https://deepwiki.com/leynos/spycatcher-harness)
+
 Spycatcher Harness is a record/replay HTTP proxy for OpenAI-compatible chat
 completions. It records real upstream exchanges into cassettes for later
 deterministic replay, so agent and LLM-facing tests can run without repeatedly
