@@ -35,7 +35,7 @@ jobs:
       - name: Setup Rust
         uses: leynos/shared-actions/.github/actions/setup-rust@e0d9b652b137eb15314fff188f09e1ba18d3cc5b
       - name: Setup uv
-        uses: astral-sh/setup-uv@c5680ec91f7b9b91406fab4ded5d45245abf7b67
+        uses: astral-sh/setup-uv@ecd24dd710f2fb0dca1693a67af11fc4a5c5ec84
       - name: Install Nixie
         run: uv tool install nixie-cli==1.1.0
       - name: Format
