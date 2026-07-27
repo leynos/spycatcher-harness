@@ -335,7 +335,7 @@ units with explicit dependencies and completion criteria.
     [VidaiMock and recording tooling](spycatcher-harness-design.md#vidaimock-and-recording-tooling),
     [Known risks and limitations](spycatcher-harness-design.md#known-risks-and-limitations).
 
-## Dependency checkpoints
+**Dependency checkpoints:**
 
 - Tasks 1.4.1 to 1.4.3 should complete before shipping user-facing CLI workflows
   that surface localized messages.
