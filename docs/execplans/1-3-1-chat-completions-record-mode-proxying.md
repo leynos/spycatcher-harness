@@ -1,9 +1,8 @@
 # Implement chat completions record mode proxying
 
-This ExecPlan (execution plan) is a living document. The sections
-`Constraints`, `Tolerances`, `Risks`, `Progress`, `Surprises & Discoveries`,
-`Decision Log`, and `Outcomes & Retrospective` must be kept up to date as work
-proceeds.
+This ExecPlan (execution plan) is a living document. The sections `Constraints`,
+`Tolerances`, `Risks`, `Progress`, `Surprises & Discoveries`, `Decision Log`,
+and `Outcomes & Retrospective` must be kept up to date as work proceeds.
 
 Status: COMPLETE
 
@@ -214,8 +213,8 @@ Skills to apply during implementation:
   `Authorization` is actually absent while non-sensitive headers still forward.
 - The domain-decoupling concern around `axum::http` in header selection and
   `UpstreamConfig` in `ChatCompletionsRequest` is valid but larger than a
-  minimal review fix. It is tracked in issue `#35` rather than folded
-  into the record-mode proxying PR.
+  minimal review fix. It is tracked in issue `#35` rather than folded into the
+  record-mode proxying PR.
 
 ## Decision Log
 

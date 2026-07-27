@@ -1,9 +1,8 @@
 # Implement library and binary crate skeleton for harness startup
 
-This ExecPlan (execution plan) is a living document. The sections
-`Constraints`, `Tolerances`, `Risks`, `Progress`, `Surprises & Discoveries`,
-`Decision Log`, and `Outcomes & Retrospective` must be kept up to date as work
-proceeds.
+This ExecPlan (execution plan) is a living document. The sections `Constraints`,
+`Tolerances`, `Risks`, `Progress`, `Surprises & Discoveries`, `Decision Log`,
+and `Outcomes & Retrospective` must be kept up to date as work proceeds.
 
 Status: COMPLETE
 
@@ -143,8 +142,8 @@ Thresholds that trigger escalation when breached.
   yet. Date/Author: 2026-03-01 / agent
 
 - Decision: use `camino::Utf8PathBuf` for all path fields instead of
-  `std::path::PathBuf`. Rationale: `AGENTS.md` explicitly mandates `camino`
-  over `std::path`. The design document's pseudo-code shows `PathBuf` but
+  `std::path::PathBuf`. Rationale: `AGENTS.md` explicitly mandates `camino` over
+  `std::path`. The design document's pseudo-code shows `PathBuf` but
   `AGENTS.md` takes precedence as the binding coding standard. Using
   `Utf8PathBuf` from the start avoids a breaking change later. Date/Author:
   2026-03-01 / agent
@@ -159,8 +158,8 @@ Thresholds that trigger escalation when breached.
 
 - Decision: define the full `HarnessConfig` struct shape from the design
   document with `Default` implementations for all sub-types. Rationale: task
-  1.1.2 (OrthoConfig integration) needs stable types to decorate with
-  `clap`/OrthoConfig attributes. Defining the full shape now avoids a breaking
+  1.1.2 (OrthoConfig integration) needs stable types to decorate with `clap`
+  /OrthoConfig attributes. Defining the full shape now avoids a breaking
   restructuring in 1.1.2. Fields that are not exercised yet get sensible
   defaults. Date/Author: 2026-03-01 / agent
 
@@ -437,9 +436,9 @@ Quality criteria (what "done" means):
 
 - Tests: `cargo test --workspace --all-targets --all-features` passes with all
   unit tests and BDD scenarios green.
-- Lint/typecheck: `cargo clippy --workspace --all-targets --all-features -- -D
-  warnings` produces zero warnings. `cargo doc
-  --no-deps` builds without warnings.
+- Lint/typecheck:
+  `cargo clippy --workspace --all-targets --all-features -- -D warnings`
+  produces zero warnings. `cargo doc --no-deps` builds without warnings.
 - Formatting: `cargo fmt --all -- --check` reports no differences.
 - API surface: `start_harness(cfg)` and `RunningHarness::shutdown()` are
   callable from external code. `HarnessError` is the only error type in the

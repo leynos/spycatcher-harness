@@ -52,5 +52,4 @@ make check-fmt  # formatting check
 make fmt        # apply Rust and Markdown formatting
 ```
 
-See `AGENTS.md` for the full command expansions and commit gating
-requirements.
+See `AGENTS.md` for the full command expansions and commit gating requirements.

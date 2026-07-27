@@ -1,9 +1,8 @@
 # Implement canonical request generation and stable hashing
 
-This ExecPlan (execution plan) is a living document. The sections
-`Constraints`, `Tolerances`, `Risks`, `Progress`, `Surprises & Discoveries`,
-`Decision Log`, and `Outcomes & Retrospective` must be kept up to date as work
-proceeds.
+This ExecPlan (execution plan) is a living document. The sections `Constraints`,
+`Tolerances`, `Risks`, `Progress`, `Surprises & Discoveries`, `Decision Log`,
+and `Outcomes & Retrospective` must be kept up to date as work proceeds.
 
 Status: COMPLETE
 
@@ -671,8 +670,8 @@ Where:
 - `<PATH_JSON_STRING>` is the JSON string for the request path without query
   string (for example `"/v1/chat/completions"`).
 - `<QUERY_JSON_STRING>` is the JSON string for the query after parsing, sorting
-  by key then value, and re-encoding (for example
-  `"model=gpt-4&stream=true"`). It is empty when there are no query parameters.
+  by key then value, and re-encoding (for example `"model=gpt-4&stream=true"`).
+  It is empty when there are no query parameters.
 - `<BODY_JSON_VALUE_OR_NULL>` is the normalized request body with sorted keys,
   or JSON `null` when the request body is not JSON.
 

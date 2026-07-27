@@ -1,7 +1,7 @@
 # Add SSE parser and recorder for OpenAI-style streams
 
 This ExecPlan (execution plan) is a living document. The sections `Constraints`,
- `Tolerances`, `Risks`, `Progress`, `Surprises & Discoveries`, `Decision Log`,
+`Tolerances`, `Risks`, `Progress`, `Surprises & Discoveries`, `Decision Log`,
 and `Outcomes & Retrospective` must be kept up to date as work proceeds.
 
 Status: COMPLETE
@@ -420,7 +420,7 @@ cargo test --test record_mode_proxying_bdd --all-features 2>&1 | tee /tmp/test-b
 
 Acceptance for this milestone: tests fail because the parser or streaming
 recording behaviour is missing, not because of unrelated compilation errors. Run
- `coderabbit review --agent` if the red-test diff is substantial enough to
+`coderabbit review --agent` if the red-test diff is substantial enough to
 benefit from review, then clear any actionable concerns. Commit only if the
 repository policy accepts a red-test commit; otherwise keep the red tests
 unstaged until the green implementation commit.
@@ -545,7 +545,7 @@ Update `docs/spycatcher-harness-design.md` to record the implemented parser
 contract, terminal marker policy, malformed stream policy, and record/replay
 boundary. If the terminal marker or incomplete-stream policy is substantive,
 add an Architectural Decision Record (ADR) using the naming and section rules in
- `docs/documentation-style-guide.md`, then link it from the design document.
+`docs/documentation-style-guide.md`, then link it from the design document.
 
 Update `docs/users-guide.md` so users know:
 
@@ -649,8 +649,7 @@ timing metadata.
 
 Replay of streams remains deliberately unsupported. Replay still returns
 `501 Not Implemented` for `stream: true` requests and matched stream cassette
-responses, which preserves the boundary for roadmap tasks `2.1.2` and
-`2.1.3`.
+responses, which preserves the boundary for roadmap tasks `2.1.2` and `2.1.3`.
 
 The main implementation deviation was dependency handling. Enabling reqwest's
 `stream` feature would have expanded the resolved package graph, so the final

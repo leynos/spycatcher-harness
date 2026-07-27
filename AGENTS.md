@@ -237,7 +237,7 @@ project:
 
 - **Mandate caret requirements for all dependencies.** All crate versions
   specified in `Cargo.toml` must use SemVer-compatible caret requirements (e.g.,
-   `some-crate = "1.2.3"`). This is Cargo's default and allows for safe,
+  `some-crate = "1.2.3"`). This is Cargo's default and allows for safe,
   non-breaking updates to minor and patch versions while preventing breaking
   changes from new major versions. This approach is critical for ensuring build
   stability and reproducibility.
@@ -274,7 +274,7 @@ project:
 
 - Use `tracing` for logging and diagnostics. Prefer structured
   `tracing::{trace, debug, info, warn, error}` events and spans over `println!`,
-   `eprintln!`, or direct `log` macros. Add fields for identifiers, state, and
+  `eprintln!`, or direct `log` macros. Add fields for identifiers, state, and
   error context so downstream subscribers can filter and correlate events
   without parsing message text.
 - Use `#[tracing::instrument]` or explicit spans around request handling,

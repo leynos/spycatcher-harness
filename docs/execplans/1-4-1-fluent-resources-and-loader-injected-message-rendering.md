@@ -1,9 +1,8 @@
 # Embed Fluent resources and inject message rendering
 
-This ExecPlan (execution plan) is a living document. The sections
-`Constraints`, `Tolerances`, `Risks`, `Progress`, `Surprises & Discoveries`,
-`Decision Log`, and `Outcomes & Retrospective` must be kept up to date as work
-proceeds.
+This ExecPlan (execution plan) is a living document. The sections `Constraints`,
+`Tolerances`, `Risks`, `Progress`, `Surprises & Discoveries`, `Decision Log`,
+and `Outcomes & Retrospective` must be kept up to date as work proceeds.
 
 Status: COMPLETE
 
@@ -174,8 +173,8 @@ Thresholds that trigger escalation when breached.
   first use, and splitting the localized error snapshot cases into focused
   tests without an inline multi-branch dispatcher.
 - [x] (2026-05-12 08:30Z) Addressed final check findings by adding debug
-  logging for unloaded-loader fallback and documenting security considerations for
-  Fluent argument substitution, I/O source details, and embedded FTL assets.
+  logging for unloaded-loader fallback and documenting security considerations
+  for Fluent argument substitution, I/O source details, and embedded FTL assets.
 - [x] (2026-05-13 09:20Z) Addressed review finding by preserving
   `FluentLanguageLoader` bidirectional isolation marks in localized production
   output and updating tests to assert those marks are retained.
@@ -255,13 +254,12 @@ Thresholds that trigger escalation when breached.
   unnecessary version churn. Date/Author: 2026-05-08 / agent
 
 - Decision: preserve Fluent bidirectional isolation marks in strings returned
-  by `localize_harness_error`. Rationale: caller-owned
-  `FluentLanguageLoader` instances enable isolation by default to prevent
-  mixed-direction text from visually reordering or spoofing adjacent text. The
-  library should return the loader's formatted output unchanged rather than
-  weakening that protection for user-controlled cassette names, configuration
-  messages, upstream errors, or I/O source text. Date/Author: 2026-05-13 /
-  agent
+  by `localize_harness_error`. Rationale: caller-owned `FluentLanguageLoader`
+  instances enable isolation by default to prevent mixed-direction text from
+  visually reordering or spoofing adjacent text. The library should return the
+  loader's formatted output unchanged rather than weakening that protection for
+  user-controlled cassette names, configuration messages, upstream errors, or
+  I/O source text. Date/Author: 2026-05-13 / agent
 
 - Decision: replace fallback-string comparison with loaded-message detection.
   Rationale: comparing against `i18n-embed`'s `"No localization for id: ..."`
@@ -299,10 +297,10 @@ implementation does not create a process-global loader, does not perform locale
 detection, and does not change `start_harness(cfg)`.
 
 The implementation is validated by `rstest` unit cases covering every current
-`HarnessError` variant, bidirectional isolation preservation for user-controlled
-values, an unhappy-path unloaded-loader fallback test, public API doctests,
-Markdown linting, diagram validation, Rust formatting checks, Clippy/Whitaker
-linting, and the full test suite.
+`HarnessError` variant, bidirectional isolation preservation for
+user-controlled values, an unhappy-path unloaded-loader fallback test, public
+API doctests, Markdown linting, diagram validation, Rust formatting checks,
+Clippy/Whitaker linting, and the full test suite.
 
 ### Security considerations
 

@@ -49,9 +49,8 @@ harness.shutdown().await?;
 # }
 ```
 
-See [docs/users-guide.md](docs/users-guide.md) for user-facing configuration
-and [docs/developers-guide.md](docs/developers-guide.md) for implementation
-notes.
+See [docs/users-guide.md](docs/users-guide.md) for user-facing configuration and
+[docs/developers-guide.md](docs/developers-guide.md) for implementation notes.
 
 For localized error messages, see the
 [Localizing library messages](docs/users-guide.md#localizing-library-messages)
@@ -66,8 +65,9 @@ to retain credentials.
 ## Compatibility
 
 The proxy path preserves raw header bytes. Percent-encoding of non-UTF-8 header
-values happens only at the cassette persistence boundary, so replay fixtures can
-store a stable string representation without weakening the transport contract.
+values happens only at the cassette persistence boundary, so replay fixtures
+can store a stable string representation without weakening the transport
+contract.
 
 ## Breaking changes
 

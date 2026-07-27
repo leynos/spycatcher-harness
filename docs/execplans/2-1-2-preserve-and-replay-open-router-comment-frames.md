@@ -16,8 +16,8 @@ a constraint would be violated.
 Roadmap task `2.1.1` made the harness record OpenAI-style Server-Sent Events
 (SSE) streams to a cassette. Comment frames such as `: OPENROUTER PROCESSING`
 are already captured as typed `StreamEvent::Comment` entries, and the raw
-transcript bytes are persisted alongside. Replay of a streamed interaction
-now uses parsed-event replay when a matching stream cassette exists. Stream
+transcript bytes are persisted alongside. Replay of a streamed interaction now
+uses parsed-event replay when a matching stream cassette exists. Stream
 requests matched to non-stream cassette entries return HTTP 501 with the
 `stream_cassette_required` error code; byte-faithful raw transcript replay
 remains roadmap task `2.1.3`.

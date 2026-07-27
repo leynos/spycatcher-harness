@@ -1,9 +1,8 @@
 # Deliver strict sequential and keyed replay matching modes
 
-This ExecPlan (execution plan) is a living document. The sections
-`Constraints`, `Tolerances`, `Risks`, `Progress`, `Surprises & Discoveries`,
-`Decision Log`, and `Outcomes & Retrospective` must be kept up to date as work
-proceeds.
+This ExecPlan (execution plan) is a living document. The sections `Constraints`,
+`Tolerances`, `Risks`, `Progress`, `Surprises & Discoveries`, `Decision Log`,
+and `Outcomes & Retrospective` must be kept up to date as work proceeds.
 
 Status: DRAFT
 
@@ -343,8 +342,8 @@ added: canonical_body.extra_field: "value"
 changed: canonical_query: "a=1&b=2" -> "a=1&c=3"
 ```
 
-This file should remain under 200 lines. Register it in `src/cassette/mod.rs`
-as `mod diff;` (private).
+This file should remain under 200 lines. Register it in `src/cassette/mod.rs` as
+`mod diff;` (private).
 
 Add unit tests for the diff utility in `src/cassette/diff_tests.rs`:
 
@@ -441,8 +440,8 @@ For sequential strict `next_match`:
    Return `Mismatch(diagnostic)`.
 
 Register `matching.rs` in `src/cassette/mod.rs` as `pub(crate) mod matching;`
-and re-export `MismatchDiagnostic`, `MatchOutcome`, and `ReplayMatchEngine`
-from `src/cassette/mod.rs`.
+and re-export `MismatchDiagnostic`, `MatchOutcome`, and `ReplayMatchEngine` from
+`src/cassette/mod.rs`.
 
 Go/no-go: the module compiles (`cargo check`). No tests yet.
 

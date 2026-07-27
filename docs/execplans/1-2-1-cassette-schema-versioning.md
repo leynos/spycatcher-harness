@@ -1,9 +1,8 @@
 # Implement cassette schema versioning and append-only persistence
 
-This ExecPlan (execution plan) is a living document. The sections
-`Constraints`, `Tolerances`, `Risks`, `Progress`, `Surprises & Discoveries`,
-`Decision Log`, and `Outcomes & Retrospective` must be kept up to date as work
-proceeds.
+This ExecPlan (execution plan) is a living document. The sections `Constraints`,
+`Tolerances`, `Risks`, `Progress`, `Surprises & Discoveries`, `Decision Log`,
+and `Outcomes & Retrospective` must be kept up to date as work proceeds.
 
 Status: COMPLETE
 
@@ -418,8 +417,8 @@ Update `docs/users-guide.md` with user-visible changes:
 - unsupported cassette versions fail fast with actionable diagnostics;
 - any clarified cassette naming rules or file examples.
 
-Only after code, tests, and docs are complete should `docs/roadmap.md` mark
-task `1.2.1` as done.
+Only after code, tests, and docs are complete should `docs/roadmap.md` mark task
+`1.2.1` as done.
 
 ### Stage F: run full validation with logged evidence
 

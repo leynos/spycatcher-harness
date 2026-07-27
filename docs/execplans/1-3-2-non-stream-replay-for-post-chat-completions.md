@@ -1,9 +1,8 @@
 # Implement non-stream chat completions replay
 
-This ExecPlan (execution plan) is a living document. The sections
-`Constraints`, `Tolerances`, `Risks`, `Progress`, `Surprises & Discoveries`,
-`Decision Log`, and `Outcomes & Retrospective` must be kept up to date as work
-proceeds.
+This ExecPlan (execution plan) is a living document. The sections `Constraints`,
+`Tolerances`, `Risks`, `Progress`, `Surprises & Discoveries`, `Decision Log`,
+and `Outcomes & Retrospective` must be kept up to date as work proceeds.
 
 Status: COMPLETE
 
@@ -173,9 +172,9 @@ Skills to apply during implementation:
 
 - Risk: response reconstruction may accidentally use raw proxy-header policy
   rather than persisted cassette-header policy. Severity: medium. Likelihood:
-  medium. Mitigation: implement a replay-specific response builder that
-  consumes `RecordedResponse::NonStream` and tests duplicate headers, invalid
-  status fallback, invalid header values, and byte-exact bodies.
+  medium. Mitigation: implement a replay-specific response builder that consumes
+  `RecordedResponse::NonStream` and tests duplicate headers, invalid status
+  fallback, invalid header values, and byte-exact bodies.
 
 - Risk: replay matching consumes state and the Axum server handles concurrent
   requests. Severity: medium. Likelihood: medium. Mitigation: own one
@@ -295,9 +294,9 @@ Skills to apply during implementation:
   entrypoint uses a tightly scoped `#[expect(dead_code)]` with a reason instead
   of duplicating the stub upstream implementation.
 - Recorded malformed or non-JSON chat completions requests have
-  `parsed_json: None`; canonicalization omits body content in that case. Without
-  a replay-side guard, two different malformed request bodies can therefore
-  produce the same replay key.
+  `parsed_json: None`; canonicalization omits body content in that case.
+  Without a replay-side guard, two different malformed request bodies can
+  therefore produce the same replay key.
 - Adding the malformed replay scenario pushed
   `tests/chat_completions_replay/steps.rs` over Whitaker's 400-line module
   limit. A small `tests/chat_completions_replay/support.rs` module now owns
@@ -412,8 +411,8 @@ and top-level mode dispatch.
 Relevant current files and roles:
 
 - `src/lib.rs` defines `start_harness`. At the time of writing, record mode
-  starts `server::start_record_server`, while replay and verify mode both
-  return `HarnessError::ModeNotYetImplemented` after cassette preparation.
+  starts `server::start_record_server`, while replay and verify mode both return
+  `HarnessError::ModeNotYetImplemented` after cassette preparation.
 - `src/server/runtime.rs` binds the Axum listener, mounts
   `CHAT_COMPLETIONS_PATH`, and returns a `RecordServerHandle`.
 - `src/server/record_handler.rs` extracts Axum request data into
@@ -518,8 +517,8 @@ struct ReplayService {
 }
 ```
 
-The exact names can vary to match local conventions, but the state must not
-hold `UpstreamConfig`, `ReqwestUpstreamClient`, `EnvProvider`, or any outbound
+The exact names can vary to match local conventions, but the state must not hold
+`UpstreamConfig`, `ReqwestUpstreamClient`, `EnvProvider`, or any outbound
 client trait. `ReplayAppState::from_config` should load the cassette with
 `FilesystemCassetteStore::open_for_replay(cassette_path)?`, call `load()`, and
 construct `ReplayMatchEngine::new(cassette, cfg.match_mode)`.

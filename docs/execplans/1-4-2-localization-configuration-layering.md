@@ -1,9 +1,8 @@
 # Add localization configuration layering
 
-This ExecPlan (execution plan) is a living document. The sections
-`Constraints`, `Tolerances`, `Risks`, `Progress`, `Surprises & Discoveries`,
-`Decision Log`, and `Outcomes & Retrospective` must be kept up to date as work
-proceeds.
+This ExecPlan (execution plan) is a living document. The sections `Constraints`,
+`Tolerances`, `Risks`, `Progress`, `Surprises & Discoveries`, `Decision Log`,
+and `Outcomes & Retrospective` must be kept up to date as work proceeds.
 
 Status: COMPLETE
 
@@ -148,9 +147,9 @@ review, and commit gates are complete.
 - [x] 2026-05-18: Added `rstest` coverage in the binary for fallback-only
   planning, requested-locale ordering, invalid explicit locale failure, invalid
   fallback failure, and fallback to the embedded English catalogue.
-- [x] 2026-05-18: Ran targeted startup loader tests. `cargo test --bin
-  spycatcher-harness` passed 5 tests and `cargo test --test
-  cli_layering_unit` passed 15 tests.
+- [x] 2026-05-18: Ran targeted startup loader tests.
+      `cargo test --bin spycatcher-harness` passed 5 tests and
+      `cargo test --test cli_layering_unit` passed 15 tests.
 - [x] 2026-05-18: Ran CodeRabbit after Milestone 3; it reported zero
   findings.
 - [x] 2026-05-18: Gated the startup loader milestone with `make check-fmt`,
@@ -160,10 +159,10 @@ review, and commit gates are complete.
   nested env keys, startup loader ownership, and invalid language identifier
   behaviour.
 - [x] 2026-05-18: Ran documentation validation. Changed docs passed targeted
-  `markdownlint-cli2`; `make markdownlint` and `make nixie` passed.
-  `make fmt` still reports pre-existing repository-wide Markdown line-length
-  failures from the legacy `markdownlint --fix` tool, so unrelated formatter
-  churn was reverted.
+  `markdownlint-cli2`; `make markdownlint` and `make nixie` passed. `make fmt`
+  still reports pre-existing repository-wide Markdown line-length failures from
+  the legacy `markdownlint --fix` tool, so unrelated formatter churn was
+  reverted.
 - [x] 2026-05-18: Ran CodeRabbit after Milestone 4; it reported zero
   findings.
 - [x] 2026-05-18: Ran final gates. `make check-fmt`, `make lint`,
@@ -171,22 +170,22 @@ review, and commit gates are complete.
 - [x] 2026-05-18: Marked roadmap item `1.4.2` and its success criteria done.
 - [x] 2026-05-18: Ran final CodeRabbit review; it reported zero findings.
 - [x] 2026-05-22: Rechecked review warnings with Wyvern and Scribe agents.
-  Added binary-level locale flag coverage, converted startup error rendering
-  to an `insta` snapshot, and added debug/warn tracing around CLI localization
+  Added binary-level locale flag coverage, converted startup error rendering to
+  an `insta` snapshot, and added debug/warn tracing around CLI localization
   override selection and invalid identifier rejection.
-- [x] 2026-05-22: Revalidated with `cargo test --test
-  binary_localization_e2e`, `cargo test --bin spycatcher-harness`, `cargo
-  test --test cli_layering_unit`, `make check-fmt`, `make lint`, and
-  `make test`; all passed. `coderabbit review --agent` could not complete
-  because the service returned a recoverable rate-limit error.
+- [x] 2026-05-22: Revalidated with `cargo test --test binary_localization_e2e`,
+      `cargo test --bin spycatcher-harness`,
+      `cargo test --test cli_layering_unit`, `make check-fmt`, `make lint`, and
+      `make test`; all passed. `coderabbit review --agent` could not complete
+      because the service returned a recoverable rate-limit error.
 - [x] Implement the plan milestone by milestone.
 - [x] After implementation, mark roadmap item `1.4.2` done.
 
 ## Surprises & Discoveries
 
-- `src/config.rs` already contains `LocalizationConfig { locale:
-  Option<String>, fallback_locale: String
-  }` with the expected default fallback locale of `"en-US"`.
+- `src/config.rs` already contains
+  `LocalizationConfig { locale: Option<String>, fallback_locale: String }` with
+  the expected default fallback locale of `"en-US"`.
 - `src/cli.rs` currently maps only `listen`, `cassette_dir`, and
   `cassette_name` through `CommonOverrides`; localization fields are present in
   domain config but absent from CLI argument structs and mapping.
@@ -244,17 +243,17 @@ review, and commit gates are complete.
 
 ## Outcomes & Retrospective
 
-Implemented the localization configuration layering for the binary
-application. `locale` and `fallback_locale` now load through the existing
-subcommand layering model: CLI flags override nested environment variables,
-environment variables override `[cmds.<subcommand>.localization]` config file
-values, and defaults provide `locale = None` with `fallback_locale = "en-US"`.
+Implemented the localization configuration layering for the binary application.
+`locale` and `fallback_locale` now load through the existing subcommand
+layering model: CLI flags override nested environment variables, environment
+variables override `[cmds.<subcommand>.localization]` config file values, and
+defaults provide `locale = None` with `fallback_locale = "en-US"`.
 
 Startup now constructs one binary-owned `FluentLanguageLoader` from
 `LocalizationConfig`, loads the embedded harness catalogue, and carries that
-loader through the startup boundary for future localized rendering. The
-library remains loader-injected and does not construct process-global
-localization state.
+loader through the startup boundary for future localized rendering. The library
+remains loader-injected and does not construct process-global localization
+state.
 
 Validation passed for code formatting, linting, full tests, Markdown linting,
 diagram validation, and CodeRabbit review. The only residual tooling caveat is

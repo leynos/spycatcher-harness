@@ -16,8 +16,8 @@ non-UTF-8 values are percent-encoded before persistence.
 
 ## Redaction defaults
 
-`RedactionConfig::default()` now drops `authorization`. To retain that header in
-cassettes, configure an explicit empty rule set:
+`RedactionConfig::default()` now drops `authorization`. To retain that header
+in cassettes, configure an explicit empty rule set:
 
 ```rust
 use spycatcher_harness::config::RedactionConfig;
