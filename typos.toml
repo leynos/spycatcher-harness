@@ -30,6 +30,11 @@ extend-exclude = [
 [default]
 locale = "en-gb"
 extend-ignore-re = [
+    "-fuse-ld=mold",
+    "mold linker",
+    "Cranelift \\+ mold",
+    "Cranelift and mold",
+    "`mold`",
     "(?s)```.*?```",
     "Azure\\s+Architecture\\s+Center\\s+\\|\\s+Microsoft\\s+Learn",
     "GitHub\\s+Flavored\\s+Markdown",
@@ -1482,7 +1487,6 @@ extend-ignore-re = [
 "modularizers" = "modularizers"
 "modularizes" = "modularizes"
 "modularizing" = "modularizing"
-"mold" = "mold"
 "monetisable" = "monetizable"
 "monetisably" = "monetizably"
 "monetisation" = "monetization"
