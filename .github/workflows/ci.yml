@@ -33,9 +33,9 @@ jobs:
         if: steps.cache-merman-cli.outputs.cache-hit != 'true'
         run: cargo +1.95.0 install merman-cli --version "=${MERMAN_CLI_VERSION}" --locked
       - name: Setup Rust
-        uses: leynos/shared-actions/.github/actions/setup-rust@f4764bea8d813b1a8f7ebc37a44907d3c3b1e0e4
+        uses: leynos/shared-actions/.github/actions/setup-rust@794e4801babcf68065c660fdf4781ad62be5d061
       - name: Setup uv
-        uses: astral-sh/setup-uv@19b4d1e990bec64818914c40230bde93a0de300b
+        uses: astral-sh/setup-uv@d08d816a1ea176d61a318eff45abd3dffef415b1
       - name: Install Nixie
         run: uv tool install nixie-cli==1.1.0
       - name: Format
@@ -74,7 +74,7 @@ jobs:
       - name: Lint
         run: make lint
       - name: Test and Measure Coverage
-        uses: leynos/shared-actions/.github/actions/generate-coverage@f4764bea8d813b1a8f7ebc37a44907d3c3b1e0e4
+        uses: leynos/shared-actions/.github/actions/generate-coverage@794e4801babcf68065c660fdf4781ad62be5d061
         with:
           output-path: lcov.info
           format: lcov
@@ -84,7 +84,7 @@ jobs:
         env:
           CS_ACCESS_TOKEN: ${{ secrets.CS_ACCESS_TOKEN }}
         if: github.event_name == 'pull_request' && env.CS_ACCESS_TOKEN != ''
-        uses: leynos/shared-actions/.github/actions/upload-codescene-coverage@f4764bea8d813b1a8f7ebc37a44907d3c3b1e0e4
+        uses: leynos/shared-actions/.github/actions/upload-codescene-coverage@794e4801babcf68065c660fdf4781ad62be5d061
         with:
           format: lcov
           mode: check
