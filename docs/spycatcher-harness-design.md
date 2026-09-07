@@ -74,6 +74,16 @@ SSE and multi-protocol evolution.[^12][^13]
 - Require VidaiMock internals/fixture schemas in the first deployable slice;
   VidaiMock integration should be additive.
 
+## Proposed ACP recovery slice
+
+[ADR 002](adr-002-acp-recovery-vertical-slice.md) proposes an opt-in fixture
+runner that drives an installed ACP agent against strict Chat Completions
+replay. [Roadmap phase 5](roadmap.md#5-installed-agent-recovery-through-acp)
+tracks a truthful file-read scenario, negative controls and sanitized evidence.
+This is proposed work; the current provider-only scope and APIs remain in
+effect until the runner is implemented. ACP client fixtures belong to that
+runner boundary, not to the HTTP replay service.
+
 ## Architecture overview
 
 The harness is an HTTP server plus a cassette store, with a protocol adapter
