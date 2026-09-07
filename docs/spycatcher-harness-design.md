@@ -74,6 +74,15 @@ SSE and multi-protocol evolution.[^12][^13]
 - Require VidaiMock internals/fixture schemas in the first deployable slice;
   VidaiMock integration should be additive.
 
+## Proposed ACP puppeteering extension
+
+[RFC 0001](rfcs/0001-acp-puppeteering-with-cassette-inference.md) proposes an
+optional ACP scenario runner around provider replay. It owns client fixtures
+and a versioned act/expect sidecar while preserving the existing HTTP cassette
+contract. The RFC is proposed, not implemented; it explicitly reviews the
+current exclusion of external-tool mocks and the stricter backend requirements
+of physics scenarios.
+
 ## Architecture overview
 
 The harness is an HTTP server plus a cassette store, with a protocol adapter
