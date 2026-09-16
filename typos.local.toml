@@ -12,9 +12,8 @@ accepted = []
 
 [patterns]
 ignore = [
-  # Preserve formal upstream documentation names across line wrapping.
-  'Azure\s+Architecture\s+Center\s+\|\s+Microsoft\s+Learn',
-  'GitHub\s+Flavored\s+Markdown',
+  # Inline code spans are masked; the shared dictionary does not mask them yet.
+  '`[^`\n]+`',
 ]
 
 [files]
