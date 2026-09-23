@@ -113,10 +113,13 @@ hold:
 The upload passes the token only as `access-token`, never through an `env`: the
 upload action is composite and hands its step's `env` to the nested steps it
 runs. The concurrency group is `${{ github.workflow }}-${{ github.ref }}` and
-never cancels, so runs never overlap, uploads land in commit order, and the
-newest baseline wins. One gap is known and accepted: a Dependabot pull request
-merged by the automerge workflow with `GITHUB_TOKEN` fires no push, so it
-publishes nothing until the next push to `main` (shared-actions #518).
+never cancels, so runs never overlap and, for triggered runs (pushes), uploads
+land in commit order and the newest baseline wins. A manual "Re-run jobs" on an
+older `main` run is an operator action: it keeps its old SHA and republishes
+that commit's coverage and baseline until the next push supersedes it. One gap
+is known and accepted: a Dependabot pull request merged by the automerge
+workflow with `GITHUB_TOKEN` fires no push, so it publishes nothing until the
+next push to `main` (shared-actions #518).
 
 `tests/coverage_workflows.rs` holds the rule. Its readers and judgements live
 under `tests/cv005/`, and it proves each clause against breaching fixtures as

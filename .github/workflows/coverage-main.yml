@@ -19,8 +19,11 @@ on:
 
 # One group per ref, never cancelled. A cancelled publisher abandons both its
 # upload and its baseline write. With cancellation off, runs never overlap and
-# a newer push replaces any pending run, so uploads land in commit order and
-# the newest baseline wins.
+# a newer push replaces any pending run, so for triggered runs (pushes)
+# uploads land in commit order and the newest baseline wins. A manual
+# "Re-run jobs" on an older main run is an operator action: it keeps its old
+# SHA and republishes that commit's coverage and baseline until the next push
+# supersedes it.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: false
