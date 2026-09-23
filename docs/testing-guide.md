@@ -16,6 +16,11 @@ the Spycatcher harness.
 - `uuid` creates unique cassette names for parallel integration tests.
 - `tempfile` provides self-cleaning cassette directories for tests that still
   exercise filesystem-backed record services.
+- `serde_yaml` parses workflows for the CV-005 coverage contract in
+  `tests/coverage_workflows.rs`; it refuses a mapping that repeats a key, which
+  the contract relies on. `anyhow` carries that contract's errors, and the
+  dev-only `fs_utf8` feature of `cap-std` lets it read the workflow directory
+  through a UTF-8 capability.
 
 Do not replace temporary cassette fixtures with fixed paths. A future in-memory
 cassette store can remove the temporary filesystem dependency once
