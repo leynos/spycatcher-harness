@@ -80,6 +80,7 @@ fn the_pull_request_rule_reports_what_it_should(
 /// which is why it is its own clause rather than a search for the name.
 #[rstest]
 #[case::run_body("steps:\n  - run: echo ${{ secrets.CS_ACCESS_TOKEN }}\n")]
+#[case::lower_case("steps:\n  - run: echo ${{ secrets.cs_access_token }}\n")]
 #[case::block_scalar("steps:\n  - run: |\n      # ${{ secrets.CS_ACCESS_TOKEN }}\n      true\n")]
 #[case::action_input(
     "steps:\n  - uses: x/y@abc\n    with:\n      token: ${{ secrets.CS_ACCESS_TOKEN }}\n"
@@ -324,6 +325,6 @@ fn an_ambiguous_document_is_refused(#[case] source: &str, #[case] reason: &str) 
 #[case::mixed_yaml("ci.Yaml", true)]
 #[case::other("ci.json", false)]
 #[case::bare("yml", false)]
-fn workflow_files_are_recognised_in_any_case(#[case] name: &str, #[case] expected: bool) {
+fn workflow_files_are_recognized_in_any_case(#[case] name: &str, #[case] expected: bool) {
     assert_eq!(reader::is_workflow(name), expected, "for {name}");
 }

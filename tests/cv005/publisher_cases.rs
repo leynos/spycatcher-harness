@@ -131,7 +131,7 @@ fn the_upload_condition_is_judged(
     )
 }
 
-/// Scenario: the token check is deleted, changed, neutralised or moved.
+/// Scenario: the token check is deleted, changed, neutralized or moved.
 ///
 /// Invariant: each is named. With the check gone the upload's own condition
 /// is simply false and publishing stops in silence, so the check's command is
@@ -180,9 +180,9 @@ fn a_check_after_the_upload_does_not_guard_it() -> Result<()> {
 
 /// Scenario: the token is bound in an `env` or handed on elsewhere.
 ///
-/// Invariant: each placement is named. The upload action is composite and
-/// passes its step's `env` to the nested steps it runs, so the token belongs
-/// in no `env` at any scope, the upload's included.
+/// Invariant: each placement is named, however the name is cased. The upload
+/// action is composite and passes its step's `env` to the nested steps it
+/// runs, so the token belongs in no `env` at any scope, the upload's included.
 #[rstest]
 #[case::upload_env(UPLOAD_NAME, &format!("{UPLOAD_NAME}{}", env_binding("        ")), &["binds CS_ACCESS_TOKEN", "referenced outside"][..])]
 #[case::workflow_env("jobs:\n", &format!("{}jobs:\n", env_binding("")), &["binds CS_ACCESS_TOKEN"][..])]
@@ -203,6 +203,12 @@ fn a_check_after_the_upload_does_not_guard_it() -> Result<()> {
     &["reusable workflow"][..],
 )]
 #[case::forwarded_by_inheritance("jobs:\n", &format!("{REUSABLE}    secrets: inherit\n"), &["reusable workflow"][..])]
+#[case::lower_case_env("    steps:\n", "    env:\n      cs_access_token: ${{ secrets.cs_access_token }}\n    steps:\n", &["binds CS_ACCESS_TOKEN"][..])]
+#[case::lower_case_run_step(
+    UPLOAD_NAME,
+    &format!("      - run: echo ${{{{ secrets.cs_access_token }}}}\n{UPLOAD_NAME}"),
+    &["referenced outside"][..],
+)]
 #[case::computed(
     UPLOAD_NAME,
     &format!("      - run: echo ${{{{ secrets['CS_ACCESS_TOKEN'] }}}}\n{UPLOAD_NAME}"),
@@ -252,6 +258,22 @@ fn the_publisher_never_cancels(
 #[test]
 fn a_continued_cli_upload_is_still_an_upload() -> Result<()> {
     let extra = "      - run: |\n          cs-coverage \\\n            upload --format lcov\n";
+    let findings = publisher::publisher_findings(&parse(&format!("{PUBLISHER}{extra}"))?);
+    names_exactly(&findings, &["no condition"])
+}
+
+/// Scenario: a publisher gains a second upload whose mode is an expression,
+/// with no condition.
+///
+/// Invariant: only the literal `check` mode is not an upload, so this one is
+/// judged, and its missing condition is named rather than skipped.
+#[test]
+fn an_expression_mode_is_still_an_upload() -> Result<()> {
+    let extra = concat!(
+        "      - uses: leynos/shared-actions/.github/actions/upload-codescene-coverage@abc\n",
+        "        with:\n          mode: ${{ 'upload' }}\n",
+        "          access-token: ${{ secrets.CS_ACCESS_TOKEN }}\n",
+    );
     let findings = publisher::publisher_findings(&parse(&format!("{PUBLISHER}{extra}"))?);
     names_exactly(&findings, &["no condition"])
 }

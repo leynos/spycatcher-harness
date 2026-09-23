@@ -17,7 +17,11 @@ use super::{
 pub const UPLOAD_ACTION: &str = "leynos/shared-actions/.github/actions/upload-codescene-coverage";
 /// The action that measures coverage and maintains the ratchet baseline.
 pub const COVERAGE_ACTION: &str = "leynos/shared-actions/.github/actions/generate-coverage";
-/// The secret a pull-request lane must not receive.
+/// The secret a pull-request lane must not receive, upper-cased.
+///
+/// GitHub resolves secret names and expression properties without regard to
+/// case, so `secrets.cs_access_token` is the same token: every search for it
+/// folds the text to upper case first, with [`mentions_the_token`].
 pub const ACCESS_TOKEN: &str = "CS_ACCESS_TOKEN";
 /// The CLI a lane must not reach for directly either.
 const COVERAGE_CLI: &str = "cs-coverage";
@@ -55,11 +59,13 @@ pub fn is_upload_action(step: &Mapping) -> bool {
 
 /// Returns whether a step uploads to `CodeScene`, through the action or the CLI.
 ///
-/// `upload` is the action's default mode, so an absent mode is an upload,
-/// and `check` is not one: it gates changed lines and publishes nothing.
+/// Only the literal `check` mode is not an upload: it gates changed lines and
+/// publishes nothing. Every other mode counts, an absent one (the action's
+/// default is `upload`) and an expression included, so an upload the
+/// contract cannot read is judged as one rather than skipped.
 pub fn is_upload(step: &Mapping) -> bool {
     let mode = input(step, "mode").and_then(Value::as_str);
-    let action = is_upload_action(step) && matches!(mode, None | Some("upload"));
+    let action = is_upload_action(step) && mode != Some("check");
     let cli = get(step, "run")
         .and_then(Value::as_str)
         .is_some_and(runs_cli_upload);
@@ -85,6 +91,11 @@ fn runs_cli_upload(run: &str) -> bool {
         .any(|pair| matches!(pair, [cli, "upload"] if is_cli(cli)))
 }
 
+/// Returns whether `text` names the token, in any case.
+pub fn mentions_the_token(text: &str) -> bool {
+    text.to_ascii_uppercase().contains(ACCESS_TOKEN)
+}
+
 /// Returns the reasons found by reading the whole workflow as text.
 ///
 /// The token and host clauses read every scalar, case-folded for the host, so
@@ -93,7 +104,7 @@ fn runs_cli_upload(run: &str) -> bool {
 fn text_findings(workflow: &Value) -> Vec<String> {
     let text = rendered(workflow);
     let mut findings = Vec::new();
-    if text.contains(ACCESS_TOKEN) {
+    if mentions_the_token(&text) {
         findings.push(format!("a pull-request lane receives {ACCESS_TOKEN}"));
     }
     if computes_a_secret(&text) {

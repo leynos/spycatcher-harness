@@ -12,7 +12,10 @@ use serde_yaml::{Mapping, Value};
 
 use super::{
     reader::{self, get},
-    rules::{ACCESS_TOKEN, conjuncts, input, is_ratcheted_coverage, is_upload, is_upload_action},
+    rules::{
+        ACCESS_TOKEN, conjuncts, input, is_ratcheted_coverage, is_upload, is_upload_action,
+        mentions_the_token,
+    },
     text::{computes_a_secret, rendered, rendered_mapping},
 };
 
@@ -32,8 +35,8 @@ pub const TOKEN_INPUT: &str = "${{ secrets.CS_ACCESS_TOKEN }}";
 /// Keyed on the event, an earlier dispatch could finish after a newer push
 /// and upload older coverage last.
 pub const CONCURRENCY_GROUP: &str = "${{ github.workflow }}-${{ github.ref }}";
-/// The expression that hands a step the secret itself.
-const SECRET_REFERENCE: &str = "secrets.CS_ACCESS_TOKEN";
+/// The expression that hands a step the secret itself, upper-cased.
+const SECRET_REFERENCE: &str = "SECRETS.CS_ACCESS_TOKEN";
 /// The only keys the token check may carry: no `if:`, no `env`, no `shell`.
 const CHECK_KEYS: [&str; 3] = ["name", "id", "run"];
 
@@ -100,6 +103,11 @@ fn every_guard_finding(workflow: &Value) -> Vec<String> {
     findings
 }
 
+/// Returns whether `text` references the secret itself, in any case.
+fn references_the_secret(text: &str) -> bool {
+    text.to_ascii_uppercase().contains(SECRET_REFERENCE)
+}
+
 /// Renders a step without the one place it may name the token, if any.
 fn rendered_outside_allowance(step: &Mapping) -> String {
     let mut remainder = step.clone();
@@ -143,7 +151,7 @@ fn forwards_the_token(job: &Mapping) -> bool {
     let names_it = ["with", "secrets"]
         .iter()
         .filter_map(|key| get(job, key))
-        .any(|value| rendered(value).contains(SECRET_REFERENCE));
+        .any(|value| references_the_secret(&rendered(value)));
     inherits || names_it
 }
 
@@ -151,7 +159,7 @@ fn forwards_the_token(job: &Mapping) -> bool {
 fn token_findings(workflow: &Value) -> Vec<String> {
     let mut findings: Vec<String> = env_blocks(workflow)
         .into_iter()
-        .filter(|(_, env)| rendered(env).contains(ACCESS_TOKEN))
+        .filter(|(_, env)| mentions_the_token(&rendered(env)))
         .map(|(scope, _)| format!("{scope} binds {ACCESS_TOKEN} in its env"))
         .collect();
     for (id, job) in reader::jobs(workflow) {
@@ -166,7 +174,7 @@ fn token_findings(workflow: &Value) -> Vec<String> {
     }
     if reader::steps(workflow)
         .into_iter()
-        .any(|step| rendered_outside_allowance(step).contains(SECRET_REFERENCE))
+        .any(|step| references_the_secret(&rendered_outside_allowance(step)))
     {
         findings.push(format!(
             "{ACCESS_TOKEN} is referenced outside the token check and the upload's access-token"
