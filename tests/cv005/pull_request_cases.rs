@@ -86,13 +86,17 @@ fn the_pull_request_rule_reports_what_it_should(
     "steps:\n  - uses: x/y@abc\n    with:\n      token: ${{ secrets.CS_ACCESS_TOKEN }}\n"
 )]
 #[case::env_value("env:\n  T: ${{ secrets.CS_ACCESS_TOKEN }}\nsteps:\n  - run: 'true'\n")]
-#[case::named_forwarding(
-    "uses: ./.github/workflows/c.yml\nsecrets:\n  CS_ACCESS_TOKEN: ${{ secrets.CS_ACCESS_TOKEN \
-     }}\n"
-)]
+#[case::named_forwarding(concat!(
+    "uses: ./.github/workflows/c.yml\nsecrets:\n",
+    "  CS_ACCESS_TOKEN: ${{ secrets.CS_ACCESS_TOKEN }}\n",
+))]
 #[case::inherit("uses: ./.github/workflows/c.yml\nsecrets: inherit\n")]
 #[case::computed_name("steps:\n  - run: echo ${{ secrets[format('CS_{0}', 'ACCESS_TOKEN')] }}\n")]
 #[case::whole_context("steps:\n  - run: echo '${{ toJSON(secrets) }}'\n")]
+#[case::computed_name_upper_case(
+    "steps:\n  - run: echo ${{ SECRETS[format('CS_{0}', 'ACCESS_TOKEN')] }}\n"
+)]
+#[case::whole_context_mixed_case("steps:\n  - run: echo '${{ toJSON(Secrets) }}'\n")]
 fn every_route_to_the_token_is_reported(#[case] job: &str) -> Result<()> {
     let indented: String = job
         .lines()
@@ -112,13 +116,17 @@ fn every_route_to_the_token_is_reported(#[case] job: &str) -> Result<()> {
 /// would pass both.
 #[rstest]
 #[case::default_shell(
-    "on: pull_request\ndefaults:\n  run:\n    shell: curl -d @- https://API.CodeScene.io/x \
-     {0}\njobs: {}\n",
+    concat!(
+        "on: pull_request\ndefaults:\n  run:\n    shell: curl -d @- https://API.CodeScene.io/x {0}\n",
+        "jobs: {}\n",
+    ),
     "contacts codescene.io"
 )]
 #[case::declared_secret(
-    "on:\n  workflow_call:\n    secrets:\n      CS_ACCESS_TOKEN:\n        required: true\njobs: \
-     {}\n",
+    concat!(
+        "on:\n  workflow_call:\n    secrets:\n      CS_ACCESS_TOKEN:\n        required: true\n",
+        "jobs: {}\n",
+    ),
     "receives CS_ACCESS_TOKEN"
 )]
 fn the_whole_document_is_read(#[case] source: &str, #[case] clause: &str) -> Result<()> {

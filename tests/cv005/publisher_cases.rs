@@ -104,6 +104,8 @@ fn names_exactly(findings: &[String], expected: &[&str]) -> Result<()> {
 /// Invariant: each variation is named. The disjunction keeps both required
 /// conjuncts whole and hides its `||` behind a narrowing conjunct, so only
 /// the refusal of `||` catches it; the narrowing conjunct alone is allowed.
+/// A negated group holds both guards inside parentheses and must not be
+/// split into them, since it uploads whenever any inner term is false.
 #[rstest]
 #[case::complies("", "", &[][..])]
 #[case::narrowed(GUARD, &format!("{GUARD} && github.actor != 'x'"), &[][..])]
@@ -115,6 +117,7 @@ fn names_exactly(findings: &[String], expected: &[&str]) -> Result<()> {
 #[case::no_ref_guard(GUARD, "steps.codescene-token.outputs.available == 'true'", &["github.ref =="][..])]
 #[case::no_check_guard(GUARD, "github.ref == 'refs/heads/main'", &["earlier token check"][..])]
 #[case::other_step_id(GUARD, &GUARD.replace("steps.codescene-token", "steps.other"), &["earlier token check"][..])]
+#[case::negated_group(GUARD, &format!("!(x && {GUARD} && y)"), &["github.ref ==", "earlier token check"][..])]
 #[case::no_condition(
     &format!("        if: ${{{{ {GUARD} }}}}\n"),
     "",
@@ -347,8 +350,11 @@ const CALLED_WRITER: &str = concat!(
 #[case::dollar_prefixed("$/")]
 fn a_called_baseline_writer_is_counted(#[case] prefix: &str) -> Result<()> {
     let caller = format!(
-        "on:\n  push:\n    branches: ['**']\njobs:\n  call:\n    uses: \
-         {prefix}.github/workflows/called.yml\n"
+        concat!(
+            "on:\n  push:\n    branches: ['**']\njobs:\n  call:\n",
+            "    uses: {prefix}.github/workflows/called.yml\n",
+        ),
+        prefix = prefix,
     );
     let all: reader::Workflows = [
         ("publisher.yml".to_owned(), parse(PUBLISHER)?),

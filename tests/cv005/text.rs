@@ -70,11 +70,15 @@ const fn continues_a_name(character: char) -> bool {
 /// judged by what follows it: `.` is a named reference, which the name search
 /// already judges, and `:` is a YAML key (`secrets: inherit` or a named
 /// forwarding), which the job clauses judge. Anything else is a computed or
-/// whole-context access and is refused.
+/// whole-context access and is refused. Actions resolves context names
+/// without regard to case, so the search runs over the case-folded text.
 pub fn computes_a_secret(text: &str) -> bool {
-    text.match_indices("secrets").any(|(start, word)| {
-        let before = text.get(..start).and_then(|head| head.chars().next_back());
-        let next = text
+    let folded = text.to_ascii_lowercase();
+    folded.match_indices("secrets").any(|(start, word)| {
+        let before = folded
+            .get(..start)
+            .and_then(|head| head.chars().next_back());
+        let next = folded
             .get(start + word.len()..)
             .and_then(|tail| tail.trim_start().chars().next());
         let is_word_start = !before.is_some_and(continues_a_name);

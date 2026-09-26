@@ -182,7 +182,10 @@ pub fn publishes_from_main(workflow: &Value) -> bool {
 /// Returns the conjuncts of an `if:` condition, or `None` if it has a `||`.
 ///
 /// Quoted literals are respected, so a `||` inside a string does not count
-/// and an `&&` inside one does not split. A disjunction anywhere makes every
+/// and an `&&` inside one does not split. Only an `&&` outside parentheses
+/// splits: `!(a && ref == main)` is one conjunct, since Actions evaluates
+/// the negated group whole and it holds whenever any inner term is false.
+/// A disjunction anywhere makes every
 /// conjunct optional, which is why it is refused rather than parsed:
 /// `... && ref == main && actor != 'x' || dispatch` keeps every required
 /// conjunct whole and still uploads a dispatch from any branch.
@@ -194,13 +197,16 @@ pub fn conjuncts(condition: &str) -> Option<Vec<String>> {
         .unwrap_or(trimmed);
     let mut parts = vec![String::new()];
     let mut in_quote = false;
+    let mut depth = 0_usize;
     let mut characters = body.chars().peekable();
     while let Some(character) = characters.next() {
         let is_doubled = !in_quote && characters.peek() == Some(&character);
         match character {
             '\'' => in_quote = !in_quote,
+            '(' if !in_quote => depth += 1,
+            ')' if !in_quote => depth = depth.saturating_sub(1),
             '|' if is_doubled => return None,
-            '&' if is_doubled => {
+            '&' if is_doubled && depth == 0 => {
                 characters.next();
                 parts.push(String::new());
                 continue;
