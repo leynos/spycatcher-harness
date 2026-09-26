@@ -190,35 +190,70 @@ pub fn publishes_from_main(workflow: &Value) -> bool {
 /// `... && ref == main && actor != 'x' || dispatch` keeps every required
 /// conjunct whole and still uploads a dispatch from any branch.
 pub fn conjuncts(condition: &str) -> Option<Vec<String>> {
-    let trimmed = condition.trim();
-    let body = trimmed
-        .strip_prefix("${{")
-        .and_then(|inner| inner.strip_suffix("}}"))
-        .unwrap_or(trimmed);
+    let body = expression_body(condition);
+    let mut scanner = Scanner::default();
     let mut parts = vec![String::new()];
-    let mut in_quote = false;
-    let mut depth = 0_usize;
     let mut characters = body.chars().peekable();
     while let Some(character) = characters.next() {
-        let is_doubled = !in_quote && characters.peek() == Some(&character);
-        match character {
-            '\'' => in_quote = !in_quote,
-            '(' if !in_quote => depth += 1,
-            ')' if !in_quote => depth = depth.saturating_sub(1),
-            '|' if is_doubled => return None,
-            '&' if is_doubled && depth == 0 => {
+        let is_doubled = characters.peek() == Some(&character);
+        match scanner.read(character, is_doubled) {
+            Token::Disjunction => return None,
+            Token::Conjunction => {
                 characters.next();
                 parts.push(String::new());
-                continue;
             }
+            Token::Text => parts.last_mut()?.push(character),
+        }
+    }
+    Some(parts.iter().map(|part| normalized(part)).collect())
+}
+
+/// Returns the condition without its `${{ }}` wrapper, when it has one.
+fn expression_body(condition: &str) -> &str {
+    let trimmed = condition.trim();
+    trimmed
+        .strip_prefix("${{")
+        .and_then(|inner| inner.strip_suffix("}}"))
+        .unwrap_or(trimmed)
+}
+
+/// Returns `part` with each run of whitespace collapsed to one space.
+fn normalized(part: &str) -> String {
+    part.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+/// What one character of a condition means to the conjunct split.
+enum Token {
+    /// The first `|` of an unquoted `||`.
+    Disjunction,
+    /// The first `&` of an unquoted `&&` outside every parenthesis.
+    Conjunction,
+    /// Anything else, kept in the current conjunct.
+    Text,
+}
+
+/// Tracks quoting and parenthesis depth while a condition is scanned.
+#[derive(Default)]
+struct Scanner {
+    in_quote: bool,
+    depth: usize,
+}
+
+impl Scanner {
+    /// Classifies `character`, given whether the next character repeats it.
+    const fn read(&mut self, character: char, is_doubled: bool) -> Token {
+        if self.in_quote {
+            self.in_quote = character != '\'';
+            return Token::Text;
+        }
+        match character {
+            '\'' => self.in_quote = true,
+            '(' => self.depth += 1,
+            ')' => self.depth = self.depth.saturating_sub(1),
+            '|' if is_doubled => return Token::Disjunction,
+            '&' if is_doubled && self.depth == 0 => return Token::Conjunction,
             _ => {}
         }
-        parts.last_mut()?.push(character);
+        Token::Text
     }
-    Some(
-        parts
-            .iter()
-            .map(|part| part.split_whitespace().collect::<Vec<_>>().join(" "))
-            .collect(),
-    )
 }
