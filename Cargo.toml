@@ -36,11 +36,18 @@ tracing = "0.1.41"
 url = { version = "2.5.8", features = ["serde"] }
 
 [dev-dependencies]
+anyhow = "1.0.100"
+# The CV-005 workflow contract reads the workflow directory through a
+# UTF-8 capability.
+cap-std = { version = "3.4.4", features = ["fs_utf8"] }
 insta = { version = "1.47.2", features = ["json"] }
 proptest = "1.11.0"
 rstest = "0.27.0"
 rstest-bdd = "0.5.0"
 rstest-bdd-macros = "0.5.0"
+# The CV-005 workflow contract parses workflows structurally, and serde_yaml
+# refuses a mapping that repeats a key.
+serde_yaml = "0.9.34"
 tempfile = "3.10"
 tracing-test = "0.2"
 uuid = { version = "1.11.0", features = ["v4"] }

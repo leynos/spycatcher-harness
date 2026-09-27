@@ -1,15 +1,32 @@
 name: Coverage (main)
 
-# CodeScene accepts `cs-coverage upload` only for analysed branches, so
-# main-branch coverage is uploaded here on push; pull requests do not run
-# the changed-line gate yet (see the comment in ci.yml). This workflow
-# also advances the coverage ratchet baseline: caches saved on main are
-# readable by every pull-request run, so the baseline written here is the
-# one PR ratchet checks compare against.
+# Main owns both persistent coverage outputs: the CodeScene upload and the
+# ratchet baseline. Pull requests generate coverage only for their own ratchet
+# check, in ci.yml; they neither publish a report nor contact CodeScene.
+# CodeScene accepts `cs-coverage upload` only for an analysed branch, which a
+# pull request head is not, and its check mode fails on every project whose
+# coverage gates are off. Caches written on main are readable by every
+# pull-request run, so the baseline written here is the one those ratchet
+# checks compare against. tests/coverage_workflows.rs holds this shape.
+#
+# Known exception: a Dependabot pull request merged by the automerge workflow
+# with GITHUB_TOKEN fires no push event, so that merge publishes nothing until
+# the next push to main (shared-actions #518 tracks the fix).
 
 on:
   push:
     branches: [main]
+
+# One group per ref, never cancelled. A cancelled publisher abandons both its
+# upload and its baseline write. With cancellation off, runs never overlap and
+# a newer push replaces any pending run, so for triggered runs (pushes)
+# uploads land in commit order and the newest baseline wins. A manual
+# "Re-run jobs" on an older main run is an operator action: it keeps its old
+# SHA and republishes that commit's coverage and baseline until the next push
+# supersedes it.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   coverage-upload:
@@ -19,8 +36,6 @@ jobs:
     env:
       CARGO_TERM_COLOR: always
       BUILD_PROFILE: debug
-      CS_ACCESS_TOKEN: ${{ secrets.CS_ACCESS_TOKEN || '' }}
-      CODESCENE_CLI_SHA256: ${{ vars.CODESCENE_CLI_SHA256 || '' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       - name: Setup Rust
@@ -32,10 +47,20 @@ jobs:
           format: lcov
           use-cargo-nextest: 'false'
           with-ratchet: 'true'
+      # Whether the token is set, as a plain step output. The expression is
+      # evaluated before the shell runs, so this step binds nothing: the token
+      # sits in no `env` in this workflow, because the upload action is
+      # composite and hands its step's `env` to the nested steps it runs.
+      - name: Check CodeScene token
+        id: codescene-token
+        run: echo "available=${{ secrets.CS_ACCESS_TOKEN != '' }}" >> "$GITHUB_OUTPUT"
+      # The push trigger is already restricted to main; the ref conjunct keeps
+      # the upload confined there if a dispatch trigger is ever added.
       - name: Upload coverage data to CodeScene
-        if: env.CS_ACCESS_TOKEN != ''
+        if: ${{ steps.codescene-token.outputs.available == 'true' && github.ref == 'refs/heads/main' }}
         uses: leynos/shared-actions/.github/actions/upload-codescene-coverage@82feb2b7aac45b7efff40c9c4bb632551b14521c
         with:
+          path: lcov.info
           format: lcov
-          access-token: ${{ env.CS_ACCESS_TOKEN }}
-          installer-checksum: ${{ env.CODESCENE_CLI_SHA256 }}
+          mode: upload
+          access-token: ${{ secrets.CS_ACCESS_TOKEN }}

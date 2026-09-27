@@ -87,6 +87,48 @@ crate was already present transitively; depending on it directly avoids
 enabling reqwest's broader `stream` feature while keeping the response body
 adapter explicit in `src/server/record_stream.rs`.
 
+## Coverage publication
+
+Main owns both persistent coverage outputs, following concordat's CV-005 rule.
+Pull requests measure coverage in `ci.yml` with `with-ratchet: 'true'` and
+`publish-artefact: 'false'`, so they check the ratchet against the stored
+baseline and do nothing else: no pull request uploads a report, runs
+`cs-coverage`, receives `CS_ACCESS_TOKEN`, or contacts `codescene.io`.
+CodeScene accepts an upload only for an analysed branch, which a pull request
+head is not, and its check mode fails on every project whose coverage gates are
+off. What the split takes off the pull request is the call to the service; the
+CLI archive is already pinned by digest.
+
+`.github/workflows/coverage-main.yml` is the one publisher. It runs on a push to
+`main`, writes the ratchet baseline, and uploads to CodeScene only when both
+hold:
+
+- a `Check CodeScene token` step, whose sole command is
+  `echo "available=${{ secrets.CS_ACCESS_TOKEN != '' }}" >> "$GITHUB_OUTPUT"`,
+  reports the token as set; the expression is evaluated before the shell runs,
+  so the step binds nothing;
+- `github.ref == 'refs/heads/main'`, which keeps the upload on `main` if a
+  dispatch trigger, which may name any branch, is ever added.
+
+The upload passes the token only as `access-token`, never through an `env`: the
+upload action is composite and hands its step's `env` to the nested steps it
+runs. The concurrency group is `${{ github.workflow }}-${{ github.ref }}` and
+never cancels, so runs never overlap and, for triggered runs (pushes), uploads
+land in commit order and the newest baseline wins. A manual "Re-run jobs" on an
+older `main` run is an operator action: it keeps its old SHA and republishes
+that commit's coverage and baseline until the next push supersedes it. One gap
+is known and accepted: a Dependabot pull request merged by the automerge
+workflow with `GITHUB_TOKEN` fires no push, so it publishes nothing until the
+next push to `main` (shared-actions #518).
+
+`tests/coverage_workflows.rs` holds the rule. Its readers and judgements live
+under `tests/cv005/`, and it proves each clause against breaching fixtures as
+well as against the real workflows: the pull-request clauses run over every
+workflow a pull request can reach through local `uses:` calls, the host and
+token clauses read every scalar in each document, the upload condition is split
+on `&&` with any `||` refused, and workflows are parsed with duplicate keys
+refused.
+
 ## Testing guidance
 
 Detailed dev-dependency rationale and test layout conventions now live in
