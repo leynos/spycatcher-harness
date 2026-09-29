@@ -45,6 +45,8 @@ jobs:
 
       - name: Format
         run: make check-fmt
+      - name: Check the CV-005 contracts
+        run: make test-workflow-contracts
       - name: Spelling
         run: make spelling
       - name: Markdown lint
@@ -82,6 +84,6 @@ jobs:
           # The pull request measures coverage for its own ratchet check and
           # nothing else: it neither publishes the report nor contacts
           # CodeScene. Main owns both, in coverage-main.yml, and
-          # tests/coverage_workflows.rs holds the split.
+          # `make test-workflow-contracts` holds the split.
           with-ratchet: 'true'
           publish-artefact: 'false'
