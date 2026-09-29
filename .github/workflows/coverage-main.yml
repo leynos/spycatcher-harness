@@ -7,7 +7,7 @@ name: Coverage (main)
 # pull request head is not, and its check mode fails on every project whose
 # coverage gates are off. Caches written on main are readable by every
 # pull-request run, so the baseline written here is the one those ratchet
-# checks compare against. tests/coverage_workflows.rs holds this shape.
+# checks compare against. `make test-workflow-contracts` holds this shape.
 #
 # Known exception: a Dependabot pull request merged by the automerge workflow
 # with GITHUB_TOKEN fires no push event, so that merge publishes nothing until
@@ -42,6 +42,8 @@ jobs:
       BUILD_PROFILE: debug
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
       - name: Setup Rust
         uses: leynos/shared-actions/.github/actions/setup-rust@4fb8eb7ad52454678a0662865d81d3cd17aa6e0e
       - name: Generate coverage
