@@ -51,7 +51,7 @@ test-workflow-contracts: ## Check the CV-005 CodeScene workflow contracts
 build: target/debug/$(TARGET) ## Build debug binary
 release: target/release/$(TARGET) ## Build release binary
 
-all: check-fmt lint test spelling ## Perform a comprehensive check of code
+all: check-fmt lint test spelling test-workflow-contracts ## Perform a comprehensive check of code
 
 clean: ## Remove build artefacts
 	$(CARGO) clean

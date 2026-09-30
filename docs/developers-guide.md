@@ -125,7 +125,8 @@ next push to `main` (shared-actions #518).
 `cv005-contracts check`, the shared contract library in `leynos/shared-actions`
 (`packages/cv005-contracts`), from a full commit named by `CV005_CONTRACTS_REF`
 in the Makefile, and CI runs it in a "Check the CV-005 contracts" step. A fix
-to the rules is therefore a pin bump. The repository's only parameter is
+to the rules is therefore a pin bump. The target needs `uv`, which fetches the
+Python 3.13 the library runs under. The repository's only parameter is
 `repository` in `.github/cv005.toml`. The library's own suite proves each rule
 refuses the shape it exists to refuse, so this repository keeps no copy of the
 readers or the refusal cases. The pull-request clauses run over every workflow
