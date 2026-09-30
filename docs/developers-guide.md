@@ -31,6 +31,14 @@ generated entries by hand.
 
 ## Build configuration
 
+### Minimum supported Rust version
+
+The package supports Rust 1.89.0 and newer, matching the minimum declared by
+`ortho_config` 0.9.0. Continuous integration checks the locked workspace,
+including all targets and features, with Rust 1.89.0. The repository's pinned
+nightly toolchain remains the development toolchain; it does not raise the
+published minimum version.
+
 ### `serde_json` `preserve_order` feature
 
 The `serde_json` dependency is compiled with the `preserve_order` feature

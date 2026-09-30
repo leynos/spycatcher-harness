@@ -581,8 +581,9 @@ CLI localization responsibilities:
 - Configure CLI copy via `ortho_config::Localizer`, preferring
   `ortho_config::FluentLocalizer` for Fluent-backed messages.
 - Localize `clap` help, `--version`, and parse errors through the pre-parse
-  locale flow using the project-owned `LocalizeCmd::localize(&localizer)`
-  extension trait and `localize_clap_error_with_command(...)`.
+  locale flow through OrthoConfig 0.9's combined localized parser. Keep the
+  project-owned adapter for catalogue identifiers and the public helper API; do
+  not localize a command or parse error twice.
 - Fall back to `NoOpLocalizer` if localization resources fail to load, or when
   `SPYCATCHER_HARNESS_DISABLE_LOCALIZATION` explicitly opts out of CLI
   localization, so the CLI remains usable while reporting localization setup

@@ -368,6 +368,11 @@ Each subcommand loads configuration using layered precedence:
 
 `CLI > env > config files > defaults`
 
+Configuration discovery distinguishes an absent optional file from a file that
+exists but cannot be read or parsed. If no candidate exists, defaults remain
+available; if all discovered candidates fail, the CLI reports the configuration
+error before starting the harness.
+
 Per-subcommand defaults are loaded from the `cmds` namespace in config files:
 
 - `cmds.record`
