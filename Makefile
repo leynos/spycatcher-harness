@@ -1,5 +1,5 @@
 .PHONY: help all clean test build release lint fmt check-fmt markdownlint nixie \
-	typecheck spelling test-workflow-contracts
+	typecheck spelling test-workflow-contracts test-make-all
 
 
 TARGET ?= spycatcher-harness
@@ -47,6 +47,9 @@ TYPOS_CONFIG_BUILDER = $(UV_ENV) $(UV) tool run --python 3.14 --from \
 
 test-workflow-contracts: ## Check the CV-005 CodeScene workflow contracts
 	$(CV005_CONTRACTS) check --repository .
+
+test-make-all: ## Verify the comprehensive Make gate and its sequencing
+	$(UV_ENV) $(UV) run --python 3.13 --no-project python tests/test_make_all.py
 
 build: target/debug/$(TARGET) ## Build debug binary
 release: target/release/$(TARGET) ## Build release binary
