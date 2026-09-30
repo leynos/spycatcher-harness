@@ -66,7 +66,7 @@ CV005_CONTRACTS = $(UV_ENV) $(UV) tool run --python 3.13 \
 	--from 'git+https://github.com/leynos/shared-actions@$(CV005_CONTRACTS_REF)\#subdirectory=packages/cv005-contracts' \
 	cv005-contracts
 
-TYPOS_CONFIG_BUILDER_VERSION ?= v0.1.1
+TYPOS_CONFIG_BUILDER_VERSION ?= v0.1.3
 TYPOS_CONFIG_BUILDER = $(UV_ENV) $(UV) tool run --python 3.14 --from \
 	"git+https://github.com/leynos/typos-config-builder.git@$(TYPOS_CONFIG_BUILDER_VERSION)" \
 	typos-config-builder
