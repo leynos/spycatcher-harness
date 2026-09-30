@@ -47,6 +47,8 @@ jobs:
         run: make check-fmt
       - name: Check the CV-005 contracts
         run: make test-workflow-contracts
+      - name: Check the comprehensive Make gate
+        run: make test-make-all
       - name: Spelling
         run: make spelling
       - name: Markdown lint
