@@ -4,9 +4,9 @@
 //! keeps command construction, configuration fragments, and result extraction
 //! small enough to satisfy repository health rules.
 
-use spycatcher_harness::HarnessConfig;
-
 use super::CliLayeringWorld;
+use super::cli_config_snapshot::load_config_snapshot;
+use super::isolated_cli_process::ConfigSnapshot;
 
 /// Replaces the current command argv with `args`.
 ///
@@ -67,6 +67,21 @@ pub(super) fn push_env(cli_layering_world: &CliLayeringWorld, key: &str, value: 
     let mut vars = cli_layering_world.env_vars.take().unwrap_or_default();
     vars.push((String::from(key), String::from(value)));
     cli_layering_world.env_vars.set(vars);
+}
+
+/// Runs the real CLI loader with scenario-specific child environment and files.
+pub(super) fn load_isolated_config(
+    argv: &[String],
+    config_file: &str,
+    env_vars: &[(String, String)],
+) -> Result<ConfigSnapshot, String> {
+    let argv_refs = argv.iter().map(String::as_str).collect::<Vec<_>>();
+    let env_refs = env_vars
+        .iter()
+        .map(|(name, value)| (name.as_str(), value.as_str()))
+        .collect::<Vec<_>>();
+    let config_file_arg = (!config_file.is_empty()).then_some(config_file);
+    load_config_snapshot(&argv_refs, config_file_arg, &env_refs)
 }
 
 /// Trims leading and trailing double quotes from `value` into an owned string.
@@ -158,18 +173,18 @@ pub(super) fn set_subcommand_only(cli_layering_world: &CliLayeringWorld, subcomm
     set_command(cli_layering_world, base_argv(subcommand));
 }
 
-/// Returns the loaded config, or panics with `context` if loading failed.
+/// Returns the loaded configuration snapshot or panics with `context` if loading failed.
 ///
 /// # Example
 ///
 /// ```ignore
 /// let config = expect_loaded_config(&world, "replay");
-/// // Returns the stored HarnessConfig, or panics with replay context on error.
+/// // Returns the stored configuration snapshot, or panics on a loader error.
 /// ```
 pub(super) fn expect_loaded_config(
     cli_layering_world: &CliLayeringWorld,
     context: &str,
-) -> HarnessConfig {
+) -> ConfigSnapshot {
     let outcome = cli_layering_world
         .result
         .with_ref(Clone::clone)

@@ -6,7 +6,7 @@
 use clap::Command;
 use i18n_embed::unic_langid::{LanguageIdentifier, langid};
 use ortho_config::{
-    FluentLocalizer, LocalizationArgs, NoOpLocalizer, figment, localize_clap_error_with_command,
+    FluentLocalizer, LocalizationArgs, NoOpLocalizer, localize_clap_error_with_command,
 };
 use proptest::prelude::*;
 use rstest::rstest;
@@ -14,10 +14,19 @@ use spycatcher_harness::cli::load_subcommand_config_from_iter_with_localizer;
 use spycatcher_harness::cli::localization::LocalizeCmd;
 use spycatcher_harness::cli::localizer::{
     DISABLE_LOCALIZATION_ENV, build_cli_localizer, build_cli_localizer_from_resources,
-    early_locale_plan, is_cli_localization_disabled, parse_early_locale,
+    parse_early_locale,
 };
 
+#[path = "support/isolated_cli_process.rs"]
+mod isolated_cli_process;
+
+use isolated_cli_process::{ProbeEnvelope, ProbeOutcome, ProbeRequest};
+
 const CLI_FTL: &str = include_str!("../i18n/en-US/spycatcher-harness.ftl");
+
+fn run_probe(request: &ProbeRequest, env_vars: &[(&str, &str)]) -> Result<ProbeEnvelope, String> {
+    isolated_cli_process::run_probe(request, None, env_vars)
+}
 
 #[rstest]
 fn bundled_cli_catalogue_builds() {
@@ -319,17 +328,19 @@ fn early_locale_plan_respects_environment_precedence(
     #[case] fallback: &str,
     #[case] expected: &str,
 ) {
-    #[expect(
-        clippy::result_large_err,
-        reason = "figment::Jail callback requires figment::error::Result"
-    )]
-    figment::Jail::expect_with(|jail| {
-        jail.set_env("SPYCATCHER_HARNESS_LOCALE", primary);
-        jail.set_env("SPYCATCHER_HARNESS_FALLBACK_LOCALE", fallback);
+    let probe = run_probe(
+        &ProbeRequest::EarlyLocalePlan,
+        &[
+            ("SPYCATCHER_HARNESS_LOCALE", primary),
+            ("SPYCATCHER_HARNESS_FALLBACK_LOCALE", fallback),
+        ],
+    )
+    .expect("early locale probe should run");
 
-        assert_eq!(early_locale_plan().to_string(), expected);
-        Ok(())
-    });
+    assert_eq!(
+        probe.outcome,
+        ProbeOutcome::LocalePlan(String::from(expected))
+    );
 }
 
 #[rstest]
@@ -345,18 +356,9 @@ fn cli_localization_disable_switch_requires_truthy_value(
     #[case] env_value: Option<&str>,
     #[case] expected: bool,
 ) {
-    #[expect(
-        clippy::result_large_err,
-        reason = "figment::Jail callback requires figment::error::Result"
-    )]
-    figment::Jail::expect_with(|jail| {
-        if let Some(value) = env_value {
-            jail.set_env(DISABLE_LOCALIZATION_ENV, value);
-        } else {
-            jail.set_env(DISABLE_LOCALIZATION_ENV, "");
-        }
+    let env_vars = env_value.map_or_else(Vec::new, |value| vec![(DISABLE_LOCALIZATION_ENV, value)]);
+    let probe = run_probe(&ProbeRequest::LocalizationDisabled, &env_vars)
+        .expect("localization-disable probe should run");
 
-        assert_eq!(is_cli_localization_disabled(), expected);
-        Ok(())
-    });
+    assert_eq!(probe.outcome, ProbeOutcome::LocalizationDisabled(expected));
 }
