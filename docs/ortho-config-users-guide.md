@@ -87,11 +87,16 @@ if let Some(figment) = discovery.load_first()? {
         discovery.candidates().first()
     );
 } else {
-    // Fall back to defaults when no configuration files exist.
+    // Fall back to defaults when no candidate configuration file exists.
 }
 # Ok(())
 # }
 ```
+
+`load_first()` returns `Ok(None)` when discovery has no usable candidate and
+records no failure. If candidates exist but all fail to load, it returns the
+accumulated error. Propagate that error instead of treating a malformed or
+unreadable configuration file as an absent optional file.
 
 The repository ships `config/overrides.toml`, which extends
 `config/baseline.toml` to set `is_excited = true`, provide a `Layered hello`
@@ -273,7 +278,7 @@ Add `ortho_config` as a dependency in `Cargo.toml` along with `serde`:
 
 ```toml
 [dependencies]
-ortho_config = "0.8.0"            # replace with the latest version
+ortho_config = "0.9.0"
 serde = { version = "1.0", features = ["derive"] }
 clap = { version = "4", features = ["derive"] }    # required for CLI support
 ```
@@ -284,7 +289,7 @@ corresponding cargo features:
 
 ```toml
 [dependencies]
-ortho_config = { version = "0.8.0", features = ["json5", "yaml"] }
+ortho_config = { version = "0.9.0", features = ["json5", "yaml"] }
 # Enabling these features expands file formats; precedence stays: defaults < file < env < CLI.
 ```
 
@@ -330,7 +335,7 @@ In the common case, `Cargo.toml` does not need direct `figment`, `uncased`, or
 
 ```toml
 [dependencies]
-ortho_config = "0.8.0"
+ortho_config = "0.9.0"
 serde = { version = "1.0", features = ["derive"] }
 clap = { version = "4", features = ["derive"] }
 ```
