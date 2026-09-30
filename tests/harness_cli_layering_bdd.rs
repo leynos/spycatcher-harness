@@ -4,7 +4,7 @@
 //! Gherkin feature file at `tests/features/harness_cli_layering.feature`. It
 //! verifies user-visible configuration-precedence behaviour end-to-end via the
 //! [`spycatcher_harness::cli::load_subcommand_config_from_iter`] entry point,
-//! using `figment::Jail` to isolate filesystem and environment state.
+//! using isolated child processes for filesystem and environment state.
 //!
 //! Covered scenarios:
 //! - Cassette-name CLI precedence over env and file for `replay`.
@@ -19,18 +19,20 @@
 //! - `tests/cli_layering_unit.rs` — rstest unit coverage for the same surface.
 //! - `src/bin/spycatcher_harness.rs` (inline tests) — binary startup unit tests.
 
-use std::cell::RefCell;
-
-use ortho_config::figment;
 use rstest::fixture;
 use rstest_bdd::Slot;
 use rstest_bdd_macros::{ScenarioState, given, scenario, then, when};
 
-use spycatcher_harness::cli::load_subcommand_config_from_iter;
-use spycatcher_harness::{HarnessConfig, config};
+use isolated_cli_process::{ConfigSnapshot, ModeSnapshot};
 
 #[path = "harness_cli_layering_bdd/cli_layering_helpers.rs"]
 mod cli_layering_helpers;
+
+#[path = "support/cli_config_snapshot.rs"]
+mod cli_config_snapshot;
+
+#[path = "support/isolated_cli_process.rs"]
+mod isolated_cli_process;
 
 use cli_layering_helpers::*;
 
@@ -39,7 +41,7 @@ struct CliLayeringWorld {
     argv: Slot<Vec<String>>,
     config_file: Slot<String>,
     env_vars: Slot<Vec<(String, String)>>,
-    result: Slot<Result<HarnessConfig, String>>,
+    result: Slot<Result<ConfigSnapshot, String>>,
 }
 
 #[fixture]
@@ -195,34 +197,7 @@ fn load_layered_config(cli_layering_world: &CliLayeringWorld) {
     let argv = cli_layering_world.argv.take().unwrap_or_default();
     let config_file = cli_layering_world.config_file.take().unwrap_or_default();
     let env_vars = cli_layering_world.env_vars.take().unwrap_or_default();
-
-    let loaded = RefCell::new(None);
-    #[expect(
-        clippy::result_large_err,
-        reason = "figment::Jail callback requires figment::error::Result"
-    )]
-    let jail_result = figment::Jail::try_with(|jail| {
-        if !config_file.is_empty() {
-            jail.create_file(".spycatcher_harness.toml", &config_file)?;
-        }
-
-        for (key, value) in &env_vars {
-            jail.set_env(key, value);
-        }
-
-        let result =
-            load_subcommand_config_from_iter(argv.clone()).map_err(|error| error.to_string());
-        loaded.replace(Some(result));
-        Ok(())
-    });
-
-    let result = match jail_result {
-        Ok(()) => loaded
-            .into_inner()
-            .unwrap_or_else(|| Err(String::from("loader result missing"))),
-        Err(error) => Err(error.to_string()),
-    };
-
+    let result = load_isolated_config(&argv, &config_file, &env_vars);
     cli_layering_world.result.set(result);
 }
 
@@ -233,7 +208,7 @@ fn replay_cassette_name_is(cli_layering_world: &CliLayeringWorld, cassette_name:
         loaded_config.cassette_name,
         trim_surrounding_quotes(&cassette_name)
     );
-    assert_eq!(loaded_config.mode, config::Mode::Replay);
+    assert_eq!(loaded_config.mode, ModeSnapshot::Replay);
 }
 
 #[then("verify cassette name is {cassette_name}")]
@@ -243,7 +218,7 @@ fn verify_cassette_name_is(cli_layering_world: &CliLayeringWorld, cassette_name:
         loaded_config.cassette_name,
         trim_surrounding_quotes(&cassette_name)
     );
-    assert_eq!(loaded_config.mode, config::Mode::Verify);
+    assert_eq!(loaded_config.mode, ModeSnapshot::Verify);
 }
 
 #[then("record upstream base URL is {base_url}")]
@@ -260,7 +235,7 @@ fn record_upstream_base_url_is(cli_layering_world: &CliLayeringWorld, base_url: 
     let Some(upstream) = loaded_config.upstream else {
         panic!("expected record upstream");
     };
-    assert_eq!(loaded_config.mode, config::Mode::Record);
+    assert_eq!(loaded_config.mode, ModeSnapshot::Record);
     assert_eq!(upstream.base_url.as_str(), base_url_value);
 }
 
@@ -273,7 +248,7 @@ fn replay_locale_is(cli_layering_world: &CliLayeringWorld, locale: String) {
         loaded_config.localization.locale.as_deref(),
         Some(locale_value.as_str())
     );
-    assert_eq!(loaded_config.mode, config::Mode::Replay);
+    assert_eq!(loaded_config.mode, ModeSnapshot::Replay);
 }
 
 #[then("replay locale is unset")]
@@ -281,7 +256,7 @@ fn replay_locale_is_unset(cli_layering_world: &CliLayeringWorld) {
     let loaded_config = expect_loaded_config(cli_layering_world, "replay");
 
     assert_eq!(loaded_config.localization.locale, None);
-    assert_eq!(loaded_config.mode, config::Mode::Replay);
+    assert_eq!(loaded_config.mode, ModeSnapshot::Replay);
 }
 
 #[then("fallback locale is {fallback_locale}")]
