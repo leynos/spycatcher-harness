@@ -31,7 +31,7 @@ jobs:
         if: steps.cache-merman-cli.outputs.cache-hit != 'true'
         run: cargo +1.95.0 install merman-cli --version "=${MERMAN_CLI_VERSION}" --locked
       - name: Setup Rust
-        uses: leynos/shared-actions/.github/actions/setup-rust@4fb8eb7ad52454678a0662865d81d3cd17aa6e0e
+        uses: leynos/shared-actions/.github/actions/setup-rust@c4ed5ffaf0640b1907d5359a87fd1677034eec27
       - name: Setup uv
         uses: astral-sh/setup-uv@f5548c55522a1db0af3c84f2af3d058bc9bc2de2
       - name: Install Nixie
