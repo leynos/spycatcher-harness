@@ -64,7 +64,7 @@ jobs:
       # the upload confined there if a dispatch trigger is ever added.
       - name: Upload coverage data to CodeScene
         if: ${{ steps.codescene-token.outputs.available == 'true' && github.ref == 'refs/heads/main' }}
-        uses: leynos/shared-actions/.github/actions/upload-codescene-coverage@4fb8eb7ad52454678a0662865d81d3cd17aa6e0e
+        uses: leynos/shared-actions/.github/actions/upload-codescene-coverage@c4ed5ffaf0640b1907d5359a87fd1677034eec27
         with:
           path: lcov.info
           format: lcov
