@@ -314,5 +314,5 @@ fn probe_child() {
     };
     let encoded = serde_json::to_string(&response).expect("probe response should be serializable");
     let mut stdout = io::stdout().lock();
-    writeln!(stdout, "{RESPONSE_PREFIX}{encoded}").expect("probe response should be writable");
+    writeln!(stdout, "\n{RESPONSE_PREFIX}{encoded}").expect("probe response should be writable");
 }
