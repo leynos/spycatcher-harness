@@ -4,9 +4,10 @@
 # (see "Cranelift exception" in docs/developers-guide.md).
 # The parallel `rustc` frontend is the default for every build, and
 # the `mold` linker is the default on Linux. Cargo auto-discovers this file, so
-# a bare `cargo build` gets them. Release builds and coverage assign
+# a bare `cargo build` gets them. `make release` and coverage assign
 # `RUSTFLAGS`, which displaces every `rustflags` source below, so neither
-# takes the frontend flag or `mold`.
+# takes the frontend flag or `mold`; a bare `cargo build --release` still
+# takes both.
 #
 # Cargo selects a single `rustflags` source rather than merging them: a
 # matching `[target.*]` table replaces `[build] rustflags` outright. Every flag

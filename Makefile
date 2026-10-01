@@ -15,16 +15,16 @@ RUST_FLAGS := -D warnings $(RUST_FLAGS)
 # The build standard: every `rustflags` source in `.cargo/config.toml` carries
 # the parallel frontend, and the Linux source adds `mold`. Assigning
 # `RUSTFLAGS` replaces those sources outright, so the targets that assign it
-# restate the flags here. Coverage and release builds deliberately take neither.
-# The recipes add them to any inherited `RUSTFLAGS` (setup-rust exports one
-# in CI) instead of replacing it.
+# restate the flags here. The recipes add them to any inherited `RUSTFLAGS`
+# (setup-rust exports one in CI) instead of replacing it. Coverage and release
+# builds deliberately take neither.
 STANDARD_THREADS_FLAG ?= -Zthreads=8
 STANDARD_MOLD_FLAG ?= -Clink-arg=-fuse-ld=mold
 BUILD_HOST_OS ?= $(shell uname -s)
 # mold is added only when the machine doing the build is Linux (only Make can
 # tell whether it has mold) and the compilation target is Linux too, which is
 # the host unless `CARGO_BUILD_TARGET` names another triple.
-STANDARD_TARGET_IS_LINUX = $(if $(CARGO_BUILD_TARGET),$(findstring -linux-,$(CARGO_BUILD_TARGET)),yes)
+STANDARD_TARGET_IS_LINUX = $(if $(CARGO_BUILD_TARGET),$(or $(findstring -linux-,$(CARGO_BUILD_TARGET)),$(filter host-tuple,$(CARGO_BUILD_TARGET))),yes)
 STANDARD_RUSTFLAGS = $(STANDARD_THREADS_FLAG)$(if $(filter Linux,$(BUILD_HOST_OS)),$(if $(STANDARD_TARGET_IS_LINUX), $(STANDARD_MOLD_FLAG)))
 # Release builds take neither flag: assigning `RUSTFLAGS`, even to an empty
 # inherited value, displaces every `rustflags` source in the configuration.

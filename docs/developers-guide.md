@@ -470,8 +470,10 @@ Development builds follow the estate's Rust build standard, which
 `.cargo/config.toml` sets and Cargo auto-discovers, so a bare `cargo build`
 gets it. Every `rustflags` source enables the parallel `rustc` frontend with
 `-Zthreads=8`, and the `cfg(target_os = "linux")` source also links with
-`mold`; macOS and Windows keep their platform linker. Cranelift is not the
-development-profile backend here; the exception below records why.
+`mold`; macOS and Windows keep their platform linker. A Linux host therefore
+needs `mold` installed before any `cargo` or `make` build, build scripts
+included. Cranelift is not the development-profile backend here; the exception
+below records why.
 
 Cargo applies a single `rustflags` source rather than merging them, and an
 assigned `RUSTFLAGS` replaces every source. So each source repeats the frontend
@@ -480,11 +482,12 @@ targets that assign `RUSTFLAGS`, adding them to any `RUSTFLAGS` the recipe
 inherits (setup-rust exports one in CI) rather than replacing it; every `lint`
 command assigns it too. The Makefile adds `mold` only when both the host and
 the compilation target (`CARGO_BUILD_TARGET`, when set) are Linux.
-`make release` assigns an empty inherited `RUSTFLAGS` (a bare
-`cargo build --release` still takes both flags, because Cargo does not select
-`rustflags` by profile) and so takes neither flag. CI installs `mold` before
-the first gate target. `tests/build_standard_contract.rs` holds the
-configuration and the Makefile recipes to this.
+`make release` assigns the inherited `RUSTFLAGS`, which is empty when the
+caller exports none (a bare `cargo build --release` still takes both flags,
+because Cargo does not select `rustflags` by profile) and so takes neither
+flag. CI installs `mold` before the first gate target.
+`tests/build_standard_contract.rs` holds the configuration and the Makefile
+recipes to this.
 
 ### Cranelift exception
 

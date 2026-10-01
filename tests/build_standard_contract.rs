@@ -6,8 +6,7 @@
 //! than merging them, and an assigned `RUSTFLAGS` replaces every source. So the
 //! flags must be repeated in each configuration source, restated wherever the
 //! Makefile assigns `RUSTFLAGS` for a development target, and kept out of the
-//! coverage and release recipes, which measure or ship and so stay on the
-//! default flags.
+//! release recipe, which ships and so stays on the default flags.
 //!
 //! The Makefile clauses run `make -n` and read the commands it would run,
 //! rather than the Makefile's text, so a flag lost through a variable or a
@@ -35,8 +34,8 @@ const LINUX_TABLES: [&str; 2] = ["x86_64-unknown-linux-gnu", "cfg(target_os = \"
 /// the configuration's.
 const DEVELOPMENT_TARGETS: [&str; 4] = ["test", "typecheck", "lint", "build"];
 
-/// Makefile targets that measure or ship, so every command assigns
-/// `RUSTFLAGS` and none carries a standard flag.
+/// Makefile targets that ship, so every command assigns `RUSTFLAGS` and none
+/// carries a standard flag. Coverage runs in CI, outwith the Makefile.
 const HELD_OUT_TARGETS: [&str; 1] = ["release"];
 
 /// Development targets that must assign `RUSTFLAGS` in at least one command,
@@ -87,7 +86,7 @@ impl Host {
         match self {
             Self::Linux => true,
             Self::Darwin => false,
-            Self::LinuxBuildingFor(triple) => triple.contains("-linux-"),
+            Self::LinuxBuildingFor(triple) => triple.contains("-linux-") || triple == "host-tuple",
         }
     }
 }
@@ -372,14 +371,19 @@ fn development_targets_leave_mold_off_a_non_linux_target() {
         check_development_targets(Host::LinuxBuildingFor("aarch64-unknown-linux-gnu"), None)
             .expect("read `make -n` output"),
     );
+    // Cargo resolves `host-tuple` to the host's own triple, so mold stays.
+    problems.extend(
+        check_development_targets(Host::LinuxBuildingFor("host-tuple"), None)
+            .expect("read `make -n` output"),
+    );
     assert!(problems.is_empty(), "{problems:#?}");
 }
 
-/// Coverage measures and release ships, so both stay on the default flags.
-/// Every command must assign `RUSTFLAGS`, since only an assignment displaces
-/// the configuration's sources.
+/// Release ships, so it stays on the default flags. Every command must assign
+/// `RUSTFLAGS`, since only an assignment displaces the configuration's
+/// sources. Coverage runs in CI, outwith the Makefile, and is not checked here.
 #[test]
-fn coverage_and_release_take_neither_flag() {
+fn release_takes_neither_flag() {
     for target in HELD_OUT_TARGETS {
         for assigned in make_rustflags(target, Host::Linux, None).expect("read `make -n` output") {
             let flags = assigned.unwrap_or_else(|| {
