@@ -192,7 +192,14 @@ fn dry_run(target: &str, host: Host, inherited: Option<&str>) -> Read<String> {
     make.args(["-n", "-B"])
         .args(host.overrides())
         .arg(target)
-        .current_dir(env!("CARGO_MANIFEST_DIR"));
+        .current_dir(env!("CARGO_MANIFEST_DIR"))
+        // The host and target come from `Host` alone: an exported target, or an
+        // outer `make`'s command-line overrides carried in `MAKEFLAGS`, would
+        // change what the recipes expand to for reasons unrelated to them.
+        .env_remove("CARGO_BUILD_TARGET")
+        .env_remove("MAKEFLAGS")
+        .env_remove("MFLAGS")
+        .env_remove("MAKELEVEL");
     with_inherited(&mut make, inherited);
     let output = make.output()?;
     if !output.status.success() {
@@ -244,40 +251,54 @@ fn make_rustflags(target: &str, host: Host, inherited: Option<&str>) -> Read<Vec
     Ok(commands)
 }
 
+/// Returns the problems with one assigned `RUSTFLAGS` for one target.
+fn flag_problems(target: &str, host: Host, inherited: Option<&str>, flags: &Flags) -> Vec<String> {
+    let mut problems = Vec::new();
+    if !flags.names(THREADS_FLAG) {
+        problems.push(format!(
+            "`make {target}` on {host:?} drops {THREADS_FLAG}: {flags:?}"
+        ));
+    }
+    if flags.names(MOLD_FLAG) != host.expects_mold() {
+        problems.push(format!(
+            "`make {target}` on {host:?} gets mold wrong: {flags:?}"
+        ));
+    }
+    if inherited.is_some_and(|caller| !flags.carries_run(caller)) {
+        problems.push(format!(
+            "`make {target}` drops the caller's RUSTFLAGS: {flags:?}"
+        ));
+    }
+    problems
+}
+
+/// Returns the problems with one development target on one host.
+fn target_problems(target: &str, host: Host, inherited: Option<&str>) -> Read<Vec<String>> {
+    let commands = make_rustflags(target, host, inherited)?;
+    let mut problems = Vec::new();
+    if inherited.is_some() && commands.iter().any(Option::is_none) {
+        problems.push(format!(
+            "`make {target}` runs a command that takes only the caller's RUSTFLAGS"
+        ));
+    }
+    // An empty assignment is `Some(Flags(vec![]))` and is checked like any other.
+    for flags in commands.iter().flatten() {
+        problems.extend(flag_problems(target, host, inherited, flags));
+    }
+    Ok(problems)
+}
+
 /// Checks every development target on one host: an assigned `RUSTFLAGS`
 /// carries the frontend flag, carries mold exactly when the host and target
 /// are Linux, and keeps an inherited `RUSTFLAGS`. Under an inherited
 /// `RUSTFLAGS` every command must assign, because the caller's value displaces
 /// the configuration's sources; setup-rust exports one in CI.
 fn check_development_targets(host: Host, inherited: Option<&str>) -> Read<Vec<String>> {
-    let mut problems = Vec::new();
-    for target in DEVELOPMENT_TARGETS {
-        let commands = make_rustflags(target, host, inherited)?;
-        if inherited.is_some() && commands.iter().any(Option::is_none) {
-            problems.push(format!(
-                "`make {target}` runs a command that takes only the caller's RUSTFLAGS"
-            ));
-        }
-        // An empty assignment is `Some(Flags(vec![]))` and is checked like any other.
-        for flags in commands.into_iter().flatten() {
-            if !flags.names(THREADS_FLAG) {
-                problems.push(format!(
-                    "`make {target}` on {host:?} drops {THREADS_FLAG}: {flags:?}"
-                ));
-            }
-            if flags.names(MOLD_FLAG) != host.expects_mold() {
-                problems.push(format!(
-                    "`make {target}` on {host:?} gets mold wrong: {flags:?}"
-                ));
-            }
-            if inherited.is_some_and(|caller| !flags.carries_run(caller)) {
-                problems.push(format!(
-                    "`make {target}` drops the caller's RUSTFLAGS: {flags:?}"
-                ));
-            }
-        }
-    }
-    Ok(problems)
+    let per_target = DEVELOPMENT_TARGETS
+        .iter()
+        .map(|target| target_problems(target, host, inherited))
+        .collect::<Read<Vec<_>>>()?;
+    Ok(per_target.into_iter().flatten().collect())
 }
 
 #[test]
