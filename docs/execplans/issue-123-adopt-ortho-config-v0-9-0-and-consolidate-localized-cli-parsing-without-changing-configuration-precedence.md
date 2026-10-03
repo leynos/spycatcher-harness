@@ -208,7 +208,10 @@ observable.
 - [x] (2026-10-04) CodeRabbit reviewed 21 files, including the staged
   compatibility test, and reported zero findings. Review log:
   `/tmp/coderabbit-93806b0d-068e-40a6-9c86-809b8f1dc9c6-issue-123-adopt-ortho-config-v0-9-0-and-consolidate-localized-cli-parsing-without-changing-configuration-precedence-18.out`.
-- [ ] Commit and push the reviewed implementation and documentation.
+- [x] (2026-10-04) Commit the reviewed parser and documentation milestone as
+  `402ce62` and push it over SSH. GitHub authenticated as `leynos`, and the
+  local and remote branch heads both resolved to
+  `402ce620261a92924228ce87c36b727d6674a640`.
 - [ ] Create a draft PR that closes #123 and ends with the required Lody
   session reference.
 
@@ -363,8 +366,9 @@ error localization. Layering and binary tests cover the unchanged precedence
 contract and prove a parse failure causes no record startup effects. The latest
 full gate run passed all six repository gates and the locked Rust 1.89.0 check,
 including the test-only lint fixes. CodeRabbit then reviewed 21 files,
-including the compatibility test, with zero findings. Commit and push the
-reviewed milestone, then publish the draft PR.
+including the compatibility test, with zero findings. The implementation and
+documentation were committed and pushed with local/remote SHA parity; create
+the requested draft PR to complete publication.
 
 The test-isolation slice is implemented. Initial full gates exposed Clippy,
 plan-spelling, and ambient filesystem-write issues; each was corrected. A
