@@ -58,6 +58,12 @@ jobs:
         run: make nixie
       - name: Install Whitaker
         uses: leynos/shared-actions/.github/actions/install-whitaker@6dea5677a84fec60ca51b07202570e3af12ffdb4
+      - name: Install mold linker
+        # The Makefile restates the build standard's `mold` flag for its
+        # gate targets, so the linker must be present before they build.
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends mold
       - name: Lint
         run: make lint
       - name: Test and Measure Coverage

@@ -463,3 +463,48 @@ Current record-mode review residuals are tracked as deliberate follow-ups:
 See [`replay-matching-guide.md`](replay-matching-guide.md) for
 `ReplayMatchEngine`, `MatchOutcome`, diagnostics, diff support, and extension
 guidelines for new modules and test files.
+
+## Build standard
+
+Development builds follow the estate's Rust build standard, which
+`.cargo/config.toml` sets and Cargo auto-discovers, so a bare `cargo build`
+gets it. Every `rustflags` source enables the parallel `rustc` frontend with
+`-Zthreads=8`, and the `cfg(target_os = "linux")` source also links with
+`mold`; macOS and Windows keep their platform linker. A Linux host therefore
+needs `mold` installed before any `cargo` or `make` build, build scripts
+included. Cranelift is not the development-profile backend here; the exception
+below records why.
+
+Cargo applies a single `rustflags` source rather than merging them, and an
+assigned `RUSTFLAGS` replaces every source. So each source repeats the frontend
+flag, and the Makefile restates both flags as `STANDARD_RUSTFLAGS` for the
+targets that assign `RUSTFLAGS`, adding them to any `RUSTFLAGS` the recipe
+inherits (setup-rust exports one in CI) rather than replacing it; every `lint`
+command assigns it too. The Makefile adds `mold` only when both the host and
+the compilation target (`CARGO_BUILD_TARGET`, when set) are Linux; an Android
+triple contains `-linux-` but is not Linux to Cargo's `target_os`, so it does
+not get `mold`. `make release` assigns the inherited `RUSTFLAGS`, which is
+empty when the caller exports none, so it takes neither flag. A bare
+`cargo build --release` still takes both flags, because Cargo does not select
+`rustflags` by profile. CI installs `mold` before the first gate target.
+`tests/build_standard_contract.rs` (readers in
+`tests/build_standard/support.rs`) holds the configuration and the Makefile
+recipes to this.
+
+### Cranelift exception
+
+The decision is recorded in
+[ADR 002](adr/2026-10-03-adopt-the-rust-build-standard.md).
+
+Measured on 2026-09-28 on the pinned `nightly-2026-02-26`.
+
+Under Cranelift the suite does not build: every binary and test target that
+links `aws-lc-rs` (through `rustls`) fails at the link step with `mold`
+reporting undefined `aws_lc_0_40_0_*` symbols (for example
+`aws_lc_0_40_0_EVP_DigestInit_ex`), so `lifecycle_tests`,
+`canonical_request_hashing_bdd`, `cli_localization_unit` and the
+`spycatcher-harness` binary never run. The same build on LLVM, with the same
+`-Zthreads=8` and `mold` flags, links and passes, so the failure is the
+backend's. Development builds therefore stay on LLVM.
+
+Re-measure on the next toolchain pin.
