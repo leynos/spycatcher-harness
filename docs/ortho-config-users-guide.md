@@ -237,38 +237,36 @@ Applications can inject a custom logger with `with_error_reporter` when they
 need to capture Fluent formatting errors alongside command parsing failures.
 
 The Hello World example ships `hello_world::localizer::DemoLocalizer`, which
-builds a `FluentLocalizer` from `examples/hello_world/locales/en-US` and drives
-`CommandLine::command().localize(&localizer)` and
-`CommandLine::try_parse_localized_env`. If the localization setup ever fails,
-the example falls back to `NoOpLocalizer`, preserving the stock `clap` strings
-until translations are fixed.
+builds a `FluentLocalizer` from `examples/hello_world/locales/en-US` and uses
+OrthoConfig's `LocalizedParse` helper to localize the command and its errors.
+If localization setup fails, the example falls back to `NoOpLocalizer`,
+preserving the stock `clap` strings until translations are fixed.
 
-Errors surfaced by `clap` can be localized as well. Use
-`localize_clap_error_with_command` to map each `ErrorKind` to a Fluent
-identifier of the form `clap-error-<kebab-case>`, forwarding argument context
-such as the missing flag or the offending value. Supplying the command enables
-the helper to populate missing context (for example, the available subcommands
-when `clap` emits `DisplayHelpOnMissingArgumentOrSubcommand`). When no
-translation exists, the helper returns the original `clap` error unchanged:
+For a custom catalogue root or an already-built command, combine
+`LocalizeCmd::with_base` with `parse_localized_command`. The parser localizes
+both errors from Clap argument matching and errors converting `ArgMatches` into
+the typed parser value. Use `localize_clap_error_with_command` directly only
+when a separate custom parsing path needs low-level error localization; do not
+apply it again to an error returned by `parse_localized_command`.
 
 ```rust
-use clap::CommandFactory;
-use ortho_config::{localize_clap_error_with_command, Localizer};
+use clap::{CommandFactory, Parser};
+use ortho_config::{LocalizeCmd, Localizer, parse_localized_command};
 
-# #[derive(clap::Parser)]
-# struct Cli {}
-fn parse(localizer: &dyn Localizer) -> Result<Cli, clap::Error> {
-    let mut command = Cli::command().localize(localizer);
-    let mut matches = command
-        .try_get_matches()
-        .map_err(|err| {
-            localize_clap_error_with_command(err, localizer, Some(&command))
-        })?;
+#[derive(Debug, Parser)]
+#[command(name = "demo")]
+struct Cli {
+    #[arg(long)]
+    verbose: bool,
+}
 
-    Cli::from_arg_matches_mut(&mut matches).map_err(|err| {
-        let err = err.with_cmd(&command);
-        localize_clap_error_with_command(err, localizer, Some(&command))
-    })
+fn parse(
+    arguments: impl IntoIterator<Item = String>,
+    localizer: &dyn Localizer,
+) -> Result<Cli, clap::Error> {
+    let command = Cli::command().with_base("my-app").localize(localizer);
+    parse_localized_command::<Cli, _, _>(command, arguments, localizer)
+        .map(|(parsed, _matches)| parsed)
 }
 ```
 
