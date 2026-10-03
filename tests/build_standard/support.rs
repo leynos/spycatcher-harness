@@ -21,6 +21,10 @@ pub const MOLD_FLAG: &str = "-Clink-arg=-fuse-ld=mold";
 /// Target table keys that apply on Linux alone.
 pub const LINUX_TABLES: [&str; 2] = ["x86_64-unknown-linux-gnu", "cfg(target_os = \"linux\")"];
 
+/// The table that gives every Linux architecture mold. A table keyed on one
+/// triple would leave the other Linux targets without it.
+pub const LINUX_SELECTOR: &str = "cfg(target_os = \"linux\")";
+
 /// The result of a reader, which the tests unwrap.
 pub type Read<T> = Result<T, Box<dyn Error>>;
 
@@ -77,13 +81,18 @@ impl Flags {
         Self(joined)
     }
 
+    /// Returns whether the list holds no flag at all.
+    pub const fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
     /// Returns whether the list names one flag.
     pub fn names(&self, flag: &str) -> bool {
         self.0.iter().any(|candidate| candidate == flag)
     }
 
     /// Returns whether the list holds the caller's words as one unbroken run.
-    fn carries_run(&self, caller: &str) -> bool {
+    pub fn carries_run(&self, caller: &str) -> bool {
         let wanted: Vec<&str> = caller.split_whitespace().collect();
         self.0
             .windows(wanted.len())
