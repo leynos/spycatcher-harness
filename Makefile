@@ -13,11 +13,12 @@ BUILD_JOBS ?=
 RUST_FLAGS ?=
 RUST_FLAGS := -D warnings $(RUST_FLAGS)
 # The build standard: every `rustflags` source in `.cargo/config.toml` carries
-# the parallel frontend, and the Linux source adds `mold`. Assigning
-# `RUSTFLAGS` replaces those sources outright, so the targets that assign it
-# restate the flags here. The recipes add them to any inherited `RUSTFLAGS`
-# (setup-rust exports one in CI) instead of replacing it. `make release` takes neither flag; coverage takes neither only when its
-# caller exports `RUSTFLAGS`, as setup-rust does in CI.
+# the parallel frontend, and the Linux source adds `mold`. Assigning `RUSTFLAGS`
+# replaces those sources outright, so the targets that assign it restate the
+# flags here. The recipes add them to any inherited `RUSTFLAGS` (setup-rust
+# exports one in CI) instead of replacing it. `make release` takes neither flag;
+# coverage takes neither only when its caller exports `RUSTFLAGS`, as setup-rust
+# does in CI.
 STANDARD_THREADS_FLAG ?= -Zthreads=8
 STANDARD_MOLD_FLAG ?= -Clink-arg=-fuse-ld=mold
 BUILD_HOST_OS ?= $(shell uname -s)
