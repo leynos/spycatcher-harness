@@ -32,6 +32,23 @@ libraries in Rust using the Fluent ecosystem.
    aggregate translation assets from multiple independent libraries into one
    unified localization context, ensuring consistency across the entire program.
 
+## Localized command parsing stays in the application
+
+An application that owns a `clap` interface also owns its help text, parse
+errors, and early locale choice. OrthoConfig 0.9 provides `LocalizeCmd` for
+command metadata, `LocalizedParse` for the default command-name identifier
+root, and `parse_localized_command` when the application needs a prebuilt
+command or custom identifier root. The combined parser localizes both Clap
+parse failures and `FromArgMatches` failures through the same `Localizer`.
+
+Keep this work in the application adapter. A library that accepts an injected
+Fluent loader for domain errors should not gain a dependency on `clap` or make
+locale decisions before the application has merged its configuration. When an
+application already has a published catalogue contract, a small compatibility
+adapter can map OrthoConfig identifiers and arguments onto those existing keys;
+the adapter should call the upstream command and parse helpers once and leave
+the harness domain types unchanged.
+
 ## Implementing the pattern: A two-crate workspace example
 
 To illustrate this pattern, build a simple workspace containing an application
