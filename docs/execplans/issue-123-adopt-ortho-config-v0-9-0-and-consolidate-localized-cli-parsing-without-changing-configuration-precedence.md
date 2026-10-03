@@ -5,7 +5,7 @@ This ExecPlan is a living document. Keep `Constraints`, `Tolerances`, `Risks`,
 `Outcomes & retrospective`, `Conformance basis`, and `Verification plan`
 current.
 
-Status: IN PROGRESS
+Status: COMPLETE
 
 ## Purpose / big picture
 
@@ -212,8 +212,10 @@ observable.
   `402ce62` and push it over SSH. GitHub authenticated as `leynos`, and the
   local and remote branch heads both resolved to
   `402ce620261a92924228ce87c36b727d6674a640`.
-- [ ] Create a draft PR that closes #123 and ends with the required Lody
-  session reference.
+- [x] (2026-10-04) Create draft PR
+      [#147](https://github.com/leynos/spycatcher-harness/pull/147)
+  against `main`. Its summary says `Closes #123`, and its final References
+  section links the renamed Lody session.
 
 ## Surprises & discoveries
 
@@ -353,10 +355,8 @@ observable.
 
 ## Outcomes & retrospective
 
-Implementation is in progress. Add validated outcomes, remaining gaps, and
-lessons at each milestone boundary. Do not mark this plan complete until each
-trace link in `Conformance basis` has evidence and every discovery has been
-reconciled with the design and ADRs.
+Implementation is complete. The migration, compatibility evidence, and
+publication outcome are recorded below; the draft PR is open for review.
 
 The OrthoConfig 0.9.0 dependency and Rust 1.89.0 floor are in place, and the
 localized parser delegates to the tagged `LocalizeCmd` and
@@ -368,7 +368,11 @@ full gate run passed all six repository gates and the locked Rust 1.89.0 check,
 including the test-only lint fixes. CodeRabbit then reviewed 21 files,
 including the compatibility test, with zero findings. The implementation and
 documentation were committed and pushed with local/remote SHA parity; create
-the requested draft PR to complete publication.
+the requested draft PR to complete publication. Draft PR #147 is open against
+`main`, its summary closes #123, and its final References section contains the
+Lody session URL. GitHub reported the CodeScene coverage and health checks as
+queued when the draft was created; those hosted checks are not reported as
+passed here.
 
 The test-isolation slice is implemented. Initial full gates exposed Clippy,
 plan-spelling, and ambient filesystem-write issues; each was corrected. A
