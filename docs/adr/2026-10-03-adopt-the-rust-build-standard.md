@@ -30,8 +30,9 @@ while LLVM with the same flags links and passes.
 - The Makefile restates both flags wherever it assigns `RUSTFLAGS`, composing
   them with an inherited value, and adds `mold` only when the host and the
   compilation target are both Linux.
-- `make release` assigns the inherited `RUSTFLAGS`, so a release takes neither
-  flag, and coverage takes neither only when its caller exports `RUSTFLAGS`.
+- `make release` assigns the inherited `RUSTFLAGS`, so a release adds neither
+  standard flag, and coverage takes neither only when its caller exports
+  `RUSTFLAGS`.
 - Development builds stay on LLVM. This is a recorded exception to the
   standard; revisit it when the toolchain pin changes or `aws-lc-rs` links
   under Cranelift.
@@ -40,7 +41,10 @@ while LLVM with the same flags links and passes.
 
 - A Linux host needs `mold` installed before any build, and CI installs it
   before the first gate target.
-- `tests/build_standard_contract.rs` holds the configuration, the Makefile
-  recipes and the CI install order to this decision.
+- `tests/build_standard_contract.rs` holds the configuration and the Makefile
+  recipes to this decision, and `tests/build_standard_ci.rs` holds the CI
+  install order.
+- Cross-building through bare Cargo from a non-Linux host is outside the
+  standard: the configuration selects `mold` by the compilation target alone.
 - The Cranelift exception is documented in the developers' guide, which this
   record complements.

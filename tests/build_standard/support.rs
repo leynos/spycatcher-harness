@@ -5,28 +5,14 @@
 //! `make -n` would run, and reports where they disagree. It never asserts, so
 //! a reader fault surfaces as an error rather than a pass.
 //!
-//! File access goes through a `cap_std` directory handle rooted at the crate
-//! manifest directory.
+//! The Cargo-configuration readers live in `flags.rs`.
 
-use std::{error::Error, process::Command};
+use std::process::Command;
 
-use cap_std::{ambient_authority, fs::Dir};
+#[path = "flags.rs"]
+pub mod flags;
 
-/// The parallel-frontend flag every `rustflags` source must carry.
-pub const THREADS_FLAG: &str = "-Zthreads=8";
-
-/// The linker flag the Linux source must add, normalized to one token.
-pub const MOLD_FLAG: &str = "-Clink-arg=-fuse-ld=mold";
-
-/// Target table keys that apply on Linux alone.
-pub const LINUX_TABLES: [&str; 2] = ["x86_64-unknown-linux-gnu", "cfg(target_os = \"linux\")"];
-
-/// The table that gives every Linux architecture mold. A table keyed on one
-/// triple would leave the other Linux targets without it.
-pub const LINUX_SELECTOR: &str = "cfg(target_os = \"linux\")";
-
-/// The result of a reader, which the tests unwrap.
-pub type Read<T> = Result<T, Box<dyn Error>>;
+pub use flags::{Flags, LINUX_SELECTOR, LINUX_TABLES, MOLD_FLAG, Read, THREADS_FLAG, sources};
 
 /// A host the Makefile can be read as, through its `BUILD_HOST_OS` override,
 /// optionally building for another target through `CARGO_BUILD_TARGET`.
@@ -63,85 +49,6 @@ impl Host {
     }
 }
 
-/// One `rustflags` list, with `-C value` pairs joined into `-Cvalue` so both
-/// spellings compare equal.
-#[derive(Debug)]
-pub struct Flags(Vec<String>);
-
-impl Flags {
-    /// Normalizes a word list into flags.
-    fn from_words<S: AsRef<str>>(words: &[S]) -> Self {
-        let mut joined: Vec<String> = Vec::new();
-        for word in words.iter().map(AsRef::as_ref) {
-            match joined.last_mut() {
-                Some(last) if last == "-C" => *last = format!("-C{word}"),
-                _ => joined.push(word.to_owned()),
-            }
-        }
-        Self(joined)
-    }
-
-    /// Returns whether the list holds no flag at all.
-    pub const fn is_empty(&self) -> bool {
-        self.0.is_empty()
-    }
-
-    /// Returns whether the list names one flag.
-    pub fn names(&self, flag: &str) -> bool {
-        self.0.iter().any(|candidate| candidate == flag)
-    }
-
-    /// Returns whether the list holds the caller's words as one unbroken run.
-    pub fn carries_run(&self, caller: &str) -> bool {
-        let wanted: Vec<&str> = caller.split_whitespace().collect();
-        self.0
-            .windows(wanted.len())
-            .any(|run| run.iter().map(String::as_str).eq(wanted.iter().copied()))
-    }
-
-    /// Returns the list without the linker flag, for comparing sources.
-    pub fn without_mold(self) -> Vec<String> {
-        self.0
-            .into_iter()
-            .filter(|flag| flag != MOLD_FLAG)
-            .collect()
-    }
-}
-
-/// Reads one table's `rustflags`, if it has any.
-fn table_flags(table: &toml::Value) -> Option<Flags> {
-    let words: Vec<&str> = table
-        .get("rustflags")?
-        .as_array()?
-        .iter()
-        .filter_map(toml::Value::as_str)
-        .collect();
-    Some(Flags::from_words(&words))
-}
-
-/// Reads a file relative to the crate manifest directory.
-pub fn read(path: &str) -> Read<String> {
-    let root = Dir::open_ambient_dir(env!("CARGO_MANIFEST_DIR"), ambient_authority())?;
-    Ok(root.read_to_string(path)?)
-}
-
-/// Returns every `rustflags` source in the configuration, by table name.
-pub fn sources() -> Read<Vec<(String, Flags)>> {
-    let config: toml::Value = toml::from_str(&read(".cargo/config.toml")?)?;
-    let mut found = Vec::new();
-    if let Some(flags) = config.get("build").and_then(table_flags) {
-        found.push(("build".to_owned(), flags));
-    }
-    if let Some(targets) = config.get("target").and_then(toml::Value::as_table) {
-        for (key, table) in targets {
-            if let Some(flags) = table_flags(table) {
-                found.push((key.clone(), flags));
-            }
-        }
-    }
-    Ok(found)
-}
-
 /// Sets or clears a child's `RUSTFLAGS`, so the harness's own never leaks in.
 fn with_inherited(command: &mut Command, inherited: Option<&str>) {
     command.env_remove("RUSTFLAGS");
@@ -158,7 +65,12 @@ fn expanded(value: &str, inherited: Option<&str>) -> Read<Flags> {
     with_inherited(&mut shell, inherited);
     let output = shell.output()?;
     if !output.status.success() {
-        return Err(format!("the shell could not expand `{value}`").into());
+        return Err(format!(
+            "the shell could not expand `{value}` ({}): {}",
+            output.status,
+            String::from_utf8_lossy(&output.stderr)
+        )
+        .into());
     }
     let text = String::from_utf8_lossy(&output.stdout).into_owned();
     Ok(Flags::from_words(
@@ -184,30 +96,81 @@ pub fn dry_run(target: &str, host: Host, inherited: Option<&str>) -> Read<String
     with_inherited(&mut make, inherited);
     let output = make.output()?;
     if !output.status.success() {
-        return Err(format!("`make -n {target}` failed").into());
+        return Err(format!(
+            "`make -n {target}` on {host:?} failed ({}): {}",
+            output.status,
+            String::from_utf8_lossy(&output.stderr)
+        )
+        .into());
     }
     Ok(String::from_utf8_lossy(&output.stdout).replace("\\\n", " "))
+}
+
+/// Returns the length of the command separator that starts `rest`, if any:
+/// `&&`, `||` or `;`.
+fn separator_len(rest: &str) -> Option<usize> {
+    if rest.starts_with("&&") || rest.starts_with("||") {
+        Some(2)
+    } else {
+        rest.starts_with(';').then_some(1)
+    }
+}
+
+/// Strips a leading shell keyword that introduces a command, not a command.
+fn without_keyword(part: &str) -> &str {
+    ["then ", "else ", "do ", "if "]
+        .iter()
+        .fold(part, |text, keyword| {
+            text.strip_prefix(keyword).unwrap_or(text)
+        })
+        .trim()
 }
 
 /// Splits one recipe line into the simple commands it chains.
 ///
 /// A line can hold several commands joined by `&&`, `||` or `;`, or an
-/// `if ... then ... else ... fi` block, and each takes its own `RUSTFLAGS`.
-fn commands(line: &str) -> Vec<&str> {
-    line.split("&&")
-        .flat_map(|part| part.split("||"))
-        .flat_map(|part| part.split(';'))
+/// `if ... then ... else ... fi` block, and each takes its own `RUSTFLAGS`. A
+/// separator inside single or double quotes, or after a backslash, does not
+/// split.
+///
+/// # Errors
+///
+/// An unterminated quote means the reader cannot tell where a command ends, so
+/// it fails rather than guessing.
+fn commands(line: &str) -> Read<Vec<&str>> {
+    let mut parts = Vec::new();
+    let (mut start, mut quote, mut escaped) = (0, None, false);
+    let mut chars = line.char_indices();
+    while let Some((at, c)) = chars.next() {
+        if escaped {
+            escaped = false;
+        } else if c == '\\' && quote != Some('\'') {
+            escaped = true;
+        } else if let Some(open) = quote {
+            if c == open {
+                quote = None;
+            }
+        } else if c == '"' || c == '\'' {
+            quote = Some(c);
+        } else if let Some(len) = line.get(at..).and_then(separator_len) {
+            parts.push(line.get(start..at).unwrap_or_default());
+            start = at + len;
+            // The second character of `&&` and `||` is part of the separator.
+            for _ in 1..len {
+                chars.next();
+            }
+        }
+    }
+    if quote.is_some() {
+        return Err(format!("unterminated quote in `{line}`").into());
+    }
+    parts.push(line.get(start..).unwrap_or_default());
+    Ok(parts
+        .into_iter()
         .map(str::trim)
-        .map(|part| {
-            ["then ", "else ", "do ", "if "]
-                .iter()
-                .fold(part, |text, keyword| {
-                    text.strip_prefix(keyword).unwrap_or(text)
-                })
-                .trim()
-        })
+        .map(without_keyword)
         .filter(|part| !part.is_empty())
-        .collect()
+        .collect())
 }
 
 /// Returns what follows an assigned value: a double-quoted value or a word.
@@ -291,16 +254,19 @@ pub fn make_rustflags(
     host: Host,
     inherited: Option<&str>,
 ) -> Read<Vec<Option<Flags>>> {
-    let commands = dry_run(target, host, inherited)?
-        .lines()
-        .flat_map(commands)
-        .filter(|command| runs_cargo_or_whitaker(command))
-        .map(|command| assignment(command, inherited))
-        .collect::<Read<Vec<_>>>()?;
-    if commands.is_empty() {
+    let text = dry_run(target, host, inherited)?;
+    let mut found = Vec::new();
+    for line in text.lines() {
+        for command in self::commands(line)? {
+            if runs_cargo_or_whitaker(command) {
+                found.push(assignment(command, inherited)?);
+            }
+        }
+    }
+    if found.is_empty() {
         return Err(format!("`make -n {target}` runs no cargo command").into());
     }
-    Ok(commands)
+    Ok(found)
 }
 
 /// One expectation: what a development target must assign on a host, for a
