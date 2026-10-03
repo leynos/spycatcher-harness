@@ -581,9 +581,15 @@ CLI localization responsibilities:
 - Configure CLI copy via `ortho_config::Localizer`, preferring
   `ortho_config::FluentLocalizer` for Fluent-backed messages.
 - Localize `clap` help, `--version`, and parse errors through the pre-parse
-  locale flow through OrthoConfig 0.9's combined localized parser. Keep the
-  project-owned adapter for catalogue identifiers and the public helper API; do
-  not localize a command or parse error twice.
+  locale flow through OrthoConfig 0.9. The project-owned `LocalizeCmd`
+  compatibility trait delegates each command's metadata to
+  `ortho_config::LocalizeCmd::with_base(...).localize_self`, while its narrow
+  `Localizer` adapter preserves the `cli-*` identifiers, `long-about` and
+  `merge-help` suffixes, and the `binary` and `version` placeholders.
+- Parse through `ortho_config::parse_localized_command` so Clap parse and
+  `FromArgMatches` failures are localized once. Keep the public
+  `try_parse_localized_from_iter` helper as the stable project entry point; do
+  not localize an already-localized command or error again.
 - Fall back to `NoOpLocalizer` if localization resources fail to load, or when
   `SPYCATCHER_HARNESS_DISABLE_LOCALIZATION` explicitly opts out of CLI
   localization, so the CLI remains usable while reporting localization setup
@@ -901,8 +907,11 @@ Global CLI localization behaviour:
 - Before CLI parsing, help, version, and parse-error localization uses
   `SPYCATCHER_HARNESS_LOCALE`, then `SPYCATCHER_HARNESS_FALLBACK_LOCALE`, then
   `en-US`.
-- `clap` parsing errors should be routed through
-  `localize_clap_error_with_command(...)` before rendering to users.
+- The public CLI parse helper builds localized command metadata once and calls
+  `parse_localized_command(...)`, which owns both Clap parse and
+  `FromArgMatches` error localization. Use
+  `localize_clap_error_with_command(...)` only for a separate custom parse
+  path, not to re-localize an error returned by that helper.
 
 Subcommand-specific config merging should be enabled via OrthoConfig to support
 per-command defaults in config files.[^9]
@@ -1091,12 +1100,13 @@ avoiding time commitments.
   - [ ] One authoritative language loader is created at startup and reused.
 - [x] 1.4.3. Localize CLI help, version, and parse errors via OrthoConfig
       localizer hooks.
-  - [x] CLI help output uses `Command::localize(&localizer)` with a Fluent
-        localizer implementation.
+  - [x] The project `Command::localize(&localizer)` adapter delegates metadata
+        lookup to OrthoConfig 0.9 while retaining the shipped CLI catalogue
+        identifiers and placeholder contract.
   - [x] Clap version output is localized through the same pre-parse command
         localization path.
-  - [x] `clap` parsing failures are rendered via
-        `localize_clap_error_with_command(...)`.
+  - [x] `parse_localized_command(...)` renders parse and argument-conversion
+        failures once through the selected CLI localizer.
 
 ## Known risks and limitations
 

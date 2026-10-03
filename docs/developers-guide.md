@@ -194,10 +194,20 @@ localization selection policy in these support modules rather than growing
 | `src/cli_args.rs`         | `LocalizationArgs` and `RecordUpstreamArgs` serializable merge shapes  |
 | `src/cli_help.rs`         | Stock long-form merge help used when CLI localization is disabled      |
 | `src/cli/localization.rs` | Localization override selection and validation                         |
-| `src/cli/localize_cmd.rs` | Project-owned `LocalizeCmd` trait and localized `clap` parsing helper  |
+| `src/cli/localize_cmd.rs` | Stable project adapter over OrthoConfig localized command parsing      |
 | `src/cli/localizer.rs`    | Early locale selection and Fluent-backed CLI localizer construction    |
 
 _Table 2: Private CLI support modules._
+
+`localize_cmd.rs` keeps the public project-owned `LocalizeCmd` and
+`try_parse_localized_from_iter` signatures. It delegates command metadata to
+OrthoConfig 0.9's `LocalizeCmd::with_base(...).localize_self` and sends parsing
+through `parse_localized_command`, which also localizes `FromArgMatches`
+failures. A small `Localizer` adapter preserves the established `cli-*` IDs, the
+`long-about` and `merge-help` suffixes, and the `binary` and `version`
+placeholders. This compatibility logic belongs to the CLI adapter; the merged
+Clap/Serde DTOs are still translated into harness-domain configuration only at
+the existing boundary.
 
 The `i18n` module owns the library Fluent assets at
 `i18n/en-US/spycatcher-harness.ftl`, exposes `HarnessLocalizations` for

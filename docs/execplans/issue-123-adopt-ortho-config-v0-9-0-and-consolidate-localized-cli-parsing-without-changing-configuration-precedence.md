@@ -165,16 +165,52 @@ observable.
   contracts that needs a failing migration test. Keep the isolated baseline
   contract coverage green and test the upstream parser integration directly
   without manufacturing a failure.
-- [ ] Replace duplicate localized parsing with v0.9.0 APIs while retaining the
-  public adapter and exact catalogue behaviour.
-- [ ] Prove all-command configuration layering, error propagation, and startup
-  isolation with controlled child environments.
-- [ ] Update user and developer documentation, implementation notes, and this
-  plan; keep historical v0.8.0 plans unchanged.
-- [ ] Run the four named test targets and all full repository gates in
-  sequence; run CodeRabbit after each validated implementation milestone.
-- [ ] Commit and push each milestone; create a draft PR that closes #123 and
-  ends with the required Lody session reference.
+- [x] (2026-10-03) Replace duplicate localized parsing with v0.9.0
+  `LocalizeCmd::with_base(...).localize_self` and `parse_localized_command`.
+  Retain the public project trait and helper, mapping `long_about` to the
+  existing `long-about` key and `after_long_help` to `merge-help`, and restore
+  `binary`/`version` arguments at each command boundary. A focused
+  compatibility test covers the root/subcommand IDs, interpolation, and
+  merge-help text; a second test exercises the upstream `FromArgMatches` error
+  path and verifies the conversion error is localized once.
+- [x] (2026-10-03) Run the requested CLI suites after parser consolidation:
+  layering unit (24), layering BDD (9), localization unit (40), and binary
+  localization end-to-end (6) all passed on the final runtime tree. The
+  dedicated two-case compatibility target also passed. Logs are
+  `/tmp/test-cli-layering-unit-issue-123-final.out`,
+  `/tmp/test-harness-cli-layering-bdd-issue-123-final.out`,
+  `/tmp/test-cli-localization-unit-issue-123-final.out`,
+  `/tmp/test-binary-localization-e2e-issue-123-no-side-effects.out`, and
+  `/tmp/test-cli-localize-cmd-compat-issue-123-final.out`.
+- [x] (2026-10-03) Confirm all-command file/environment/CLI layering, nested
+  locale overrides, and record-only upstream scope with the controlled child
+  environment suites. The new binary test also proves an unknown option fails
+  before binding the requested listener, contacting a configured local
+  upstream, or creating a cassette directory.
+- [x] (2026-10-03) Update the user and developer guides, localization
+  implementation notes, and this plan; retain the historical v0.8.0 plans.
+  `make fmt` formatted the Rust and Markdown sources and Markdown formatting
+  reported zero errors. Full Markdown, spelling, and diagram gates remain part
+  of the final sequence.
+- [x] (2026-10-04) First full parser-milestone gate attempt: formatting,
+  typecheck, 340 tests, 27 doctests (4 ignored), Markdown, and Mermaid passed.
+  `make lint` found a similar-name binding and two missing `OrthoConfig`
+  backticks in the new adapter. Rename the local binding and format the API
+  name, then repeat every deterministic gate. The test log ended with
+  successful summaries but did not capture the shell exit marker; the next full
+  run must provide definitive test-command completion evidence.
+- [x] (2026-10-04) Fix the parser-adapter and compatibility-test lint findings:
+  backtick `OrthoConfig`, rename the similar local binding, and recover a
+  poisoned test mutex without a panic. The fresh sequential run passed all six
+  repository gates: formatting, typecheck, Clippy and Whitaker, all 340 tests
+  and 27 doctests (4 ignored), Markdown/spelling, and Mermaid. The locked Rust
+  1.89.0 all-targets/all-features check also passed.
+- [x] (2026-10-04) CodeRabbit reviewed 21 files, including the staged
+  compatibility test, and reported zero findings. Review log:
+  `/tmp/coderabbit-93806b0d-068e-40a6-9c86-809b8f1dc9c6-issue-123-adopt-ortho-config-v0-9-0-and-consolidate-localized-cli-parsing-without-changing-configuration-precedence-18.out`.
+- [ ] Commit and push the reviewed implementation and documentation.
+- [ ] Create a draft PR that closes #123 and ends with the required Lody
+  session reference.
 
 ## Surprises & discoveries
 
@@ -225,6 +261,30 @@ observable.
   Evidence: CodeRabbit review log `-15.out` and the parent parser's line-based
   `strip_prefix(RESPONSE_PREFIX)` call. Impact: start the serialized response
   on a fresh line; the configuration/localization results remain unchanged.
+- Observation: OrthoConfig 0.9 derives `long_about` and `after_long_help`
+  identifiers with underscores, while the existing application catalogue uses
+  `long-about` and `merge-help`. Its command localizer also omits `version`
+  from metadata lookup arguments and does not provide args for `about`. Impact:
+  the compatibility localizer remaps those two identifiers and supplies the
+  existing per-command `binary` and optional `version` values while delegating
+  metadata traversal and parse-error handling to OrthoConfig.
+- Observation: Fluent renders interpolated `binary` and `version` values with
+  bidirectional isolation marks. Evidence: the compatibility test's actual
+  rendered value. Impact: preserve these marks in regression assertions; the
+  adapter keeps the values and Fluent formatting behaviour intact.
+- Observation: the binary parses all Clap input before loading and starting the
+  harness. Evidence: an end-to-end parse failure with a held listener port, a
+  configured local upstream, and an isolated cassette directory leaves all
+  three untouched. Impact: parser failures cannot start record-mode effects.
+- Observation: the first complete deterministic gate attempt for parser
+  consolidation found only `similar_names` and `doc_markdown` Clippy errors in
+  the new adapter. Its test log records all 340 tests and 27 doctests passing,
+  but lacks a final shell exit status. Impact: fix the lint findings and use a
+  fresh sequential full gate run for conclusive test evidence.
+- Observation: the second parser-milestone gate run found a missing
+  `OrthoConfig` backtick and `expect_used` in the new compatibility test.
+  Impact: backtick the crate name and recover a poisoned test mutex without a
+  panic; both findings are covered by the passing follow-up gate run.
 - Observation: the first full gate pass exposed Clippy findings in the shared
   probe/BDD helper and two Oxford-spelling failures in this plan. `make test`
   passed 336 Nextest cases and 27 doctests; formatting, typecheck, and diagram
@@ -294,6 +354,17 @@ Implementation is in progress. Add validated outcomes, remaining gaps, and
 lessons at each milestone boundary. Do not mark this plan complete until each
 trace link in `Conformance basis` has evidence and every discovery has been
 reconciled with the design and ADRs.
+
+The OrthoConfig 0.9.0 dependency and Rust 1.89.0 floor are in place, and the
+localized parser delegates to the tagged `LocalizeCmd` and
+`parse_localized_command` APIs behind the stable project adapter. Compatibility
+tests preserve Fluent IDs, arguments, bidi formatting, and one-time conversion
+error localization. Layering and binary tests cover the unchanged precedence
+contract and prove a parse failure causes no record startup effects. The latest
+full gate run passed all six repository gates and the locked Rust 1.89.0 check,
+including the test-only lint fixes. CodeRabbit then reviewed 21 files,
+including the compatibility test, with zero findings. Commit and push the
+reviewed milestone, then publish the draft PR.
 
 The test-isolation slice is implemented. Initial full gates exposed Clippy,
 plan-spelling, and ambient filesystem-write issues; each was corrected. A
@@ -394,10 +465,10 @@ The relevant existing architecture contract is
   snapshots detect ID, stream, and display-exit regressions. Domain: root and
   record/replay/verify help, version, unknown argument or subcommand, missing
   value, invalid typed value, and conversion failure. Artefact:
-  `tests/cli_localization_unit.rs`, `tests/binary_localization_e2e.rs`, and the
-  existing snapshots. Evidence: run `cargo test --test cli_localization_unit`
-  and `cargo test --test binary_localization_e2e`; help/version exit
-  successfully, errors fail on stderr, and stock output works with
+  `tests/cli_localization_unit.rs`, `tests/cli_localize_cmd_compat.rs`,
+  `tests/binary_localization_e2e.rs`, and the existing snapshots. Evidence: run
+  the compatibility, localization, and binary end-to-end targets; help/version
+  exit successfully, errors fail on stderr, and stock output works with
   `NoOpLocalizer` and the disable switch. Non-vacuity: use deliberately
   distinct localized and stock strings and test the actual `cli-version` and
   `cli-merge-help` placeholders; a wrong ID or missing argument changes the
