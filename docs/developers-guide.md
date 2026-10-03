@@ -493,6 +493,9 @@ recipes to this.
 
 ### Cranelift exception
 
+The decision is recorded in
+[ADR 002](adr/2026-10-03-adopt-the-rust-build-standard.md).
+
 Measured on 2026-09-28 on the pinned `nightly-2026-02-26`.
 
 Under Cranelift the suite does not build: every binary and test target that

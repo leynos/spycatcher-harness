@@ -2,7 +2,7 @@
 
 use rstest::rstest;
 
-use super::{assignment, commands, runs_cargo_or_whitaker};
+use super::{Host, assignment, commands, make_rustflags, runs_cargo_or_whitaker};
 
 #[rstest]
 #[case::single("cargo build --lib", &["cargo build --lib"])]
@@ -31,4 +31,20 @@ fn only_a_running_cargo_or_whitaker_counts(#[case] command: &str, #[case] expect
 fn a_similarly_named_variable_is_not_a_rustflags_assignment() {
     let found = assignment("CARGO_ENCODED_RUSTFLAGS=\"-Zx\" cargo test", None);
     assert!(found.expect("read the command").is_none());
+}
+
+#[rstest]
+#[case::unterminated("RUSTFLAGS=\"-a cargo test")]
+#[case::unquoted("RUSTFLAGS=-a cargo test")]
+fn a_malformed_rustflags_assignment_is_an_error(#[case] command: &str) {
+    assert!(
+        assignment(command, None).is_err(),
+        "read `{command}` as valid"
+    );
+}
+
+#[test]
+fn a_target_the_makefile_lacks_is_an_error() {
+    let found = make_rustflags("no-such-target-for-the-contract", Host::Linux, None);
+    assert!(found.is_err(), "read a rule that does not exist");
 }
