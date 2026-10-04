@@ -1,9 +1,11 @@
 //! Contract test for where CI installs `mold` relative to the gates.
 //!
-//! The Makefile restates the build standard's `mold` flag for its gate
-//! targets, and coverage links Linux builds with it, so the coverage job must
-//! install `mold` before `make lint` and before the coverage step. The test
-//! reads `ci.yml` as text, ignoring comments, and its reader is held by unit
+//! The Makefile restates the build standard's `mold` flag for its gate targets,
+//! so the job must install `mold` before `make lint`, and before the coverage
+//! step, which builds the same tree on the same runner. (CI's setup-rust
+//! exports `RUSTFLAGS`, which displaces the configured linker flags for
+//! coverage, but the linker still has to be present for every step that links.)
+//! The test reads `ci.yml` as text, ignoring comments, and its reader is held by
 //! tests over fixed workflows, including a late install and none.
 //!
 //! File access goes through a `cap_std` directory handle rooted at the crate

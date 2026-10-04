@@ -26,10 +26,11 @@ fn commands_split_chained_and_branching_lines(#[case] line: &str, #[case] expect
     "RUSTFLAGS=\"-D warnings\" PATH=\"/x:$PATH\" /bin/whitaker --all",
     true
 )]
+#[case("X='a b' cargo test", true)]
 #[case("command -v whitaker", false)]
 #[case("echo whitaker not found", false)]
 fn only_a_running_cargo_or_whitaker_counts(#[case] command: &str, #[case] expected: bool) {
-    assert_eq!(runs_cargo_or_whitaker(command), expected);
+    assert_eq!(runs_cargo_or_whitaker(command).expect("read"), expected);
 }
 
 #[test]
@@ -39,12 +40,23 @@ fn a_similarly_named_variable_is_not_a_rustflags_assignment() {
 }
 
 #[rstest]
-#[case::unterminated("RUSTFLAGS=\"-a cargo test")]
-#[case::unquoted("RUSTFLAGS=-a cargo test")]
-fn a_malformed_rustflags_assignment_is_an_error(#[case] command: &str) {
+#[case::double("RUSTFLAGS=\"-a cargo test")]
+#[case::single("RUSTFLAGS='-a cargo test")]
+fn an_unterminated_assignment_is_an_error(#[case] command: &str) {
     assert!(
         assignment(command, None).is_err(),
         "read `{command}` as valid"
+    );
+}
+
+#[test]
+fn only_a_leading_assignment_counts() {
+    let after = assignment("cargo test -- RUSTFLAGS=\"-a\"", None).expect("read");
+    assert!(after.is_none(), "an argument was read as an assignment");
+    let single = assignment("RUSTFLAGS='-a $x' cargo test", None).expect("read");
+    assert!(
+        single.is_some_and(|flags| flags.names("$x")),
+        "a single-quoted value was expanded"
     );
 }
 

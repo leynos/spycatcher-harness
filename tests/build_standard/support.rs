@@ -14,7 +14,7 @@ pub mod flags;
 #[path = "shell.rs"]
 mod shell;
 
-use shell::{closing_quote, commands, runs_cargo_or_whitaker};
+use shell::{commands, leading_assignments, runs_cargo_or_whitaker};
 
 pub use flags::{Flags, LINUX_SELECTOR, LINUX_TABLES, MOLD_FLAG, Read, THREADS_FLAG, sources};
 
@@ -133,36 +133,24 @@ pub fn dry_run(target: &str, host: Host, inherited: Option<&str>) -> Read<String
 
 /// Returns the `RUSTFLAGS` one command assigns, or `None` when it assigns none.
 ///
-/// The name is matched at a word boundary, so `CARGO_ENCODED_RUSTFLAGS="..."`
-/// is not read as `RUSTFLAGS`.
+/// Only a leading assignment counts: `RUSTFLAGS` after the command word is an
+/// argument. A single-quoted value is taken literally, any other is expanded
+/// by the modelled forms.
 ///
 /// # Errors
 ///
-/// Any spelling other than a double-quoted value still replaces the
-/// configuration's sources, so a form this reader cannot parse fails rather
-/// than passing.
+/// A value this reader cannot model fails rather than passing.
 fn assignment(command: &str, inherited: Option<&str>) -> Read<Option<Flags>> {
-    let at_boundary = |at: &usize| {
-        command
-            .get(..*at)
-            .and_then(|before| before.chars().next_back())
-            .is_none_or(char::is_whitespace)
-    };
-    let Some(start) = command
-        .match_indices("RUSTFLAGS=")
-        .map(|(at, _)| at)
-        .find(at_boundary)
-    else {
+    let (assigned, _) = leading_assignments(command)?;
+    let Some(rustflags) = assigned.iter().find(|a| a.name == "RUSTFLAGS") else {
         return Ok(None);
     };
-    let rest = command
-        .get(start + "RUSTFLAGS=".len()..)
-        .and_then(|value| value.strip_prefix('"'))
-        .ok_or_else(|| format!("unreadable RUSTFLAGS assignment in `{command}`"))?;
-    let value = closing_quote(rest)
-        .and_then(|at| rest.get(..at))
-        .ok_or_else(|| format!("unterminated RUSTFLAGS in `{command}`"))?;
-    expanded(value, inherited).map(Some)
+    if rustflags.expands {
+        return expanded(rustflags.value, inherited).map(Some);
+    }
+    Ok(Some(Flags::from_words(
+        &rustflags.value.split_whitespace().collect::<Vec<_>>(),
+    )))
 }
 
 /// Returns, for each cargo or whitaker command `make -n TARGET` would run on
@@ -180,7 +168,7 @@ pub fn make_rustflags(
     let mut found = Vec::new();
     for line in text.lines() {
         for command in self::commands(line).map_err(route)? {
-            if runs_cargo_or_whitaker(command) {
+            if runs_cargo_or_whitaker(command).map_err(route)? {
                 found.push(assignment(command, inherited).map_err(route)?);
             }
         }

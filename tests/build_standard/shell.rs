@@ -132,37 +132,89 @@ pub fn closing_quote(text: &str) -> Option<usize> {
     None
 }
 
-/// Returns what follows an assigned value: a double-quoted value or a word.
-fn after_value(value: &str) -> &str {
-    let Some(quoted) = value.strip_prefix('"') else {
-        return value
-            .split_once(char::is_whitespace)
-            .map_or("", |(_, rest)| rest);
-    };
-    closing_quote(quoted)
-        .and_then(|at| quoted.get(at + 1..))
-        .unwrap_or_default()
+/// One leading `NAME=value` assignment of a simple command.
+pub struct Assigned<'a> {
+    /// The variable name.
+    pub name: &'a str,
+    /// The value, without its surrounding quotes.
+    pub value: &'a str,
+    /// Whether the shell would expand the value: false only inside single quotes.
+    pub expands: bool,
 }
 
-/// Returns the command word of a simple command, after any leading
-/// `NAME=value` assignments, which is what actually runs.
-fn command_word(command: &str) -> &str {
+/// Returns whether `text` is a shell variable name.
+fn is_name(text: &str) -> bool {
+    !text.is_empty() && text.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+}
+
+/// Takes a double-quoted value off the front of `quoted`, which follows the
+/// opening quote: the value, that it expands, and the text after the closing quote.
+fn take_double(quoted: &str) -> Option<(&str, bool, &str)> {
+    let at = closing_quote(quoted)?;
+    Some((quoted.get(..at)?, true, quoted.get(at + 1..)?))
+}
+
+/// Takes a single-quoted value off the front of `quoted`, which follows the
+/// opening quote. The shell does not expand it.
+fn take_single(quoted: &str) -> Option<(&str, bool, &str)> {
+    let at = quoted.find('\'')?;
+    Some((quoted.get(..at)?, false, quoted.get(at + 1..)?))
+}
+
+/// Takes a bare word off the front of `value`, which the shell expands.
+fn take_word(value: &str) -> (&str, bool, &str) {
+    value
+        .split_once(char::is_whitespace)
+        .map_or((value, true, ""), |(word, rest)| (word, true, rest))
+}
+
+/// Takes one assigned value off the front of `value`: a double-quoted value, a
+/// single-quoted one, or a bare word. Returns it, whether it expands, and the
+/// text after it.
+fn take_value(value: &str) -> Option<(&str, bool, &str)> {
+    match value.chars().next() {
+        Some('"') => take_double(value.get(1..)?),
+        Some('\'') => take_single(value.get(1..)?),
+        _ => Some(take_word(value)),
+    }
+}
+
+/// Splits the leading `NAME=value` assignments off a simple command, returning
+/// them and the rest, which starts at the command word. An assignment later in
+/// the command, such as one after `--`, is an argument and is not read.
+///
+/// # Errors
+///
+/// An unterminated quote means the reader cannot tell where the value ends.
+pub fn leading_assignments(command: &str) -> Read<(Vec<Assigned<'_>>, &str)> {
+    let mut found = Vec::new();
     let mut rest = command.trim_start();
     while let Some((name, value)) = rest.split_once('=') {
-        let is_name =
-            !name.is_empty() && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_');
-        if !is_name {
+        if !is_name(name) {
             break;
         }
-        rest = after_value(value).trim_start();
+        let (text, expands, tail) = take_value(value).ok_or_else(|| {
+            format!("unterminated quote in the assignment of `{name}` in `{command}`")
+        })?;
+        found.push(Assigned {
+            name,
+            value: text,
+            expands,
+        });
+        rest = tail.trim_start();
     }
-    rest.split_whitespace().next().unwrap_or_default()
+    Ok((found, rest))
 }
 
 /// Returns whether a command runs cargo or Whitaker, as opposed to naming one,
 /// as `command -v whitaker` or an `echo` of its path does.
-pub fn runs_cargo_or_whitaker(command: &str) -> bool {
-    let word = command_word(command);
+///
+/// # Errors
+///
+/// An unreadable leading assignment fails rather than hiding the command.
+pub fn runs_cargo_or_whitaker(command: &str) -> Read<bool> {
+    let (_, rest) = leading_assignments(command)?;
+    let word = rest.split_whitespace().next().unwrap_or_default();
     let name = word.rsplit('/').next().unwrap_or(word);
-    matches!(name, "cargo" | "whitaker")
+    Ok(matches!(name, "cargo" | "whitaker"))
 }
