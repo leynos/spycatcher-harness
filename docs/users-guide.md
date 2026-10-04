@@ -354,6 +354,10 @@ harness.shutdown().await?;
 
 ## CLI binary
 
+On Linux, install the `mold` linker before building or running the binary
+through Cargo: the repository's Cargo configuration links Linux builds with it,
+so a build without `mold` fails at the link step.
+
 The `spycatcher-harness` binary now supports three subcommands:
 
 - `record`

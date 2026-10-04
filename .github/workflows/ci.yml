@@ -33,6 +33,10 @@ jobs:
         uses: leynos/shared-actions/.github/actions/setup-rust@ff1dd759dfffc0db3459e30e833f52437ee62b57
       - name: Setup uv
         uses: astral-sh/setup-uv@0e3884b860e20d3f4d5daa2347130beb51ccde47
+        with:
+          # A Rust-only repository has no Python dependency manifest for the
+          # cache key, so caching would only warn about unmatched inputs.
+          enable-cache: false
       - name: Install Nixie
         run: uv tool install nixie-cli==1.1.0
       - name: Install mdtablefix
@@ -58,6 +62,12 @@ jobs:
         run: make nixie
       - name: Install Whitaker
         uses: leynos/shared-actions/.github/actions/install-whitaker@6dea5677a84fec60ca51b07202570e3af12ffdb4
+      - name: Install mold linker
+        # The Makefile restates the build standard's `mold` flag for its
+        # gate targets, so the linker must be present before they build.
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends mold
       - name: Lint
         run: make lint
       - name: Test and Measure Coverage

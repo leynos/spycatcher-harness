@@ -463,3 +463,64 @@ Current record-mode review residuals are tracked as deliberate follow-ups:
 See [`replay-matching-guide.md`](replay-matching-guide.md) for
 `ReplayMatchEngine`, `MatchOutcome`, diagnostics, diff support, and extension
 guidelines for new modules and test files.
+
+## Build standard
+
+Development builds follow the estate's Rust build standard, which
+`.cargo/config.toml` sets and Cargo auto-discovers, so a bare `cargo build`
+gets it. Every `rustflags` source enables the parallel `rustc` frontend with
+`-Zthreads=8`, and the `cfg(target_os = "linux")` source also links with
+`mold`; macOS and Windows keep their platform linker. A Linux host building for
+a Linux target links with `mold`, so install it before a `cargo` build or a
+`make` development target, build scripts included; `make release` and Make
+builds for a non-Linux target add no `mold`, though a caller's own `RUSTFLAGS`
+may still name it. Cranelift is not the development-profile backend here; the
+exception below records why.
+
+Cargo applies a single `rustflags` source rather than merging them, and an
+assigned `RUSTFLAGS` replaces every source. So each source repeats the frontend
+flag, and the Makefile restates both flags as `STANDARD_RUSTFLAGS` for the
+targets that assign `RUSTFLAGS`, adding them to any `RUSTFLAGS` the recipe
+inherits (setup-rust exports one in CI) rather than replacing it; every `lint`
+command assigns it too. The Makefile adds `mold` only when both the host and
+the compilation target (`CARGO_BUILD_TARGET`, when set) are Linux; an Android
+triple contains `-linux-` but is not Linux to Cargo's `target_os`, so it does
+not get `mold`. `make release` assigns the inherited `RUSTFLAGS`, which is
+empty when the caller exports none, so it adds neither standard flag (a
+caller's own value can still contain either). A bare `cargo build --release`
+still takes both flags, because Cargo does not select `rustflags` by profile.
+CI installs `mold` before the first gate target. Bare Cargo on a non-Linux host
+cross-building for a Linux target is outside the standard: the configuration
+selects `mold` by the compilation target alone, so that build would be handed a
+linker the host lacks. Make avoids it by checking the host as well, so use Make
+or a Linux host for it. `tests/build_standard_contract.rs` (readers in
+`tests/build_standard/support.rs`) holds the configuration and the Makefile
+recipes to this, and `tests/build_standard_ci.rs` holds the CI install order.
+
+### Cranelift exception
+
+The decision is recorded in
+[ADR 002](adr/2026-10-03-adopt-the-rust-build-standard.md).
+
+Two observations on the pinned `nightly-2026-02-26`, neither of which
+establishes a compiler root cause:
+
+- **2026-09-28, linking.** Under Cranelift every binary and test target that
+  links `aws-lc-rs` (through `rustls`) fails at the link step with `mold`
+  reporting undefined `aws_lc_0_40_0_*` symbols (for example
+  `aws_lc_0_40_0_EVP_DigestInit_ex`), so `lifecycle_tests`,
+  `canonical_request_hashing_bdd`, `cli_localization_unit` and the
+  `spycatcher-harness` binary never run. The same build on LLVM, with the same
+  `-Zthreads=8` and `mold` flags, links and passes.
+- **2026-09-30, panic propagation.** On the Cranelift route
+  `catch_unwind_reports_err` fails and `thread_join_reports_err` aborts with
+  `failed to initiate panic, error 5`; the `should_panic_recognizes_panic`
+  control and the LLVM controls pass
+  ([issue #146](https://github.com/leynos/spycatcher-harness/issues/146)).
+
+Development builds therefore stay on LLVM. Revisit on or after 2027-04-03, as
+issue #146 records, by re-running the workspace suite and the three
+panic-semantics tests under both backends on the then-supported nightly; if
+Cranelift passes, adopt it and update the routing contracts.
+
+Re-measure on the next toolchain pin.
