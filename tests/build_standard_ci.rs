@@ -58,39 +58,59 @@ fn coverage_job(workflow: &str) -> Job<'_> {
     Job::containing(workflow, "generate-coverage@")
 }
 
-#[test]
-fn ci_installs_mold_before_lint_and_coverage() {
-    let workflow = read(".github/workflows/ci.yml").expect("read ci.yml");
-    let job = coverage_job(&workflow);
-    let installed = job
-        .mold_install_offset()
-        .expect("the coverage job never installs mold");
+/// The one validator of the install order: mold is installed, and before every
+/// gate step that may link. It is the check on the real workflow and on every
+/// fixture, so a fixture that fails it is a fixture the real check would fail.
+fn order_problem(workflow: &str) -> Option<String> {
+    let job = coverage_job(workflow);
+    let Some(installed) = job.mold_install_offset() else {
+        return Some("the coverage job never installs mold".to_owned());
+    };
     for needle in ["make lint", "generate-coverage@"] {
-        let at = job.offset_of(needle).expect("the job lacks a gate step");
-        assert!(installed < at, "mold is installed after `{needle}`");
+        let Some(at) = job.offset_of(needle) else {
+            return Some(format!("the job lacks the `{needle}` gate step"));
+        };
+        if installed >= at {
+            return Some(format!("mold is installed after `{needle}`"));
+        }
     }
+    None
 }
 
 #[test]
-fn the_mold_reader_rejects_a_late_or_missing_install() {
-    let good = coverage_job(GOOD_WORKFLOW);
-    let good_install = good
-        .mold_install_offset()
-        .expect("the good workflow installs mold");
-    assert!(good_install < good.offset_of("make lint").expect("lint"));
-    let late_text = GOOD_WORKFLOW
+fn ci_installs_mold_before_lint_and_coverage() {
+    let workflow = read(".github/workflows/ci.yml").expect("read ci.yml");
+    assert_eq!(order_problem(&workflow), None);
+}
+
+#[test]
+fn the_validator_accepts_the_good_workflow() {
+    assert_eq!(order_problem(GOOD_WORKFLOW), None);
+}
+
+/// Each fixture breaks the install order in one way, and the validator that
+/// checks the real workflow must name it: no install, and an install that comes
+/// after lint.
+#[rstest]
+#[case::missing(
+    GOOD_WORKFLOW.replace("sudo apt-get install --yes mold", "true"),
+    "never installs mold"
+)]
+#[case::after_lint(
+    GOOD_WORKFLOW
         .replace("run: sudo apt-get install --yes mold", "run: echo skipped")
         .replace(
             "      - run: make lint\n",
             "      - run: make lint\n      - run: sudo apt-get install mold\n",
-        );
-    let late = coverage_job(&late_text);
-    let late_install = late
-        .mold_install_offset()
-        .expect("the late workflow installs mold");
-    assert!(late_install > late.offset_of("make lint").expect("lint"));
-    let none_text = GOOD_WORKFLOW.replace("sudo apt-get install --yes mold", "true");
-    assert!(coverage_job(&none_text).mold_install_offset().is_none());
+        ),
+    "after `make lint`"
+)]
+fn the_validator_rejects_a_missing_or_late_install(
+    #[case] workflow: String,
+    #[case] problem: &str,
+) {
+    let found = order_problem(&workflow).expect("the validator accepted a broken order");
+    assert!(found.contains(problem), "{found}");
 }
 
 #[rstest]
@@ -106,12 +126,44 @@ fn the_mold_reader_rejects_a_late_or_missing_install() {
 )]
 #[case::quoted_echo("      - run: echo \"x && sudo apt-get install mold\"\n", false)]
 #[case::description_text("      - description: sudo apt-get install mold\n", false)]
+#[case::folded_echo(
+    "      - run: >\n          echo skipped\n          sudo apt-get install mold\n",
+    false
+)]
+#[case::folded_install(
+    "      - run: >\n          sudo apt-get install\n          --yes mold\n",
+    true
+)]
+#[case::input_false_with_comment(
+    "      - uses: leynos/shared-actions/.github/actions/setup-rust@abc\n        with:\n          install-mold: false # true\n",
+    false
+)]
+#[case::input_true_with_comment(
+    "      - uses: leynos/shared-actions/.github/actions/setup-rust@abc\n        with:\n          install-mold: true # needed\n",
+    true
+)]
+#[case::input_quoted_true(
+    "      - uses: leynos/shared-actions/.github/actions/setup-rust@abc\n        with:\n          install-mold: 'true'\n",
+    true
+)]
+#[case::input_not_exactly_true(
+    "      - uses: leynos/shared-actions/.github/actions/setup-rust@abc\n        with:\n          install-mold: untrue\n",
+    false
+)]
+#[case::input_in_env_not_with(
+    "      - uses: leynos/shared-actions/.github/actions/setup-rust@abc\n        env:\n          install-mold: true\n",
+    false
+)]
+#[case::lookalike_action(
+    "      - uses: org/not-setup-rust-really@abc\n        with:\n          install-mold: true\n",
+    false
+)]
 #[case::block_run(
     "      - run: |\n          sudo apt-get update\n          sudo apt-get install mold\n",
     true
 )]
 #[case::setup_rust_input(
-    "      - uses: org/setup-rust@abc\n        with:\n          install-mold: true\n",
+    "      - uses: leynos/shared-actions/.github/actions/setup-rust@abc\n        with:\n          install-mold: true\n",
     true
 )]
 #[case::unrelated_action_input(

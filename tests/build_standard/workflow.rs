@@ -67,33 +67,60 @@ impl<'a> Text<'a> {
     }
 }
 
-/// Where a scan for `run` commands stands: inside a `run: |` block (holding the
-/// key's indent) or not, and what it has found.
+/// Where a scan for `run` commands stands: inside a `run: |` or `run: >` block
+/// (holding the key's indent) or not, and what it has found.
+///
+/// A literal block (`|`) yields one command per line. A folded block (`>`) is
+/// one command: YAML folds its lines into a single line, so an `echo` line
+/// followed by an install line is one `echo`, not an install.
 #[derive(Default)]
-struct RunScan<'a> {
+struct RunScan {
     /// The indent of the `run:` key whose block the scan is inside, if any.
     block: Option<usize>,
+    /// The offset and text of the folded block being gathered, if any.
+    folded: Option<(usize, String)>,
     /// The commands found, with their line offsets.
-    found: Vec<(usize, &'a str)>,
+    found: Vec<(usize, String)>,
 }
 
-impl<'a> RunScan<'a> {
+impl RunScan {
     /// Takes a line that sits inside the open block, ending the block otherwise.
     /// Returns whether the line was consumed.
-    fn take_block_line(&mut self, at: usize, line: Text<'a>) -> bool {
+    fn take_block_line(&mut self, at: usize, line: Text<'_>) -> bool {
         let Some(key_indent) = self.block else {
             return false;
         };
         if line.indent() > key_indent {
-            self.found.push((at, line.0.trim()));
+            self.add_body(at, line);
             return true;
         }
-        self.block = None;
+        self.end_block();
         false
     }
 
+    /// Adds a block's body line: a command of its own in a literal block, or
+    /// the next words of the one folded command.
+    fn add_body(&mut self, at: usize, line: Text<'_>) {
+        let body = line.0.trim();
+        match self.folded.as_mut() {
+            Some((_, text)) => {
+                if !text.is_empty() {
+                    text.push(' ');
+                }
+                text.push_str(body);
+            }
+            None => self.found.push((at, body.to_owned())),
+        }
+    }
+
+    /// Closes the open block, emitting a folded block as its one command.
+    fn end_block(&mut self) {
+        self.block = None;
+        self.found.extend(self.folded.take());
+    }
+
     /// Starts a `run:` command from a line that holds the key, if it does.
-    fn take_key_line(&mut self, at: usize, line: Text<'a>) {
+    fn take_key_line(&mut self, at: usize, line: Text<'_>) {
         let Some(rest) = line.key_text().strip_prefix("run:") else {
             return;
         };
@@ -101,13 +128,14 @@ impl<'a> RunScan<'a> {
         let inline = rest.trim();
         if inline.starts_with(['|', '>']) {
             self.block = Some(line.indent() + dash);
+            self.folded = inline.starts_with('>').then(|| (at, String::new()));
         } else if !inline.is_empty() {
-            self.found.push((at, inline));
+            self.found.push((at, inline.to_owned()));
         }
     }
 
     /// Reads one line of the job.
-    fn feed(&mut self, at: usize, line: Text<'a>) {
+    fn feed(&mut self, at: usize, line: Text<'_>) {
         if !line.is_inert() && !self.take_block_line(at, line) {
             self.take_key_line(at, line);
         }
@@ -154,7 +182,7 @@ impl<'a> Job<'a> {
 
     /// Returns the lines of the step that holds line `at`: from its `- ` line to
     /// the next step at the same or a shallower indent.
-    fn step(&self, at: usize) -> &[&'a str] {
+    fn step_range(&self, at: usize) -> std::ops::Range<usize> {
         let start = (0..=at)
             .rfind(|&i| self.lines.get(i).is_some_and(|l| Text(l).starts_step()))
             .unwrap_or(at);
@@ -166,7 +194,12 @@ impl<'a> Job<'a> {
                     .is_some_and(|l| Text(l).starts_step() && Text(l).indent() <= start_indent)
             })
             .unwrap_or(self.lines.len());
-        self.lines.get(start..end).unwrap_or_default()
+        start..end
+    }
+
+    /// Returns the lines of the step that holds line `at`.
+    fn step(&self, at: usize) -> &[&'a str] {
+        self.lines.get(self.step_range(at)).unwrap_or_default()
     }
 
     /// Returns whether any key of the step holding line `at` satisfies `wanted`.
@@ -181,27 +214,57 @@ impl<'a> Job<'a> {
         self.step_has(at, |key| key.starts_with("if:"))
     }
 
-    /// Returns whether the step runs the setup-rust action.
+    /// Returns whether the step runs the shared setup-rust action: its `uses:`
+    /// value names that action's path exactly, not any text that contains it.
     fn uses_setup_rust(&self, at: usize) -> bool {
         self.step_has(at, |key| {
-            key.starts_with("uses:") && key.contains("setup-rust")
+            key.strip_prefix("uses:").is_some_and(|value| {
+                value
+                    .trim()
+                    .starts_with("leynos/shared-actions/.github/actions/setup-rust@")
+            })
         })
     }
 
     /// Returns every executable `run` command, with its line offset: the inline
-    /// text of `run: cmd` and each line of a `run: |` or `run: >` block.
-    fn run_commands(&self) -> Vec<(usize, &'a str)> {
+    /// text of `run: cmd`, each line of a `run: |` block, and the single folded
+    /// line of a `run: >` block.
+    fn run_commands(&self) -> Vec<(usize, String)> {
         let mut scan = RunScan::default();
         for (at, line) in self.lines.iter().enumerate() {
             scan.feed(at, Text(line));
         }
+        scan.end_block();
         scan.found
     }
 
-    /// Returns whether line `at` is setup-rust's `install-mold` input set to true.
+    /// Returns whether line `at` is an `install-mold` key whose value is exactly
+    /// `true`, once a trailing comment and any quotes are removed.
     fn is_mold_input(&self, at: usize) -> bool {
-        let text = self.lines.get(at).copied().map_or("", |line| line.trim());
-        !Text(text).is_inert() && text.starts_with("install-mold:") && text.contains("true")
+        let Some(line) = self.lines.get(at).map(|line| Text(line)) else {
+            return false;
+        };
+        let Some(raw) = line.key_text().strip_prefix("install-mold:") else {
+            return false;
+        };
+        let value = raw.split(" #").next().unwrap_or_default();
+        !line.is_inert() && value.trim().trim_matches(['"', '\'']) == "true"
+    }
+
+    /// Returns whether line `at` sits directly inside a `with:` mapping of its
+    /// step: the nearest shallower line of the step is a `with:` key.
+    fn is_under_with(&self, at: usize) -> bool {
+        let Some(indent) = self.lines.get(at).map(|line| Text(line).indent()) else {
+            return false;
+        };
+        let before = self.step_range(at).start..at;
+        self.lines
+            .get(before)
+            .unwrap_or_default()
+            .iter()
+            .map(|line| Text(line))
+            .rfind(|line| !line.is_inert() && line.indent() < indent)
+            .is_some_and(|line| line.key_text() == "with:")
     }
 
     /// Returns the offset of the first installation of mold: an `apt` install
@@ -211,12 +274,15 @@ impl<'a> Job<'a> {
         let commands = self
             .run_commands()
             .into_iter()
-            .filter(|&(at, text)| {
-                !self.is_conditional(at) && Text(text).chain().into_iter().any(Text::installs_mold)
+            .filter(|(at, text)| {
+                !self.is_conditional(*at) && Text(text).chain().into_iter().any(Text::installs_mold)
             })
             .map(|(at, _)| at);
         let inputs = (0..self.lines.len()).filter(|&at| {
-            self.is_mold_input(at) && self.uses_setup_rust(at) && !self.is_conditional(at)
+            self.is_mold_input(at)
+                && self.is_under_with(at)
+                && self.uses_setup_rust(at)
+                && !self.is_conditional(at)
         });
         commands.chain(inputs).min()
     }
