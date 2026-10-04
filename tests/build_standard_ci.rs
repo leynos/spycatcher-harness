@@ -63,8 +63,10 @@ fn coverage_job(workflow: &str) -> Job<'_> {
 /// fixture, so a fixture that fails it is a fixture the real check would fail.
 fn order_problem(workflow: &str) -> Option<String> {
     let job = coverage_job(workflow);
-    let Some(installed) = job.mold_install_offset() else {
-        return Some("the coverage job never installs mold".to_owned());
+    let installed = match job.mold_install_offset() {
+        Ok(Some(installed)) => installed,
+        Ok(None) => return Some("the coverage job never installs mold".to_owned()),
+        Err(error) => return Some(format!("unrecognised workflow form: {error}")),
     };
     for needle in ["make lint", "generate-coverage@"] {
         let Some(at) = job.offset_of(needle) else {
@@ -126,22 +128,6 @@ fn the_validator_rejects_a_missing_or_late_install(
 )]
 #[case::quoted_echo("      - run: echo \"x && sudo apt-get install mold\"\n", false)]
 #[case::description_text("      - description: sudo apt-get install mold\n", false)]
-#[case::folded_echo(
-    "      - run: >\n          echo skipped\n          sudo apt-get install mold\n",
-    false
-)]
-#[case::folded_install(
-    "      - run: >\n          sudo apt-get install\n          --yes mold\n",
-    true
-)]
-#[case::input_false_with_comment(
-    "      - uses: leynos/shared-actions/.github/actions/setup-rust@abc\n        with:\n          install-mold: false # true\n",
-    false
-)]
-#[case::input_true_with_comment(
-    "      - uses: leynos/shared-actions/.github/actions/setup-rust@abc\n        with:\n          install-mold: true # needed\n",
-    true
-)]
 #[case::input_quoted_true(
     "      - uses: leynos/shared-actions/.github/actions/setup-rust@abc\n        with:\n          install-mold: 'true'\n",
     true
@@ -172,9 +158,45 @@ fn the_validator_rejects_a_missing_or_late_install(
 )]
 fn the_install_reader_counts_only_runnable_installs(#[case] step: &str, #[case] counts: bool) {
     let workflow = GOOD_WORKFLOW.replace(INSTALL_STEP, step);
-    assert_eq!(
-        coverage_job(&workflow).mold_install_offset().is_some(),
-        counts,
-        "{step}"
-    );
+    let found = coverage_job(&workflow)
+        .mold_install_offset()
+        .expect("a recognised form");
+    assert_eq!(found.is_some(), counts, "{step}");
+}
+
+/// The reader judges this repository's own workflow forms and rejects any other
+/// with a named error, so a form it cannot model is never read as an install or
+/// as no install.
+#[rstest]
+#[case::folded_echo(
+    "      - run: >\n          echo skipped\n          sudo apt-get install mold\n",
+    "folded scalar"
+)]
+#[case::folded_install(
+    "      - run: >\n          sudo apt-get install\n          --yes mold\n",
+    "folded scalar"
+)]
+#[case::comment_after_false(
+    "      - uses: leynos/shared-actions/.github/actions/setup-rust@abc\n        with:\n          install-mold: false # true\n",
+    "trailing comment"
+)]
+#[case::comment_after_true(
+    "      - uses: leynos/shared-actions/.github/actions/setup-rust@abc\n        with:\n          install-mold: true # needed\n",
+    "trailing comment"
+)]
+fn the_reader_rejects_a_form_it_does_not_recognise(#[case] step: &str, #[case] error: &str) {
+    let workflow = GOOD_WORKFLOW.replace(INSTALL_STEP, step);
+    let message = coverage_job(&workflow)
+        .mold_install_offset()
+        .expect_err("the reader accepted an unrecognised form");
+    assert!(message.contains(error), "{message}");
+}
+
+/// The validator turns an unrecognised form into a rejection of the workflow, so
+/// the real check fails on it as well.
+#[test]
+fn the_validator_rejects_a_workflow_with_an_unrecognised_form() {
+    let workflow = GOOD_WORKFLOW.replace(INSTALL_STEP, "      - run: >\n          true\n");
+    let found = order_problem(&workflow).expect("the validator accepted a folded scalar");
+    assert!(found.contains("unrecognised workflow form"), "{found}");
 }

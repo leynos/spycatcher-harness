@@ -2,7 +2,9 @@
 //!
 //! It models only what the CI-order contract needs: finding the job that holds a
 //! step, the executable `run` commands of that job, whether a step is
-//! conditional, and where mold is installed. Text that is not a runnable command
+//! conditional, and where mold is installed. It judges this repository's own
+//! workflow forms and fails closed: a form it does not recognise is a named
+//! error, not a guess. Text that is not a runnable command
 //! (a comment, a name, a description) is never evidence.
 
 /// One line of workflow text.
@@ -67,18 +69,20 @@ impl<'a> Text<'a> {
     }
 }
 
-/// Where a scan for `run` commands stands: inside a `run: |` or `run: >` block
-/// (holding the key's indent) or not, and what it has found.
+/// The result of a read that fails closed: a form the reader does not recognise
+/// is a named error, never a guess.
+pub type Checked<T> = Result<T, String>;
+
+/// Where a scan for `run` commands stands: inside a `run: |` block (holding the
+/// key's indent) or not, and what it has found.
 ///
-/// A literal block (`|`) yields one command per line. A folded block (`>`) is
-/// one command: YAML folds its lines into a single line, so an `echo` line
-/// followed by an install line is one `echo`, not an install.
+/// It recognises a one-line `run: cmd` and a literal `run: |` block, the forms
+/// this repository's workflows use. A folded `run: >` block is an error, since
+/// YAML would join its lines into one command and the reader does not model that.
 #[derive(Default)]
 struct RunScan {
     /// The indent of the `run:` key whose block the scan is inside, if any.
     block: Option<usize>,
-    /// The offset and text of the folded block being gathered, if any.
-    folded: Option<(usize, String)>,
     /// The commands found, with their line offsets.
     found: Vec<(usize, String)>,
 }
@@ -91,54 +95,39 @@ impl RunScan {
             return false;
         };
         if line.indent() > key_indent {
-            self.add_body(at, line);
+            self.found.push((at, line.0.trim().to_owned()));
             return true;
         }
-        self.end_block();
+        self.block = None;
         false
     }
 
-    /// Adds a block's body line: a command of its own in a literal block, or
-    /// the next words of the one folded command.
-    fn add_body(&mut self, at: usize, line: Text<'_>) {
-        let body = line.0.trim();
-        match self.folded.as_mut() {
-            Some((_, text)) => {
-                if !text.is_empty() {
-                    text.push(' ');
-                }
-                text.push_str(body);
-            }
-            None => self.found.push((at, body.to_owned())),
-        }
-    }
-
-    /// Closes the open block, emitting a folded block as its one command.
-    fn end_block(&mut self) {
-        self.block = None;
-        self.found.extend(self.folded.take());
-    }
-
     /// Starts a `run:` command from a line that holds the key, if it does.
-    fn take_key_line(&mut self, at: usize, line: Text<'_>) {
+    fn take_key_line(&mut self, at: usize, line: Text<'_>) -> Checked<()> {
         let Some(rest) = line.key_text().strip_prefix("run:") else {
-            return;
+            return Ok(());
         };
         let dash = if line.starts_step() { 2 } else { 0 };
         let inline = rest.trim();
-        if inline.starts_with(['|', '>']) {
+        if inline.starts_with('>') {
+            return Err(format!(
+                "folded scalar `run: >` at line {at} is not recognised; write `run: |` or one line"
+            ));
+        }
+        if inline.starts_with('|') {
             self.block = Some(line.indent() + dash);
-            self.folded = inline.starts_with('>').then(|| (at, String::new()));
         } else if !inline.is_empty() {
             self.found.push((at, inline.to_owned()));
         }
+        Ok(())
     }
 
     /// Reads one line of the job.
-    fn feed(&mut self, at: usize, line: Text<'_>) {
-        if !line.is_inert() && !self.take_block_line(at, line) {
-            self.take_key_line(at, line);
+    fn feed(&mut self, at: usize, line: Text<'_>) -> Checked<()> {
+        if line.is_inert() || self.take_block_line(at, line) {
+            return Ok(());
         }
+        self.take_key_line(at, line)
     }
 }
 
@@ -227,28 +216,41 @@ impl<'a> Job<'a> {
     }
 
     /// Returns every executable `run` command, with its line offset: the inline
-    /// text of `run: cmd`, each line of a `run: |` block, and the single folded
-    /// line of a `run: >` block.
-    fn run_commands(&self) -> Vec<(usize, String)> {
+    /// text of `run: cmd` and each line of a `run: |` block.
+    ///
+    /// # Errors
+    ///
+    /// A folded `run: >` block, which this reader does not model.
+    fn run_commands(&self) -> Checked<Vec<(usize, String)>> {
         let mut scan = RunScan::default();
         for (at, line) in self.lines.iter().enumerate() {
-            scan.feed(at, Text(line));
+            scan.feed(at, Text(line))?;
         }
-        scan.end_block();
-        scan.found
+        Ok(scan.found)
     }
 
-    /// Returns whether line `at` is an `install-mold` key whose value is exactly
-    /// `true`, once a trailing comment and any quotes are removed.
-    fn is_mold_input(&self, at: usize) -> bool {
+    /// Reads line `at` as an `install-mold` input: `None` when it is not one,
+    /// otherwise whether its value is exactly `true` (quotes removed).
+    ///
+    /// # Errors
+    ///
+    /// A value with a trailing comment, which this reader does not model.
+    fn mold_input(&self, at: usize) -> Checked<Option<bool>> {
         let Some(line) = self.lines.get(at).map(|line| Text(line)) else {
-            return false;
+            return Ok(None);
         };
         let Some(raw) = line.key_text().strip_prefix("install-mold:") else {
-            return false;
+            return Ok(None);
         };
-        let value = raw.split(" #").next().unwrap_or_default();
-        !line.is_inert() && value.trim().trim_matches(['"', '\'']) == "true"
+        if line.is_inert() {
+            return Ok(None);
+        }
+        if raw.contains(" #") {
+            return Err(format!(
+                "trailing comment in the `install-mold` value at line {at} is not recognised"
+            ));
+        }
+        Ok(Some(raw.trim().trim_matches(['"', '\'']) == "true"))
     }
 
     /// Returns whether line `at` sits directly inside a `with:` mapping of its
@@ -267,23 +269,35 @@ impl<'a> Job<'a> {
             .is_some_and(|line| line.key_text() == "with:")
     }
 
+    /// Returns whether line `at` is under `with:` of an unconditional step that
+    /// runs the shared setup-rust action, so it takes effect.
+    fn is_active_setup_rust_input(&self, at: usize) -> bool {
+        self.is_under_with(at) && self.uses_setup_rust(at) && !self.is_conditional(at)
+    }
+
     /// Returns the offset of the first installation of mold: an `apt` install
     /// command the job runs, or setup-rust's `install-mold` input set to true,
     /// in a step with no `if:` condition.
-    pub fn mold_install_offset(&self) -> Option<usize> {
+    ///
+    /// # Errors
+    ///
+    /// A form the reader does not recognise: a folded `run: >` block, or a
+    /// comment after an `install-mold` value.
+    pub fn mold_install_offset(&self) -> Checked<Option<usize>> {
         let commands = self
-            .run_commands()
+            .run_commands()?
             .into_iter()
             .filter(|(at, text)| {
                 !self.is_conditional(*at) && Text(text).chain().into_iter().any(Text::installs_mold)
             })
             .map(|(at, _)| at);
-        let inputs = (0..self.lines.len()).filter(|&at| {
-            self.is_mold_input(at)
-                && self.is_under_with(at)
-                && self.uses_setup_rust(at)
-                && !self.is_conditional(at)
-        });
-        commands.chain(inputs).min()
+        let mut inputs = Vec::new();
+        for at in 0..self.lines.len() {
+            let on = self.mold_input(at)?.unwrap_or(false);
+            if on && self.is_active_setup_rust_input(at) {
+                inputs.push(at);
+            }
+        }
+        Ok(commands.chain(inputs).min())
     }
 }
