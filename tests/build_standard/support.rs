@@ -116,11 +116,14 @@ pub fn dry_run(target: &str, host: Host, inherited: Option<&str>) -> Read<String
         .env_remove("MFLAGS")
         .env_remove("MAKELEVEL");
     with_inherited(&mut make, inherited);
-    let output = make.output()?;
+    let output = make
+        .output()
+        .map_err(|error| format!("cannot run `make -n {target}` on {host:?}: {error}"))?;
     if !output.status.success() {
         return Err(format!(
-            "`make -n {target}` on {host:?} failed ({}): {}",
+            "`make -n {target}` on {host:?} failed ({}); stdout: {}; stderr: {}",
             output.status,
+            String::from_utf8_lossy(&output.stdout),
             String::from_utf8_lossy(&output.stderr)
         )
         .into());
@@ -171,11 +174,14 @@ pub fn make_rustflags(
     inherited: Option<&str>,
 ) -> Read<Vec<Option<Flags>>> {
     let text = dry_run(target, host, inherited)?;
+    let route = |error: Box<dyn std::error::Error>| {
+        format!("reading `make -n {target}` on {host:?}: {error}")
+    };
     let mut found = Vec::new();
     for line in text.lines() {
-        for command in self::commands(line)? {
+        for command in self::commands(line).map_err(route)? {
             if runs_cargo_or_whitaker(command) {
-                found.push(assignment(command, inherited)?);
+                found.push(assignment(command, inherited).map_err(route)?);
             }
         }
     }

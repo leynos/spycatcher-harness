@@ -42,9 +42,10 @@ impl Flags {
         Self(joined)
     }
 
-    /// Returns whether the list holds no flag at all.
-    pub const fn is_empty(&self) -> bool {
-        self.0.is_empty()
+    /// Returns whether the list is exactly the caller's words, in order and
+    /// with nothing added.
+    pub fn is_exactly(&self, caller: &str) -> bool {
+        self.0 == Self::from_words(&caller.split_whitespace().collect::<Vec<_>>()).0
     }
 
     /// Returns whether the list names one flag.
@@ -75,6 +76,9 @@ impl Flags {
     }
 }
 
+/// The Cargo configuration the readers parse, named in their errors.
+const CONFIG: &str = ".cargo/config.toml";
+
 /// Reads one table's `rustflags`, which Cargo accepts as an array of strings or
 /// as one whitespace-separated string.
 ///
@@ -82,7 +86,7 @@ impl Flags {
 ///
 /// Any other shape, or an array member that is not a string, would be skipped
 /// by a lenient reader and so hide a flag from every check, so it is an error.
-fn table_flags(table: &toml::Value) -> Read<Option<Flags>> {
+pub fn table_flags(key: &str, table: &toml::Value) -> Read<Option<Flags>> {
     let Some(raw) = table.get("rustflags") else {
         return Ok(None);
     };
@@ -92,13 +96,16 @@ fn table_flags(table: &toml::Value) -> Read<Option<Flags>> {
         items
             .iter()
             .map(|item| {
-                item.as_str()
-                    .map(str::to_owned)
-                    .ok_or_else(|| format!("non-string `rustflags` member {item}"))
+                item.as_str().map(str::to_owned).ok_or_else(|| {
+                    format!("{CONFIG}: `[{key}] rustflags` has a non-string member {item}")
+                })
             })
             .collect::<Result<_, _>>()?
     } else {
-        return Err(format!("`rustflags` must be a string or an array, found {raw}").into());
+        return Err(format!(
+            "{CONFIG}: `[{key}] rustflags` must be a string or an array, found {raw}"
+        )
+        .into());
     };
     Ok(Some(Flags::from_words(&words)))
 }
@@ -111,14 +118,19 @@ pub fn read(path: &str) -> Read<String> {
 
 /// Returns every `rustflags` source in the configuration, by table name.
 pub fn sources() -> Read<Vec<(String, Flags)>> {
-    let config: toml::Value = toml::from_str(&read(".cargo/config.toml")?)?;
+    let config: toml::Value = toml::from_str(&read(CONFIG)?)?;
     let mut found = Vec::new();
-    if let Some(flags) = config.get("build").map(table_flags).transpose()?.flatten() {
+    if let Some(flags) = config
+        .get("build")
+        .map(|table| table_flags("build", table))
+        .transpose()?
+        .flatten()
+    {
         found.push(("build".to_owned(), flags));
     }
     if let Some(targets) = config.get("target").and_then(toml::Value::as_table) {
         for (key, table) in targets {
-            if let Some(flags) = table_flags(table)? {
+            if let Some(flags) = table_flags(key, table)? {
                 found.push((key.clone(), flags));
             }
         }

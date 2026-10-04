@@ -3,7 +3,9 @@
 use rstest::rstest;
 
 use super::{
-    Host, assignment, dry_run, expand_value, make_rustflags,
+    Host, assignment, dry_run, expand_value,
+    flags::table_flags,
+    make_rustflags,
     shell::{commands, runs_cargo_or_whitaker},
 };
 
@@ -86,14 +88,23 @@ fn the_two_spellings_of_a_codegen_flag_compare_equal(
 }
 
 #[test]
-fn a_failed_make_reports_its_status_and_stderr() {
+fn a_failed_make_reports_its_context_status_and_both_streams() {
     let message = dry_run("no-such-target-for-the-contract", Host::Linux, None)
         .expect_err("make has no such rule")
         .to_string();
-    assert!(
-        message.contains("failed (") && message.contains("No rule"),
-        "{message}"
-    );
+    for wanted in [
+        "make -n no-such-target-for-the-contract",
+        "Linux",
+        "failed (",
+        "stdout:",
+        "stderr:",
+        "No rule",
+    ] {
+        assert!(
+            message.contains(wanted),
+            "`{wanted}` missing from: {message}"
+        );
+    }
 }
 
 #[rstest]
@@ -128,4 +139,41 @@ fn an_escaped_quote_does_not_end_the_assigned_value() {
     assert!(found.is_err(), "the escaped quote ended the value early");
     let hidden = commands("X=\"a \\\" && b\" cargo test").expect("split");
     assert_eq!(hidden.len(), 1);
+}
+
+#[test]
+fn a_flag_list_missing_or_reordering_the_callers_words_does_not_carry_them() {
+    use super::Flags;
+    let flags = Flags::from_words(&["-Zthreads=8", "--cfg", "x"]);
+    assert!(!flags.carries_run("--cfg y"), "carried a missing word");
+    assert!(!flags.carries_run("x --cfg"), "carried reordered words");
+    assert!(flags.is_exactly("-Zthreads=8 --cfg x"));
+    assert!(!flags.is_exactly("--cfg x"));
+}
+
+#[rstest]
+#[case::string("rustflags = \"-Zthreads=8 -Cdebuginfo=1\"", Some(2))]
+#[case::array("rustflags = [\"-Zthreads=8\", \"-C\", \"debuginfo=1\"]", Some(2))]
+#[case::absent("other = 1", None)]
+fn the_accepted_rustflags_shapes_read_as_flags(#[case] table: &str, #[case] count: Option<usize>) {
+    let value: toml::Value = toml::from_str(table).expect("parse the fixture");
+    let found = table_flags("build", &value).expect("read the table");
+    assert_eq!(
+        found.map(|flags| flags.names("-Zthreads=8")),
+        count.map(|_| true)
+    );
+}
+
+#[rstest]
+#[case::number("rustflags = 3")]
+#[case::non_string_member("rustflags = [\"-Zthreads=8\", 4]")]
+fn a_malformed_rustflags_table_is_an_error_naming_the_file_and_key(#[case] table: &str) {
+    let value: toml::Value = toml::from_str(table).expect("parse the fixture");
+    let message = table_flags("build", &value)
+        .expect_err("malformed")
+        .to_string();
+    assert!(
+        message.contains(".cargo/config.toml") && message.contains("[build]"),
+        "{message}"
+    );
 }

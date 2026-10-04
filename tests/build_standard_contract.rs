@@ -10,12 +10,12 @@
 //!
 //! The Makefile clauses run `make -n` and read the commands it would run,
 //! rather than the Makefile's text, so a flag lost through a variable or a
-//! recipe edit fails here. Each assigned value is expanded by the shell, with
-//! and without an inherited `RUSTFLAGS`, exactly as the recipe would expand
-//! it, and a line chaining several commands is read command by command. The
-//! readers live in `build_standard/support.rs`; the expectations below state,
-//! per host and target, whether mold applies, independently of the Makefile's
-//! own rule.
+//! recipe edit fails here. Each assigned value is expanded by a small model of
+//! the forms the recipes use, not by a shell, with and without an inherited
+//! `RUSTFLAGS`, and a line chaining several commands is read command by
+//! command. The readers live in `build_standard/support.rs`; the expectations
+//! below state, per host and target, whether mold applies, independently of the
+//! Makefile's own rule.
 
 #[path = "build_standard/support.rs"]
 mod support;
@@ -111,6 +111,9 @@ fn sources_differ_only_by_the_linker() {
 #[rstest]
 #[case::linux(Host::Linux, None, true)]
 #[case::linux_with_a_caller(Host::Linux, Some(INHERITED), true)]
+#[case::linux_with_an_empty_caller(Host::Linux, Some(""), true)]
+#[case::linux_with_a_blank_caller(Host::Linux, Some("   "), true)]
+#[case::linux_with_a_split_codegen_flag(Host::Linux, Some("-C debuginfo=1"), true)]
 #[case::macos(Host::Darwin, None, false)]
 #[case::linux_to_macos(Host::LinuxBuildingFor("aarch64-apple-darwin"), None, false)]
 #[case::linux_to_windows(Host::LinuxBuildingFor("x86_64-pc-windows-msvc"), None, false)]
@@ -140,15 +143,16 @@ fn the_assigning_targets_assign_rustflags() {
     }
 }
 
-/// Release ships, so it stays on the default flags. Every command must assign
+/// Release ships, so it adds neither standard flag. Every command must assign
 /// `RUSTFLAGS`, since only an assignment displaces the configuration's
-/// sources. It forwards the caller's own value untouched, and an empty one when
-/// the caller exports none. Coverage runs in CI, outwith the Makefile, and is
-/// not checked here.
+/// sources. It forwards the caller's own value untouched, even one that names a
+/// standard flag, and an empty one when the caller exports none. Coverage runs
+/// in CI, outwith the Makefile, and is not checked here.
 #[rstest]
 #[case::no_caller(None)]
 #[case::with_a_caller(Some(INHERITED))]
-fn release_takes_neither_flag(#[case] inherited: Option<&str>) {
+#[case::a_caller_naming_a_standard_flag(Some("-Zthreads=8"))]
+fn release_adds_no_standard_flag(#[case] inherited: Option<&str>) {
     for target in HELD_OUT_TARGETS {
         for assigned in
             make_rustflags(target, Host::Linux, inherited).expect("read `make -n` output")
@@ -157,20 +161,9 @@ fn release_takes_neither_flag(#[case] inherited: Option<&str>) {
                 panic!("`make {target}` runs a command that takes the configuration's flags")
             });
             assert!(
-                !flags.names(THREADS_FLAG),
-                "`make {target}` takes {THREADS_FLAG}"
+                flags.is_exactly(inherited.unwrap_or_default()),
+                "`make {target}` assigns {flags:?}, not the caller's {inherited:?}"
             );
-            assert!(!flags.names(MOLD_FLAG), "`make {target}` takes {MOLD_FLAG}");
-            match inherited {
-                Some(caller) => assert!(
-                    flags.carries_run(caller),
-                    "`make {target}` drops the caller's RUSTFLAGS: {flags:?}"
-                ),
-                None => assert!(
-                    flags.is_empty(),
-                    "`make {target}` assigns {flags:?} unasked"
-                ),
-            }
         }
     }
 }
