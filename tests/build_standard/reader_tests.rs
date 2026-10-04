@@ -3,7 +3,8 @@
 use rstest::rstest;
 
 use super::{
-    Host, assignment, commands, dry_run, expanded, make_rustflags, runs_cargo_or_whitaker,
+    Host, assignment, dry_run, expand_value, make_rustflags,
+    shell::{commands, runs_cargo_or_whitaker},
 };
 
 #[rstest]
@@ -73,17 +74,58 @@ fn an_empty_or_blank_caller_value_is_carried_by_any_flags() {
     assert!(!flags.carries_run("--cfg x"));
 }
 
+#[rstest]
+#[case::split_stored_joined_caller(&["-C", "debuginfo=1"], "-Cdebuginfo=1")]
+#[case::joined_stored_split_caller(&["-Cdebuginfo=1"], "-C debuginfo=1")]
+fn the_two_spellings_of_a_codegen_flag_compare_equal(
+    #[case] stored: &[&str],
+    #[case] caller: &str,
+) {
+    use super::Flags;
+    assert!(Flags::from_words(stored).carries_run(caller));
+}
+
 #[test]
-fn a_failed_command_reports_its_status_and_stderr() {
-    let from_make = dry_run("no-such-target-for-the-contract", Host::Linux, None)
+fn a_failed_make_reports_its_status_and_stderr() {
+    let message = dry_run("no-such-target-for-the-contract", Host::Linux, None)
         .expect_err("make has no such rule")
         .to_string();
     assert!(
-        from_make.contains("failed (") && from_make.contains("No rule"),
-        "{from_make}"
+        message.contains("failed (") && message.contains("No rule"),
+        "{message}"
     );
-    let from_shell = expanded("${", None)
-        .expect_err("bad substitution")
-        .to_string();
-    assert!(from_shell.contains("could not expand"), "{from_shell}");
+}
+
+#[rstest]
+#[case::none("${RUSTFLAGS:+$RUSTFLAGS }-D warnings", None, "-D warnings")]
+#[case::caller(
+    "${RUSTFLAGS:+$RUSTFLAGS }-D warnings",
+    Some("--cfg x"),
+    "--cfg x -D warnings"
+)]
+#[case::empty_caller("${RUSTFLAGS:+$RUSTFLAGS }-D warnings", Some(""), "-D warnings")]
+#[case::forwarded("${RUSTFLAGS-}", Some("--cfg x"), "--cfg x")]
+fn the_modelled_expansions_are_evaluated(
+    #[case] value: &str,
+    #[case] inherited: Option<&str>,
+    #[case] expected: &str,
+) {
+    assert_eq!(expand_value(value, inherited).expect("expand"), expected);
+}
+
+#[rstest]
+#[case::command_substitution("$(touch pwned) -D warnings")]
+#[case::backtick("`id`")]
+#[case::other_variable("$HOME")]
+#[case::backslash("a \\\" b")]
+fn an_unmodelled_expansion_is_an_error_not_a_guess(#[case] value: &str) {
+    assert!(expand_value(value, None).is_err(), "expanded `{value}`");
+}
+
+#[test]
+fn an_escaped_quote_does_not_end_the_assigned_value() {
+    let found = assignment("RUSTFLAGS=\"a \\\" b\" cargo test", None);
+    assert!(found.is_err(), "the escaped quote ended the value early");
+    let hidden = commands("X=\"a \\\" && b\" cargo test").expect("split");
+    assert_eq!(hidden.len(), 1);
 }

@@ -19,9 +19,13 @@ Cargo applies one `rustflags` source rather than merging them, and an assigned
 `RUSTFLAGS` replaces every source. CI's setup-rust exports `RUSTFLAGS`, so the
 Makefile and the workflow cannot rely on the configuration alone.
 
-Cranelift does not build this suite: every target that links `aws-lc-rs` fails
-at the link step with `mold` reporting undefined `aws_lc_0_40_0_*` symbols,
-while LLVM with the same flags links and passes.
+Cranelift does not currently pass this suite on the pinned nightly. A
+2026-09-28 observation found every target that links `aws-lc-rs` failing at the
+link step with `mold` reporting undefined `aws_lc_0_40_0_*` symbols, while LLVM
+with the same flags links and passes; a 2026-09-30 probe found panic
+propagation failing on the Cranelift route (`catch_unwind_reports_err` fails and
+`thread_join_reports_err` aborts). Neither observation establishes a compiler
+root cause.
 
 ## Decision
 
@@ -34,8 +38,8 @@ while LLVM with the same flags links and passes.
   standard flag, and coverage takes neither only when its caller exports
   `RUSTFLAGS`.
 - Development builds stay on LLVM. This is a recorded exception to the
-  standard; revisit it when the toolchain pin changes or `aws-lc-rs` links
-  under Cranelift.
+  standard; revisit it on or after 2027-04-03, as issue #146 records, or when
+  the toolchain pin changes.
 
 ## Consequences
 
