@@ -3,9 +3,9 @@
 use rstest::rstest;
 
 use super::{
-    Host, assignment, dry_run, expand_value,
-    flags::{parse, read, table_flags},
-    make_rustflags,
+    Host, assignment, dry_run, dry_run_with, expand_value,
+    flags::{ConfigText, Flags, Source, read},
+    make_rustflags, rustflags_in,
     shell::Line,
 };
 
@@ -84,11 +84,10 @@ fn an_unterminated_quote_is_an_error() {
 
 #[test]
 fn an_empty_or_blank_caller_value_is_carried_by_any_flags() {
-    use super::Flags;
     let flags = Flags::from_words(&["-Zthreads=8"]);
-    assert!(flags.carries_run(""));
-    assert!(flags.carries_run("   "));
-    assert!(!flags.carries_run("--cfg x"));
+    assert!(flags.carries(&Flags::from_text("")));
+    assert!(flags.carries(&Flags::from_text("   ")));
+    assert!(!flags.carries(&Flags::from_text("--cfg x")));
 }
 
 #[rstest]
@@ -98,8 +97,7 @@ fn the_two_spellings_of_a_codegen_flag_compare_equal(
     #[case] stored: &[&str],
     #[case] caller: &str,
 ) {
-    use super::Flags;
-    assert!(Flags::from_words(stored).carries_run(caller));
+    assert!(Flags::from_words(stored).carries(&Flags::from_text(caller)));
 }
 
 #[test]
@@ -160,12 +158,17 @@ fn an_escaped_quote_does_not_end_the_assigned_value() {
 
 #[test]
 fn a_flag_list_missing_or_reordering_the_callers_words_does_not_carry_them() {
-    use super::Flags;
     let flags = Flags::from_words(&["-Zthreads=8", "--cfg", "x"]);
-    assert!(!flags.carries_run("--cfg y"), "carried a missing word");
-    assert!(!flags.carries_run("x --cfg"), "carried reordered words");
-    assert!(flags.is_exactly("-Zthreads=8 --cfg x"));
-    assert!(!flags.is_exactly("--cfg x"));
+    assert!(
+        !flags.carries(&Flags::from_text("--cfg y")),
+        "carried a missing word"
+    );
+    assert!(
+        !flags.carries(&Flags::from_text("x --cfg")),
+        "carried reordered words"
+    );
+    assert!(flags.equals(&Flags::from_text("-Zthreads=8 --cfg x")));
+    assert!(!flags.equals(&Flags::from_text("--cfg x")));
 }
 
 #[rstest]
@@ -183,9 +186,14 @@ fn the_accepted_rustflags_shapes_read_as_the_complete_flag_list(
     #[case] expected: Option<&str>,
 ) {
     let value: toml::Value = toml::from_str(table).expect("parse the fixture");
-    let found = table_flags("build", &value).expect("read the table");
+    let found = (Source {
+        key: "build",
+        table: &value,
+    })
+    .flags()
+    .expect("read the table");
     match (found, expected) {
-        (Some(flags), Some(words)) => assert!(flags.is_exactly(words), "{flags:?}"),
+        (Some(flags), Some(words)) => assert!(flags.equals(&Flags::from_text(words)), "{flags:?}"),
         (None, None) => {}
         (read, wanted) => panic!("read {read:?}, wanted {wanted:?}"),
     }
@@ -196,9 +204,13 @@ fn the_accepted_rustflags_shapes_read_as_the_complete_flag_list(
 #[case::non_string_member("rustflags = [\"-Zthreads=8\", 4]")]
 fn a_malformed_rustflags_table_is_an_error_naming_the_file_and_key(#[case] table: &str) {
     let value: toml::Value = toml::from_str(table).expect("parse the fixture");
-    let message = table_flags("build", &value)
-        .expect_err("malformed")
-        .to_string();
+    let message = (Source {
+        key: "build",
+        table: &value,
+    })
+    .flags()
+    .expect_err("malformed")
+    .to_string();
     assert!(
         message.contains(".cargo/config.toml") && message.contains("[build]"),
         "{message}"
@@ -207,13 +219,18 @@ fn a_malformed_rustflags_table_is_an_error_naming_the_file_and_key(#[case] table
 
 #[test]
 fn a_file_the_reader_cannot_open_is_named_with_the_operation() {
-    let message = read("no/such/file.toml").expect_err("missing").to_string();
+    let message = read(std::path::Path::new("no/such/file.toml"))
+        .expect_err("missing")
+        .to_string();
     assert!(message.contains("reading `no/such/file.toml`"), "{message}");
 }
 
 #[test]
 fn text_that_is_not_toml_is_reported_as_the_configuration() {
-    let message = parse("rustflags = [").expect_err("malformed").to_string();
+    let message = ConfigText("rustflags = [")
+        .parse()
+        .expect_err("malformed")
+        .to_string();
     assert!(message.contains("parsing .cargo/config.toml"), "{message}");
 }
 
@@ -222,4 +239,100 @@ fn text_that_is_not_toml_is_reported_as_the_configuration() {
 #[case::text_after_a_double_quote("X=\"a \"b cargo test")]
 fn text_stuck_to_a_closing_quote_is_an_error(#[case] command: &str) {
     assert!(Line(command).assignments().is_err(), "read `{command}`");
+}
+
+#[rstest]
+#[case::later_empty_wins("RUSTFLAGS=\"-a\" RUSTFLAGS=\"\" cargo test", "")]
+#[case::later_value_wins("RUSTFLAGS=\"\" RUSTFLAGS=\"-a\" cargo test", "-a")]
+fn the_last_rustflags_assignment_wins(#[case] command: &str, #[case] expected: &str) {
+    let flags = assignment(command, None).expect("read").expect("assigns");
+    assert!(flags.equals(&Flags::from_text(expected)), "{flags:?}");
+}
+
+#[test]
+fn a_quote_inside_a_bare_word_is_an_error() {
+    assert!(Line("X=a' b' cargo test").assignments().is_err());
+}
+
+#[test]
+fn a_program_that_cannot_be_spawned_fails_closed_with_its_name() {
+    let message = dry_run_with("no-such-make-for-the-contract", "lint", Host::Linux, None)
+        .expect_err("no such program")
+        .to_string();
+    for wanted in [
+        "cannot run `no-such-make-for-the-contract -n lint`",
+        "Linux",
+    ] {
+        assert!(
+            message.contains(wanted),
+            "`{wanted}` missing from: {message}"
+        );
+    }
+}
+
+#[rstest]
+#[case::unterminated_quote("X=\"a && cargo test\n")]
+#[case::unmodelled_expansion("RUSTFLAGS=\"$(touch x)\" cargo test\n")]
+#[case::quote_inside_a_word("X=a' b' cargo test\n")]
+fn a_parse_failure_names_the_route_that_produced_it(#[case] text: &str) {
+    let message = rustflags_in(text, "lint", Host::Linux, None)
+        .expect_err("unreadable")
+        .to_string();
+    assert!(
+        message.contains("reading `make -n lint` on Linux"),
+        "{message}"
+    );
+}
+
+/// Writes an executable script into a scratch directory and returns its path.
+#[cfg(unix)]
+fn fake_program(scratch: &str, script: &str) -> std::path::PathBuf {
+    use cap_std::{
+        ambient_authority,
+        fs::{Dir, OpenOptions, OpenOptionsExt},
+    };
+    let tmp = Dir::open_ambient_dir(env!("CARGO_TARGET_TMPDIR"), ambient_authority())
+        .expect("open the scratch root");
+    if let Err(error) = tmp.remove_dir_all(scratch) {
+        assert_eq!(
+            error.kind(),
+            std::io::ErrorKind::NotFound,
+            "clear the scratch: {error}"
+        );
+    }
+    tmp.create_dir(scratch)
+        .expect("create the scratch directory");
+    let dir = tmp.open_dir(scratch).expect("open the scratch directory");
+    let mut options = OpenOptions::new();
+    options.write(true).create_new(true).mode(0o755);
+    let mut file = dir.open_with("make", &options).expect("create the script");
+    std::io::Write::write_all(&mut file, script.as_bytes()).expect("write the script");
+    std::path::Path::new(env!("CARGO_TARGET_TMPDIR"))
+        .join(scratch)
+        .join("make")
+}
+
+/// A failing program's context, actual status and both streams survive.
+#[cfg(unix)]
+#[test]
+fn a_failed_run_keeps_its_context_status_and_distinct_streams() {
+    let fake = fake_program(
+        "failing-make",
+        "#!/bin/sh\necho OUT-PAYLOAD\necho ERR-PAYLOAD >&2\nexit 4\n",
+    );
+    let message = dry_run_with(&fake.display().to_string(), "lint", Host::Linux, None)
+        .expect_err("the stand-in fails")
+        .to_string();
+    for wanted in [
+        "-n lint",
+        "Linux",
+        "exit status: 4",
+        "stdout: OUT-PAYLOAD",
+        "stderr: ERR-PAYLOAD",
+    ] {
+        assert!(
+            message.contains(wanted),
+            "`{wanted}` missing from: {message}"
+        );
+    }
 }

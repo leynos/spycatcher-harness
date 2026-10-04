@@ -103,7 +103,23 @@ fn expanded(value: &str, inherited: Option<&str>) -> Read<Flags> {
 /// Returns the commands `make -n TARGET` would run on the host, with each
 /// backslash-continued recipe line joined into one line.
 pub fn dry_run(target: &str, host: Host, inherited: Option<&str>) -> Read<String> {
-    let mut make = Command::new("make");
+    dry_run_with("make", target, host, inherited)
+}
+
+/// Runs `program` as `make -n` would be run, so a test can point it at a missing
+/// or failing stand-in and see the contract fail closed with a named error.
+///
+/// # Errors
+///
+/// A program that cannot be spawned, or exits non-zero, is an error naming the
+/// program, the target and the host, with the status and both output streams.
+pub fn dry_run_with(
+    program: &str,
+    target: &str,
+    host: Host,
+    inherited: Option<&str>,
+) -> Read<String> {
+    let mut make = Command::new(program);
     make.args(["-n", "-B"])
         .args(host.overrides())
         .arg(target)
@@ -118,10 +134,10 @@ pub fn dry_run(target: &str, host: Host, inherited: Option<&str>) -> Read<String
     with_inherited(&mut make, inherited);
     let output = make
         .output()
-        .map_err(|error| format!("cannot run `make -n {target}` on {host:?}: {error}"))?;
+        .map_err(|error| format!("cannot run `{program} -n {target}` on {host:?}: {error}"))?;
     if !output.status.success() {
         return Err(format!(
-            "`make -n {target}` on {host:?} failed ({}); stdout: {}; stderr: {}",
+            "`{program} -n {target}` on {host:?} failed ({}); stdout: {}; stderr: {}",
             output.status,
             String::from_utf8_lossy(&output.stdout),
             String::from_utf8_lossy(&output.stderr)
@@ -133,7 +149,8 @@ pub fn dry_run(target: &str, host: Host, inherited: Option<&str>) -> Read<String
 
 /// Returns the `RUSTFLAGS` one command assigns, or `None` when it assigns none.
 ///
-/// Only a leading assignment counts: `RUSTFLAGS` after the command word is an
+/// The last assignment wins, as in the shell, so a later empty one cannot be
+/// hidden by an earlier non-empty one. Only a leading assignment counts: `RUSTFLAGS` after the command word is an
 /// argument. A single-quoted value is taken literally, any other is expanded
 /// by the modelled forms.
 ///
@@ -142,7 +159,7 @@ pub fn dry_run(target: &str, host: Host, inherited: Option<&str>) -> Read<String
 /// A value this reader cannot model fails rather than passing.
 fn assignment(command: &str, inherited: Option<&str>) -> Read<Option<Flags>> {
     let (assigned, _) = Line(command).assignments()?;
-    let Some(rustflags) = assigned.iter().find(|a| a.name == "RUSTFLAGS") else {
+    let Some(rustflags) = assigned.iter().rev().find(|a| a.name == "RUSTFLAGS") else {
         return Ok(None);
     };
     if rustflags.expands {
@@ -162,6 +179,22 @@ pub fn make_rustflags(
     inherited: Option<&str>,
 ) -> Read<Vec<Option<Flags>>> {
     let text = dry_run(target, host, inherited)?;
+    rustflags_in(&text, target, host, inherited)
+}
+
+/// Reads the `RUSTFLAGS` each cargo or whitaker command in a dry-run `text`
+/// assigns, wrapping any parse failure with the route that produced it.
+///
+/// # Errors
+///
+/// A line that cannot be split, a leading assignment that cannot be read, or a
+/// value that cannot be modelled fails with `make -n TARGET` on the host named.
+pub fn rustflags_in(
+    text: &str,
+    target: &str,
+    host: Host,
+    inherited: Option<&str>,
+) -> Read<Vec<Option<Flags>>> {
     let route = |error: Box<dyn std::error::Error>| {
         format!("reading `make -n {target}` on {host:?}: {error}")
     };
@@ -211,7 +244,7 @@ fn flag_problems(route: &Route, flags: &Flags) -> Vec<String> {
             "`make {target}` on {host:?} gets mold wrong (expected {expects_mold}): {flags:?}"
         ));
     }
-    if inherited.is_some_and(|caller| !flags.carries_run(caller)) {
+    if inherited.is_some_and(|caller| !flags.carries(&Flags::from_text(caller))) {
         problems.push(format!(
             "`make {target}` drops the caller's RUSTFLAGS: {flags:?}"
         ));

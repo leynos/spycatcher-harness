@@ -193,16 +193,24 @@ impl<'a> Line<'a> {
     }
 
     /// Takes a bare word, which the shell expands.
-    fn take_word(self) -> Taken<'a> {
+    ///
+    /// # Errors
+    ///
+    /// A quote inside a bare word, as in `X=a' b'`, joins quoted text to it, and
+    /// the reader models only whole-word quoting, so it fails.
+    fn take_word(self) -> Read<Taken<'a>> {
         let (value, rest) = self
             .0
             .split_once(char::is_whitespace)
             .unwrap_or((self.0, ""));
-        Taken {
+        if value.contains(['"', '\'']) {
+            return Err(format!("a quote inside the bare word `{value}` is not modelled").into());
+        }
+        Ok(Taken {
             value,
             expands: true,
             rest,
-        }
+        })
     }
 
     /// Takes one assigned value off the front: a double-quoted value, a
@@ -212,7 +220,7 @@ impl<'a> Line<'a> {
         match self.0.chars().next() {
             Some('"') => after_quote.take_double(),
             Some('\'') => after_quote.take_single(),
-            _ => Ok(self.take_word()),
+            _ => self.take_word(),
         }
     }
 

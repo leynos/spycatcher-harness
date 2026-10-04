@@ -4,7 +4,7 @@
 //! `rustflags` sources in `.cargo/config.toml`. File access goes through a
 //! `cap_std` directory handle rooted at the crate manifest directory.
 
-use std::error::Error;
+use std::{error::Error, path::Path};
 
 use cap_std::{ambient_authority, fs::Dir};
 
@@ -42,10 +42,15 @@ impl Flags {
         Self(joined)
     }
 
-    /// Returns whether the list is exactly the caller's words, in order and
-    /// with nothing added.
-    pub fn is_exactly(&self, caller: &str) -> bool {
-        self.0 == Self::from_words(&caller.split_whitespace().collect::<Vec<_>>()).0
+    /// Parses whitespace-separated flags, as a caller exports them.
+    pub fn from_text(text: &str) -> Self {
+        Self::from_words(&text.split_whitespace().collect::<Vec<_>>())
+    }
+
+    /// Returns whether the list is exactly `caller`'s flags, in order and with
+    /// nothing added.
+    pub fn equals(&self, caller: &Self) -> bool {
+        self.0 == caller.0
     }
 
     /// Returns whether the list names one flag.
@@ -53,18 +58,15 @@ impl Flags {
         self.0.iter().any(|candidate| candidate == flag)
     }
 
-    /// Returns whether the list holds the caller's words as one unbroken run.
-    pub fn carries_run(&self, caller: &str) -> bool {
-        // The caller's words are normalised like the stored ones, so `-C x` and
-        // `-Cx` compare equal.
-        let wanted = Self::from_words(&caller.split_whitespace().collect::<Vec<_>>()).0;
+    /// Returns whether the list holds `caller`'s flags as one unbroken run.
+    pub fn carries(&self, caller: &Self) -> bool {
         // An empty caller value is carried by any list; `windows(0)` would panic.
-        if wanted.is_empty() {
+        if caller.0.is_empty() {
             return true;
         }
         self.0
-            .windows(wanted.len())
-            .any(|run| run == wanted.as_slice())
+            .windows(caller.0.len())
+            .any(|run| run == caller.0.as_slice())
     }
 
     /// Returns the list without the linker flag, for comparing sources.
@@ -79,35 +81,71 @@ impl Flags {
 /// The Cargo configuration the readers parse, named in their errors.
 const CONFIG: &str = ".cargo/config.toml";
 
-/// Reads one table's `rustflags`, which Cargo accepts as an array of strings or
-/// as one whitespace-separated string.
-///
-/// # Errors
-///
-/// Any other shape, or an array member that is not a string, would be skipped
-/// by a lenient reader and so hide a flag from every check, so it is an error.
-pub fn table_flags(key: &str, table: &toml::Value) -> Read<Option<Flags>> {
-    let Some(raw) = table.get("rustflags") else {
-        return Ok(None);
-    };
-    let words: Vec<String> = if let Some(text) = raw.as_str() {
-        text.split_whitespace().map(str::to_owned).collect()
-    } else if let Some(items) = raw.as_array() {
+/// One table of the Cargo configuration, named by its key, whose `rustflags`
+/// the readers read.
+pub struct Source<'a> {
+    /// The table's key, named in errors.
+    pub key: &'a str,
+    /// The table itself.
+    pub table: &'a toml::Value,
+}
+
+impl Source<'_> {
+    /// Reads the table's `rustflags`, which Cargo accepts as an array of strings
+    /// or as one whitespace-separated string.
+    ///
+    /// # Errors
+    ///
+    /// Any other shape, or an array member that is not a string, would be
+    /// skipped by a lenient reader and so hide a flag from every check, so it is
+    /// an error naming the file and the table.
+    pub fn flags(&self) -> Read<Option<Flags>> {
+        let Some(raw) = self.table.get("rustflags") else {
+            return Ok(None);
+        };
+        let words = match (raw.as_str(), raw.as_array()) {
+            (Some(text), _) => text.split_whitespace().map(str::to_owned).collect(),
+            (None, Some(items)) => self.array_words(items)?,
+            (None, None) => {
+                return Err(format!(
+                    "{CONFIG}: `[{}] rustflags` must be a string or an array, found {raw}",
+                    self.key
+                )
+                .into());
+            }
+        };
+        Ok(Some(Flags::from_words(&words)))
+    }
+
+    /// Reads the members of an array-form `rustflags`, which must all be strings.
+    fn array_words(&self, items: &[toml::Value]) -> Read<Vec<String>> {
         items
             .iter()
             .map(|item| {
                 item.as_str().map(str::to_owned).ok_or_else(|| {
-                    format!("{CONFIG}: `[{key}] rustflags` has a non-string member {item}")
+                    format!(
+                        "{CONFIG}: `[{}] rustflags` has a non-string member {item}",
+                        self.key
+                    )
+                    .into()
                 })
             })
-            .collect::<Result<_, _>>()?
-    } else {
-        return Err(format!(
-            "{CONFIG}: `[{key}] rustflags` must be a string or an array, found {raw}"
-        )
-        .into());
-    };
-    Ok(Some(Flags::from_words(&words)))
+            .collect()
+    }
+}
+
+/// The text of the Cargo configuration, before it is parsed.
+pub struct ConfigText<'a>(pub &'a str);
+
+impl ConfigText<'_> {
+    /// Parses the configuration text.
+    ///
+    /// # Errors
+    ///
+    /// A parse failure names the file.
+    pub fn parse(&self) -> Read<toml::Value> {
+        Ok(toml::from_str(self.0).map_err(|error| format!("parsing {CONFIG}: {error}"))?)
+    }
 }
 
 /// Reads a file relative to the crate manifest directory.
@@ -116,38 +154,45 @@ pub fn table_flags(key: &str, table: &toml::Value) -> Read<Option<Flags>> {
 ///
 /// A failure to open the directory or read the file names the operation and the
 /// path.
-pub fn read(path: &str) -> Read<String> {
-    let root = Dir::open_ambient_dir(env!("CARGO_MANIFEST_DIR"), ambient_authority())
-        .map_err(|error| format!("opening the crate directory to read `{path}`: {error}"))?;
+pub fn read(path: &Path) -> Read<String> {
+    let root = Dir::open_ambient_dir(env!("CARGO_MANIFEST_DIR"), ambient_authority()).map_err(
+        |error| {
+            format!(
+                "opening the crate directory to read `{}`: {error}",
+                path.display()
+            )
+        },
+    )?;
     Ok(root
         .read_to_string(path)
-        .map_err(|error| format!("reading `{path}`: {error}"))?)
+        .map_err(|error| format!("reading `{}`: {error}", path.display()))?)
 }
 
-/// Parses the Cargo configuration text.
+/// Reads and parses the Cargo configuration.
 ///
 /// # Errors
 ///
-/// A parse failure names the file.
-pub fn parse(text: &str) -> Read<toml::Value> {
-    Ok(toml::from_str(text).map_err(|error| format!("parsing {CONFIG}: {error}"))?)
+/// A read or parse failure names the file.
+pub fn config() -> Read<toml::Value> {
+    ConfigText(&read(Path::new(CONFIG))?).parse()
 }
 
 /// Returns every `rustflags` source in the configuration, by table name.
 pub fn sources() -> Read<Vec<(String, Flags)>> {
-    let config = parse(&read(CONFIG)?)?;
+    let config = config()?;
     let mut found = Vec::new();
-    if let Some(flags) = config
-        .get("build")
-        .map(|table| table_flags("build", table))
-        .transpose()?
-        .flatten()
-    {
-        found.push(("build".to_owned(), flags));
+    if let Some(table) = config.get("build") {
+        let source = Source {
+            key: "build",
+            table,
+        };
+        if let Some(flags) = source.flags()? {
+            found.push(("build".to_owned(), flags));
+        }
     }
     if let Some(targets) = config.get("target").and_then(toml::Value::as_table) {
         for (key, table) in targets {
-            if let Some(flags) = table_flags(key, table)? {
+            if let Some(flags) = (Source { key, table }).flags()? {
                 found.push((key.clone(), flags));
             }
         }
