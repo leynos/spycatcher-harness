@@ -489,10 +489,13 @@ not get `mold`. `make release` assigns the inherited `RUSTFLAGS`, which is
 empty when the caller exports none, so it adds neither standard flag (a
 caller's own value can still contain either). A bare `cargo build --release`
 still takes both flags, because Cargo does not select `rustflags` by profile.
-CI installs `mold` before the first gate target.
-`tests/build_standard_contract.rs` (readers in
+CI installs `mold` before the first gate target. Bare Cargo on a non-Linux host
+cross-building for a Linux target is outside the standard: the configuration
+selects `mold` by the compilation target alone, so that build would be handed a
+linker the host lacks. Make avoids it by checking the host as well, so use Make
+or a Linux host for it. `tests/build_standard_contract.rs` (readers in
 `tests/build_standard/support.rs`) holds the configuration and the Makefile
-recipes to this.
+recipes to this, and `tests/build_standard_ci.rs` holds the CI install order.
 
 ### Cranelift exception
 

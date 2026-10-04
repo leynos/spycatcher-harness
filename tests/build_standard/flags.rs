@@ -111,14 +111,31 @@ pub fn table_flags(key: &str, table: &toml::Value) -> Read<Option<Flags>> {
 }
 
 /// Reads a file relative to the crate manifest directory.
+///
+/// # Errors
+///
+/// A failure to open the directory or read the file names the operation and the
+/// path.
 pub fn read(path: &str) -> Read<String> {
-    let root = Dir::open_ambient_dir(env!("CARGO_MANIFEST_DIR"), ambient_authority())?;
-    Ok(root.read_to_string(path)?)
+    let root = Dir::open_ambient_dir(env!("CARGO_MANIFEST_DIR"), ambient_authority())
+        .map_err(|error| format!("opening the crate directory to read `{path}`: {error}"))?;
+    Ok(root
+        .read_to_string(path)
+        .map_err(|error| format!("reading `{path}`: {error}"))?)
+}
+
+/// Parses the Cargo configuration text.
+///
+/// # Errors
+///
+/// A parse failure names the file.
+pub fn parse(text: &str) -> Read<toml::Value> {
+    Ok(toml::from_str(text).map_err(|error| format!("parsing {CONFIG}: {error}"))?)
 }
 
 /// Returns every `rustflags` source in the configuration, by table name.
 pub fn sources() -> Read<Vec<(String, Flags)>> {
-    let config: toml::Value = toml::from_str(&read(CONFIG)?)?;
+    let config = parse(&read(CONFIG)?)?;
     let mut found = Vec::new();
     if let Some(flags) = config
         .get("build")

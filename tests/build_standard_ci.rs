@@ -58,8 +58,28 @@ fn job_containing<'a>(workflow: &'a str, needle: &str) -> Vec<&'a str> {
         .unwrap_or_default()
 }
 
-/// Returns whether one `&&`-separated segment runs `apt`/`apt-get ... install`
-/// naming mold: the command itself, not an `echo` of one.
+/// Splits a shell command line at every `&&` that sits outside quotes.
+fn chain(text: &str) -> Vec<&str> {
+    let mut parts = Vec::new();
+    let (mut start, mut quote) = (0, None);
+    let bytes = text.as_bytes();
+    for (at, c) in text.char_indices() {
+        match (quote, c) {
+            (Some(open), _) if open == c => quote = None,
+            (None, '"' | '\'') => quote = Some(c),
+            (None, '&') if bytes.get(at + 1) == Some(&b'&') && at >= start => {
+                parts.push(text.get(start..at).unwrap_or_default());
+                start = at + 2;
+            }
+            _ => {}
+        }
+    }
+    parts.push(text.get(start..).unwrap_or_default());
+    parts
+}
+
+/// Returns whether one command runs `apt`/`apt-get ... install` naming mold:
+/// the command itself, not an `echo` of one.
 fn segment_installs_mold(segment: &str) -> bool {
     let words: Vec<&str> = segment
         .split_whitespace()
@@ -72,13 +92,11 @@ fn segment_installs_mold(segment: &str) -> bool {
         && words.contains(&"mold")
 }
 
-/// Returns whether the step holding line `at` carries an `if:` condition, so
-/// its installation may be skipped.
-fn step_is_conditional(job: &[&str], at: usize) -> bool {
+/// Returns the bounds of the step holding line `at`: from its `- ` line to the
+/// next step at the same or a shallower indent.
+fn step_bounds(job: &[&str], at: usize) -> Option<std::ops::Range<usize>> {
     let starts_step = |line: &str| line.trim_start().starts_with("- ");
-    let Some(start) = (0..=at).rfind(|&i| job.get(i).copied().is_some_and(starts_step)) else {
-        return false;
-    };
+    let start = (0..=at).rfind(|&i| job.get(i).copied().is_some_and(starts_step))?;
     let start_indent = job.get(start).map_or(0, |line| indent(line));
     let end = (start + 1..job.len())
         .find(|&i| {
@@ -87,26 +105,94 @@ fn step_is_conditional(job: &[&str], at: usize) -> bool {
                 .is_some_and(|line| starts_step(line) && indent(line) <= start_indent)
         })
         .unwrap_or(job.len());
-    job.get(start..end)
-        .is_some_and(|step| step.iter().any(|line| line.trim_start().starts_with("if:")))
+    Some(start..end)
 }
 
-/// Returns the offset of the first line that installs mold: an `apt` install
-/// command in a step with no `if:` condition, or setup-rust's `install-mold`
-/// input set to true.
-fn mold_install_offset(job: &[&str]) -> Option<usize> {
-    job.iter().enumerate().position(|(at, line)| {
-        if is_inert(line) || step_is_conditional(job, at) {
-            return false;
+/// Returns whether the step holding line `at` carries an `if:` condition, so
+/// its commands may be skipped. The condition can be the step's first key.
+fn step_is_conditional(job: &[&str], at: usize) -> bool {
+    step_bounds(job, at)
+        .and_then(|bounds| job.get(bounds))
+        .is_some_and(|step| {
+            step.iter().any(|line| {
+                line.trim_start()
+                    .trim_start_matches("- ")
+                    .starts_with("if:")
+            })
+        })
+}
+
+/// Returns whether the step holding line `at` runs the setup-rust action.
+fn step_uses_setup_rust(job: &[&str], at: usize) -> bool {
+    step_bounds(job, at)
+        .and_then(|bounds| job.get(bounds))
+        .is_some_and(|step| {
+            step.iter().any(|line| {
+                let text = line.trim_start().trim_start_matches("- ");
+                text.starts_with("uses:") && text.contains("setup-rust")
+            })
+        })
+}
+
+/// Returns every executable `run` command of a job, with its line offset: the
+/// inline text of `run: cmd`, and each line of a `run: |` or `run: >` block.
+/// Text under any other key, such as a `name` or a description, is not a command.
+fn run_commands<'a>(job: &[&'a str]) -> Vec<(usize, &'a str)> {
+    let mut found = Vec::new();
+    let mut block: Option<usize> = None;
+    for (at, line) in job.iter().enumerate() {
+        if is_inert(line) {
+            continue;
         }
-        let text = line
-            .trim()
-            .trim_start_matches("- ")
-            .trim_start_matches("run:")
-            .trim();
-        text.split("&&").any(segment_installs_mold)
-            || (text.starts_with("install-mold:") && text.contains("true"))
-    })
+        if let Some(key_indent) = block {
+            if indent(line) > key_indent {
+                found.push((at, line.trim()));
+                continue;
+            }
+            block = None;
+        }
+        let text = line.trim().trim_start_matches("- ");
+        let Some(rest) = text.strip_prefix("run:") else {
+            continue;
+        };
+        let dash = if line.trim_start().starts_with("- ") {
+            2
+        } else {
+            0
+        };
+        let inline = rest.trim();
+        if inline.starts_with(['|', '>']) {
+            block = Some(indent(line) + dash);
+        } else if !inline.is_empty() {
+            found.push((at, inline));
+        }
+    }
+    found
+}
+
+/// Returns the offset of the first installation of mold: an `apt` install
+/// command that the job actually runs, in a step with no `if:` condition, or
+/// setup-rust's `install-mold` input set to true in an unconditional step.
+fn mold_install_offset(job: &[&str]) -> Option<usize> {
+    let commands = run_commands(job)
+        .into_iter()
+        .filter(|(at, text)| {
+            !step_is_conditional(job, *at) && chain(text).into_iter().any(segment_installs_mold)
+        })
+        .map(|(at, _)| at);
+    let inputs = job
+        .iter()
+        .enumerate()
+        .filter(|(at, line)| {
+            let text = line.trim();
+            !is_inert(line)
+                && text.starts_with("install-mold:")
+                && text.contains("true")
+                && step_uses_setup_rust(job, *at)
+                && !step_is_conditional(job, *at)
+        })
+        .map(|(at, _)| at);
+    commands.chain(inputs).min()
 }
 
 /// Returns the offset of the first non-comment line holding `needle`.
@@ -179,4 +265,39 @@ fn a_conditionally_skipped_install_does_not_count() {
     );
     let job = job_containing(&workflow, "generate-coverage@");
     assert!(mold_install_offset(&job).is_none());
+}
+
+#[rstest]
+#[case::step_first_if(
+    "      - if: false\n        run: sudo apt-get install --yes mold\n",
+    false
+)]
+#[case::quoted_echo("        run: echo \"x && sudo apt-get install mold\"\n", false)]
+#[case::description_text("        description: sudo apt-get install mold\n", false)]
+#[case::block_run(
+    "        run: |\n          sudo apt-get update\n          sudo apt-get install mold\n",
+    true
+)]
+fn the_install_reader_counts_only_runnable_commands(#[case] step: &str, #[case] counts: bool) {
+    let workflow = GOOD_WORKFLOW.replace("        run: sudo apt-get install --yes mold\n", step);
+    let job = job_containing(&workflow, "generate-coverage@");
+    assert_eq!(mold_install_offset(&job).is_some(), counts, "{step}");
+}
+
+#[rstest]
+#[case::setup_rust(
+    "      - uses: org/setup-rust@abc\n        with:\n          install-mold: true\n",
+    true
+)]
+#[case::unrelated_action(
+    "      - uses: org/other-action@abc\n        with:\n          install-mold: true\n",
+    false
+)]
+fn an_install_mold_input_counts_only_on_setup_rust(#[case] step: &str, #[case] counts: bool) {
+    let workflow = GOOD_WORKFLOW.replace(
+        "      - name: Install mold linker\n        run: sudo apt-get install --yes mold\n",
+        step,
+    );
+    let job = job_containing(&workflow, "generate-coverage@");
+    assert_eq!(mold_install_offset(&job).is_some(), counts, "{step}");
 }

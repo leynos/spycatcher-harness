@@ -14,7 +14,7 @@ pub mod flags;
 #[path = "shell.rs"]
 mod shell;
 
-use shell::{commands, leading_assignments, runs_cargo_or_whitaker};
+use shell::Line;
 
 pub use flags::{Flags, LINUX_SELECTOR, LINUX_TABLES, MOLD_FLAG, Read, THREADS_FLAG, sources};
 
@@ -141,7 +141,7 @@ pub fn dry_run(target: &str, host: Host, inherited: Option<&str>) -> Read<String
 ///
 /// A value this reader cannot model fails rather than passing.
 fn assignment(command: &str, inherited: Option<&str>) -> Read<Option<Flags>> {
-    let (assigned, _) = leading_assignments(command)?;
+    let (assigned, _) = Line(command).assignments()?;
     let Some(rustflags) = assigned.iter().find(|a| a.name == "RUSTFLAGS") else {
         return Ok(None);
     };
@@ -167,8 +167,8 @@ pub fn make_rustflags(
     };
     let mut found = Vec::new();
     for line in text.lines() {
-        for command in self::commands(line).map_err(route)? {
-            if runs_cargo_or_whitaker(command).map_err(route)? {
+        for command in Line(line).commands().map_err(route)? {
+            if Line(command).runs_cargo_or_whitaker().map_err(route)? {
                 found.push(assignment(command, inherited).map_err(route)?);
             }
         }

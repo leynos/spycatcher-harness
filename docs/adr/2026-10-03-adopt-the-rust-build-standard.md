@@ -48,7 +48,9 @@ root cause.
 - `tests/build_standard_contract.rs` holds the configuration and the Makefile
   recipes to this decision, and `tests/build_standard_ci.rs` holds the CI
   install order.
-- Cross-building through bare Cargo from a non-Linux host is outside the
-  standard: the configuration selects `mold` by the compilation target alone.
+- Bare Cargo on a non-Linux host cross-building for a Linux target is outside
+  the standard: the configuration selects `mold` by the compilation target
+  alone, so that build would be handed a linker the host lacks. Make avoids it
+  by checking the host as well; use Make or a Linux host.
 - The Cranelift exception is documented in the developers' guide, which this
   record complements.
