@@ -33,6 +33,10 @@ jobs:
         uses: leynos/shared-actions/.github/actions/setup-rust@c4ed5ffaf0640b1907d5359a87fd1677034eec27
       - name: Setup uv
         uses: astral-sh/setup-uv@0e3884b860e20d3f4d5daa2347130beb51ccde47
+        with:
+          # A Rust-only repository has no Python dependency manifest for the
+          # cache key, so caching would only warn about unmatched inputs.
+          enable-cache: false
       - name: Install Nixie
         run: uv tool install nixie-cli==1.1.0
       - name: Install mdtablefix

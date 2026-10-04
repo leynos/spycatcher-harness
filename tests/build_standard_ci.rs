@@ -107,6 +107,22 @@ fn the_validator_accepts_the_good_workflow() {
         ),
     "after `make lint`"
 )]
+#[case::after_coverage(
+    // Coverage first, then the install, then lint: the install precedes lint
+    // but follows coverage, so only the coverage check can reject it.
+    concat!(
+        "jobs:\n",
+        "  build-test:\n",
+        "    steps:\n",
+        "      - name: Coverage\n",
+        "        uses: leynos/shared-actions/.github/actions/generate-coverage@abc\n",
+        "      - name: Install mold linker\n",
+        "        run: sudo apt-get install --yes mold\n",
+        "      - run: make lint\n",
+    )
+    .to_owned(),
+    "after `generate-coverage@`"
+)]
 fn the_validator_rejects_a_missing_or_late_install(
     #[case] workflow: String,
     #[case] problem: &str,
@@ -162,6 +178,10 @@ fn the_install_reader_counts_only_runnable_installs(#[case] step: &str, #[case] 
         .mold_install_offset()
         .expect("a recognised form");
     assert_eq!(found.is_some(), counts, "{step}");
+    // The same fixture through the shared validator: a counted install leaves
+    // the order valid, and an uncounted one is reported as no install.
+    let problem = order_problem(&workflow);
+    assert_eq!(problem.is_none(), counts, "{step}: {problem:?}");
 }
 
 /// The reader judges this repository's own workflow forms and rejects any other
