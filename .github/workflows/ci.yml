@@ -61,7 +61,7 @@ jobs:
       - name: Validate Mermaid diagrams
         run: make nixie
       - name: Install Whitaker
-        uses: leynos/shared-actions/.github/actions/install-whitaker@ebe2f3105334283441f4c915eb979a0f4b9f2c04
+        uses: leynos/shared-actions/.github/actions/install-whitaker@7d751eded578e48dacf43ab173d5820e6437c474
       - name: Install mold linker
         # The Makefile restates the build standard's `mold` flag for its
         # gate targets, so the linker must be present before they build.
