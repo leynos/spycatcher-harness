@@ -30,7 +30,7 @@ jobs:
         if: steps.cache-merman-cli.outputs.cache-hit != 'true'
         run: cargo +1.95.0 install merman-cli --version "=${MERMAN_CLI_VERSION}" --locked
       - name: Setup Rust
-        uses: leynos/shared-actions/.github/actions/setup-rust@ff1dd759dfffc0db3459e30e833f52437ee62b57
+        uses: leynos/shared-actions/.github/actions/setup-rust@7d751eded578e48dacf43ab173d5820e6437c474
       - name: Setup uv
         uses: astral-sh/setup-uv@c84232ca4fde9b022e20a930bfbbecd386b56fdf
         with:
