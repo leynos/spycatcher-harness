@@ -32,7 +32,7 @@ jobs:
       - name: Setup Rust
         uses: leynos/shared-actions/.github/actions/setup-rust@7d751eded578e48dacf43ab173d5820e6437c474
       - name: Setup uv
-        uses: astral-sh/setup-uv@c84232ca4fde9b022e20a930bfbbecd386b56fdf
+        uses: astral-sh/setup-uv@b06acff4b6a41bdd9cdac56507ead0bd7734e757
         with:
           # A Rust-only repository has no Python dependency manifest for the
           # cache key, so caching would only warn about unmatched inputs.
