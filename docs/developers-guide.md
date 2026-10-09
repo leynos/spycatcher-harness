@@ -12,6 +12,10 @@ Run the spelling gate with:
 make spelling
 ```
 
+`TYPOS_CONFIG_BUILDER_VERSION` in the `Makefile` pins the
+`typos-config-builder` release the gate runs (currently `v0.1.3`). Raise it
+together with the regenerated `typos.toml`, never on its own.
+
 The tracked `typos.toml` is regenerated on every run from the live shared
 dictionary and the repository-specific `typos.local.toml` overlay. The gate
 then runs the dictionary-based Typos scan over tracked Markdown and the
