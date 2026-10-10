@@ -5,7 +5,7 @@ This ExecPlan is a living document. Keep `Constraints`, `Tolerances`, `Risks`,
 `Outcomes & retrospective`, `Conformance basis`, and `Verification plan`
 current.
 
-Status: IN PROGRESS
+Status: COMPLETE
 
 ## Purpose / big picture
 
@@ -253,8 +253,11 @@ observable.
   `with_base(...).localize(...)` example against the tagged v0.9.0 source. The
   wrapper returns `Command`, and the shipped rustdoc uses the same call; the
   reported type mismatch is a false positive. Keep the correct example.
-- [ ] Commit the regenerated lockfile and plan, force-push with an
-  observed-SHA lease, then update and verify draft PR #147's final description.
+- [x] (2026-10-10) Commit the regenerated lockfile and migration evidence as
+  `94cb2fc`. Force-push with an explicit lease from observed remote SHA
+  `1194b85`; verify remote parity at `94cb2fc`. Update and read back draft PR
+  #147 with the required title reference, `Closes #123`, current gate evidence,
+  and a terminal References section containing the Lody session link.
 
 ## Surprises & discoveries
 
@@ -420,11 +423,11 @@ observable.
 
 ## Outcomes & retrospective
 
-The migration implementation and draft PR are complete. The branch is now
-rebased onto `origin/main` at `d5fc21f`, with seven issue commits retained and
-the generated-only spelling commit superseded by main's generator. The merged
-lockfile and deterministic gates are complete; publication and the final
-current-head review remain in progress.
+The migration implementation, validation, and draft PR publication are
+complete. The branch is rebased onto `origin/main` at `d5fc21f`, with seven
+issue commits retained and the generated-only spelling commit superseded by
+main's generator. The merged lockfile, deterministic gates, review disposition,
+force-push, and PR description are recorded below.
 
 The OrthoConfig 0.9.0 dependency and Rust 1.89.0 floor are in place, and the
 localized parser delegates to the tagged `LocalizeCmd` and
@@ -434,13 +437,14 @@ error localization. Layering and binary tests cover the unchanged precedence
 contract and prove a parse failure causes no record startup effects. On the
 rebased head, all four focused tests and the full deterministic gates passed,
 including 432 tests, 27 doctests, and the Rust 1.89.0 locked check. CodeRabbit
-reviewed that head and found a minor formatting issue in this plan, which is
+reviewed that head and found a minor formatting issue in this plan, which was
 corrected and verified. Its remaining guide-example finding is a false positive
-against the tagged API and is recorded above. Draft PR #147 remains open against
-`main` until the rebased commits are pushed. Its description states
-`Closes #123`, and its final References section links the Lody session URL.
-CodeScene coverage and health checks were queued when the draft was created;
-their present status must be checked separately.
+against the tagged API and is recorded above. Commit `94cb2fc` was force-pushed
+with an explicit lease, and local and remote heads matched afterwards. The
+draft pull request numbered 147 remains open against `main`, with `(#123)` in
+its title, `Closes #123` in its description, and the Lody session in the
+terminal References section. Hosted Actions results are separate from the local
+gate evidence recorded here.
 
 The test-isolation slice is implemented. Initial full gates exposed Clippy,
 plan-spelling, and ambient filesystem-write issues; each was corrected. A
