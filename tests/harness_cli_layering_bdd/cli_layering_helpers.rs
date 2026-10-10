@@ -69,18 +69,35 @@ pub(super) fn push_env(cli_layering_world: &CliLayeringWorld, key: &str, value: 
     cli_layering_world.env_vars.set(vars);
 }
 
+/// Inputs used to load one isolated CLI configuration scenario.
+#[derive(Debug)]
+pub(super) struct IsolatedConfigInput {
+    pub(super) argv: Vec<String>,
+    pub(super) config_file: String,
+    pub(super) env_vars: Vec<(String, String)>,
+}
+
 /// Runs the real CLI loader with scenario-specific child environment and files.
-pub(super) fn load_isolated_config(
-    argv: &[String],
-    config_file: &str,
-    env_vars: &[(String, String)],
-) -> Result<ConfigSnapshot, String> {
-    let argv_refs = argv.iter().map(String::as_str).collect::<Vec<_>>();
-    let env_refs = env_vars
+///
+/// # Examples
+///
+/// ```ignore
+/// let input = IsolatedConfigInput {
+///     argv: vec!["spycatcher-harness".into(), "replay".into()],
+///     config_file: String::new(),
+///     env_vars: Vec::new(),
+/// };
+/// let result = load_isolated_config(&input);
+/// // Returns the isolated replay configuration, or its user-facing error.
+/// ```
+pub(super) fn load_isolated_config(input: &IsolatedConfigInput) -> Result<ConfigSnapshot, String> {
+    let argv_refs = input.argv.iter().map(String::as_str).collect::<Vec<_>>();
+    let env_refs = input
+        .env_vars
         .iter()
         .map(|(name, value)| (name.as_str(), value.as_str()))
         .collect::<Vec<_>>();
-    let config_file_arg = (!config_file.is_empty()).then_some(config_file);
+    let config_file_arg = (!input.config_file.is_empty()).then_some(input.config_file.as_str());
     load_config_snapshot(&argv_refs, config_file_arg, &env_refs)
 }
 
