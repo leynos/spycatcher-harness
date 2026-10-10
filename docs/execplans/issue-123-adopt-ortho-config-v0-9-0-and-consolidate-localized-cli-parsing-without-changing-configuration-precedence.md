@@ -5,7 +5,7 @@ This ExecPlan is a living document. Keep `Constraints`, `Tolerances`, `Risks`,
 `Outcomes & retrospective`, `Conformance basis`, and `Verification plan`
 current.
 
-Status: COMPLETE
+Status: IN PROGRESS
 
 ## Purpose / big picture
 
@@ -213,9 +213,48 @@ observable.
   local and remote branch heads both resolved to
   `402ce620261a92924228ce87c36b727d6674a640`.
 - [x] (2026-10-04) Create draft PR
-      [#147](https://github.com/leynos/spycatcher-harness/pull/147)
-  against `main`. Its summary says `Closes #123`, and its final References
-  section links the renamed Lody session.
+  [#147](https://github.com/leynos/spycatcher-harness/pull/147) against `main`.
+  Its summary says `Closes #123`, and its final References section links the
+  renamed Lody session.
+- [x] (2026-10-04) Rebase the eight issue commits from `e56704a` onto the
+  observed `origin/main` target `58e54ff`. This is historical evidence; the
+  branch was rebased again when main advanced. The CI conflict kept main's
+  shared-action pins and comprehensive Make/workflow-contract gates, added the
+  Rust 1.89.0 check, and retained the exact target-main lockfile during replay.
+  Main's `rstest-bdd` 0.6 graph and serial `make all` were preserved.
+- [x] (2026-10-10) Rebase the seven surviving issue commits from `58e54ff` onto
+  the fetched `origin/main` target `d5fc21f`. `git range-diff` maps seven of
+  the original eight commits; the generated-spelling-only commit became
+  obsolete under main's new `typos-config-builder` gate. Resolve the CI
+  conflict by retaining main's updated action pins, disabled uv cache,
+  mdtablefix 0.6.1, and `mold` setup while keeping the Rust 1.89.0 check. Keep
+  main's exact `Cargo.lock` blob during replay. Its new build-standard files,
+  serial comprehensive Make gate, workflow-contract checks, and `rstest-bdd`
+  0.6 graph remain in the rebased tree.
+- [x] (2026-10-10) Resolve the generated spelling artefact conflict with the
+  project generator. `make spelling` regenerated `typos.toml` byte-for-byte
+  equal to the target-main version, and a second run reported it current. The
+  skipped issue commit only replaced one ignore regex; main's generator
+  selected the target version for the merged source. Logs:
+  `/tmp/spelling-issue123-main-rebase.out` and
+  `/tmp/spelling-issue123-main-rebase-idempotence.out`.
+- [x] (2026-10-10) Regenerate `Cargo.lock` for `ortho_config` 0.9.0 and the
+  merged manifests. It resolves both `ortho_config` and `ortho_config_macros`
+  to 0.9.0 while preserving the manifest feature set.
+- [x] (2026-10-10) Run the focused layering/localization tests, full repository
+  tests, format, typecheck, lint, spelling, Markdown, diagram, Make/workflow
+  contract gates, and the locked Rust 1.89.0 check. The latter passed with
+  `RUSTFLAGS=''`, matching CI's override of local development rustflags while
+  retaining normal build admission.
+- [x] (2026-10-10) Rerun `make check-fmt`, `make spelling`, and
+  `make markdownlint` after correcting the Progress-list indentation and
+  wrapping; all passed. The follow-up CodeRabbit review confirmed that fix.
+- [x] (2026-10-10) Verify CodeRabbit's concern about the user-guide
+  `with_base(...).localize(...)` example against the tagged v0.9.0 source. The
+  wrapper returns `Command`, and the shipped rustdoc uses the same call; the
+  reported type mismatch is a false positive. Keep the correct example.
+- [ ] Commit the regenerated lockfile and plan, force-push with an
+  observed-SHA lease, then update and verify draft PR #147's final description.
 
 ## Surprises & discoveries
 
@@ -255,6 +294,15 @@ observable.
   Rust 1.89.0 all-targets/all-features compile. Impact: dependency feature
   unification no longer enables `fs_utf8` for the project's direct v3 use, so
   declare that already-required feature on the direct dependency.
+- Review finding: CodeRabbit questioned whether the user-guide example passes
+  OrthoConfig's `WithBase<Command>` wrapper to `parse_localized_command`.
+  Evidence: the tagged v0.9.0 implementation's inherent
+  `WithBase<Command>::localize` returns `Command`, and the crate's own rustdoc
+  uses the same `.with_base(...).localize(...)` sequence; the guide imports
+  `LocalizeCmd` so the extension method is in scope. The project adapter uses
+  `localize_self` because it localizes subcommands separately. Decision: leave
+  the valid recursively localized example unchanged. Date/Author: 2026-10-10,
+  Codex.
 - Observation: the full Clippy run surfaced the existing
   `should_forward_header` `missing_const_for_fn` lint, also present on
   `origin/main`. Evidence: the unchanged source is attributed to commit
@@ -352,27 +400,47 @@ observable.
   payload DTOs do not currently provide the required metadata. Record a
   follow-up rather than adding a consumer or CLI surface to this migration.
   Date/Author: 2026-09-30, Codex.
+- Decision: retain the target-main build and CI improvements during rebase,
+  including shared-action pins, the comprehensive Make and workflow-contract
+  checks, and the `rstest-bdd` 0.6 dependency graph. Add the migration's Rust
+  1.89.0 check to that CI workflow. Resolve the lockfile conflict to the exact
+  target-main blob, then regenerate it after replay against the combined
+  manifests. Rationale: this preserves main's newer shared checks while
+  applying the user-requested lockfile merge policy and migration floor.
+  Date/Author: 2026-10-04, Codex.
+- Decision: rebase onto the newer `d5fc21f` main and keep its Rust build
+  standard, CI action updates, serial `make all`, workflow-contract gates, and
+  `typos-config-builder v0.1.3`. Retain main's lockfile during replay and
+  regenerate it only after the merged manifest history is complete. Resolve the
+  generated spelling conflict by running `make spelling`; because its output
+  exactly matched main and the repeated run was current, omit the branch's
+  generated-only regex replacement. Rationale: the new generator is the
+  canonical source for `typos.toml`, and the branch commit introduced no
+  independent spelling policy. Date/Author: 2026-10-10, Codex.
 
 ## Outcomes & retrospective
 
-Implementation is complete. The migration, compatibility evidence, and
-publication outcome are recorded below; the draft PR is open for review.
+The migration implementation and draft PR are complete. The branch is now
+rebased onto `origin/main` at `d5fc21f`, with seven issue commits retained and
+the generated-only spelling commit superseded by main's generator. The merged
+lockfile and deterministic gates are complete; publication and the final
+current-head review remain in progress.
 
 The OrthoConfig 0.9.0 dependency and Rust 1.89.0 floor are in place, and the
 localized parser delegates to the tagged `LocalizeCmd` and
 `parse_localized_command` APIs behind the stable project adapter. Compatibility
 tests preserve Fluent IDs, arguments, bidi formatting, and one-time conversion
 error localization. Layering and binary tests cover the unchanged precedence
-contract and prove a parse failure causes no record startup effects. The latest
-full gate run passed all six repository gates and the locked Rust 1.89.0 check,
-including the test-only lint fixes. CodeRabbit then reviewed 21 files,
-including the compatibility test, with zero findings. The implementation and
-documentation were committed and pushed with local/remote SHA parity; create
-the requested draft PR to complete publication. Draft PR #147 is open against
-`main`, its summary closes #123, and its final References section contains the
-Lody session URL. GitHub reported the CodeScene coverage and health checks as
-queued when the draft was created; those hosted checks are not reported as
-passed here.
+contract and prove a parse failure causes no record startup effects. On the
+rebased head, all four focused tests and the full deterministic gates passed,
+including 432 tests, 27 doctests, and the Rust 1.89.0 locked check. CodeRabbit
+reviewed that head and found a minor formatting issue in this plan, which is
+corrected and verified. Its remaining guide-example finding is a false positive
+against the tagged API and is recorded above. Draft PR #147 remains open against
+`main` until the rebased commits are pushed. Its description states
+`Closes #123`, and its final References section links the Lody session URL.
+CodeScene coverage and health checks were queued when the draft was created;
+their present status must be checked separately.
 
 The test-isolation slice is implemented. Initial full gates exposed Clippy,
 plan-spelling, and ambient filesystem-write issues; each was corrected. A
@@ -703,3 +771,12 @@ check is not a completed check.
   diagnostics and duplication concerns. Those concerns were addressed and all
   requested focused targets passed again. Re-run full gates and CodeRabbit
   before committing this milestone.
+- (2026-10-04) Rebase the issue series onto `origin/main`, preserve the newer
+  CI and Make checks, and resolve the lockfile to main's exact version during
+  replay. Regenerate the merged lockfile and rerun local gates plus CodeRabbit
+  before force-pushing the rewritten branch.
+- (2026-10-10) Rebase the seven retained issue commits from `58e54ff` onto
+  `d5fc21f`. Preserve the newer Rust build standard and workflow tooling; use
+  main's lockfile during replay; regenerate `typos.toml` with the new gate and
+  omit the superseded generated-only commit. Complete the merged lockfile,
+  deterministic gates, and CodeRabbit review before committing or publishing.
