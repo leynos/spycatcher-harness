@@ -344,3 +344,47 @@ units with explicit dependencies and completion criteria.
 - Task 3.3.2 is blocked until authoritative VidaiMock fixture schema
   documentation is available.
 - Task 4.4.1 remains optional and should not block baseline harness delivery.
+
+## 5. Installed agent recovery through ACP
+
+Idea: capability work that couples strict inference replay to an installed
+Agent Client Protocol (ACP) agent can expose tool admission and result defects
+that provider-only replay cannot observe. See
+[ADR 002](adr-002-acp-recovery-vertical-slice.md).
+
+### 5.1. Deliver a truthful file-read recovery verdict
+
+This step asks whether one installed VTCode tool interaction can be proved
+through advertisement, explicit model call, admission, execution and the next
+inference request. Its outcome determines whether broader capability profiles
+can reuse this fixture boundary.
+
+- [ ] 5.1.1. Deliver an installed-agent ACP fixture runner with strict replay.
+  - Requires 1.3.2.
+  - Launch the selected binary with synthetic roots; negotiate ACP, create a
+    session and drive a prompt against a Chat Completions cassette.
+  - Success: the first read-window scenario consumes both inference turns,
+    checks advertisement and exact returned bytes, records the independent
+    client-operation count and fails on unmatched requests or timeout.
+    Unit and behavioural coverage includes cleanup and malformed frames.
+  - Design reference:
+    [Proposed direction](adr-002-acp-recovery-vertical-slice.md#proposed-direction).
+
+- [ ] 5.1.2. Deliver the recovery negative-control and window-contract suite.
+  - Requires 5.1.1.
+  - Success: absent advertisement, dropped arguments, false result metadata,
+    denied operations and extra inference turns are detected. A denial records
+    zero successful operations; property-based windows match fixture bytes.
+    Each scenario pins the actual advertised tool schema and required profile.
+  - Design reference:
+    [Negative controls](adr-002-acp-recovery-vertical-slice.md#negative-controls-and-acceptance).
+
+- [ ] 5.1.3. Publish reproducible sanitized recovery recordings.
+  - Requires 5.1.2.
+  - Success: CI retains protocol and inference transcripts, operation ledger
+    and a versioned verdict manifest with source and binary provenance.
+    Canary checks cover body and diagnostic redaction. Replaying the published
+    synthetic fixture reproduces its verdict without credentials or live
+    inference; user documentation distinguishes content from physics coverage.
+  - Design reference:
+    [Evidence contract](adr-002-acp-recovery-vertical-slice.md#evidence-contract).
