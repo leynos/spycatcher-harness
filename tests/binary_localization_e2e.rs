@@ -4,6 +4,7 @@
 //! includes `main`, Clap argument parsing, layered configuration loading,
 //! language-loader construction, and user-facing error rendering.
 
+use std::net::TcpListener;
 use std::process::Command;
 
 use spycatcher_harness::cli::localizer::DISABLE_LOCALIZATION_ENV;
@@ -54,6 +55,71 @@ fn binary_emits_localized_unknown_argument_error() {
     );
     let stderr = String::from_utf8(output.stderr).expect("stderr should be UTF-8");
     insta::assert_snapshot!(stderr);
+}
+
+#[test]
+fn binary_parse_failure_has_no_record_startup_side_effects() {
+    let temp_dir = tempfile::tempdir().expect("temporary directory should be created");
+    let held_listener = TcpListener::bind("127.0.0.1:0").expect("listener port should bind");
+    let listen_address = held_listener
+        .local_addr()
+        .expect("held listener should have a local address")
+        .to_string();
+    let upstream_listener = TcpListener::bind("127.0.0.1:0").expect("upstream port should bind");
+    upstream_listener
+        .set_nonblocking(true)
+        .expect("upstream listener should be non-blocking");
+    let upstream_url = format!(
+        "http://{}",
+        upstream_listener
+            .local_addr()
+            .expect("upstream listener should have a local address")
+    );
+    let cassette_dir = temp_dir.path().join("cassettes");
+    let listen_address_arg = listen_address.as_str();
+
+    let output = Command::new(env!("CARGO_BIN_EXE_spycatcher-harness"))
+        .env_clear()
+        .env(
+            "SPYCATCHER_HARNESS_CMDS_RECORD_UPSTREAM__BASE_URL",
+            upstream_url,
+        )
+        .env("OPENROUTER_API_KEY", "parse-failure-secret-sentinel")
+        .current_dir(temp_dir.path())
+        .args([
+            "record",
+            "--listen",
+            listen_address_arg,
+            "--cassette-dir",
+            "cassettes",
+            "--cassette-name",
+            "must-not-be-written",
+            "--not-a-flag",
+        ])
+        .output()
+        .expect("binary should execute");
+
+    assert!(
+        !output.status.success(),
+        "unknown argument should fail parsing"
+    );
+    let stderr = String::from_utf8(output.stderr).expect("stderr should be UTF-8");
+    assert!(
+        stderr.contains("unknown argument"),
+        "parse failure should reach the CLI error path: {stderr}"
+    );
+    assert!(
+        !stderr.contains("parse-failure-secret-sentinel"),
+        "parse failure diagnostics must not disclose the configured secret"
+    );
+    assert!(
+        !cassette_dir.exists(),
+        "parse failure must not create the cassette directory"
+    );
+    assert!(
+        matches!(upstream_listener.accept(), Err(error) if error.kind() == std::io::ErrorKind::WouldBlock),
+        "parse failure must not contact the configured upstream"
+    );
 }
 
 #[test]
