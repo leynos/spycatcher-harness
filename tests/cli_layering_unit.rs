@@ -34,39 +34,51 @@ const REPLAY_LOCALIZATION_FILE_CONFIG: &str = concat!(
     "fallback_locale = \"en-US\"\n",
 );
 
+#[derive(Debug)]
+struct LayeringScenario<'a, Expected> {
+    argv: &'a [&'a str],
+    config_file: Option<&'a str>,
+    env_vars: &'a [(&'a str, &'a str)],
+    expected: Expected,
+}
+
 #[rstest]
 #[case(
-    &["spycatcher-harness", "replay"],
-    None,
-    &[],
-    "default",
+    LayeringScenario {
+        argv: &["spycatcher-harness", "replay"],
+        config_file: None,
+        env_vars: &[],
+        expected: "default",
+    },
 )]
 #[case(
-    &["spycatcher-harness", "replay"],
-    Some(REPLAY_FILE_CONFIG),
-    &[],
-    "from_file",
+    LayeringScenario {
+        argv: &["spycatcher-harness", "replay"],
+        config_file: Some(REPLAY_FILE_CONFIG),
+        env_vars: &[],
+        expected: "from_file",
+    },
 )]
 #[case(
-    &["spycatcher-harness", "replay"],
-    Some(REPLAY_FILE_CONFIG),
-    &[("SPYCATCHER_HARNESS_CMDS_REPLAY_CASSETTE_NAME", "from_env")],
-    "from_env",
+    LayeringScenario {
+        argv: &["spycatcher-harness", "replay"],
+        config_file: Some(REPLAY_FILE_CONFIG),
+        env_vars: &[("SPYCATCHER_HARNESS_CMDS_REPLAY_CASSETTE_NAME", "from_env")],
+        expected: "from_env",
+    },
 )]
 #[case(
-    &["spycatcher-harness", "replay", "--cassette-name", "from_cli"],
-    Some(REPLAY_FILE_CONFIG),
-    &[("SPYCATCHER_HARNESS_CMDS_REPLAY_CASSETTE_NAME", "from_env")],
-    "from_cli",
+    LayeringScenario {
+        argv: &["spycatcher-harness", "replay", "--cassette-name", "from_cli"],
+        config_file: Some(REPLAY_FILE_CONFIG),
+        env_vars: &[("SPYCATCHER_HARNESS_CMDS_REPLAY_CASSETTE_NAME", "from_env")],
+        expected: "from_cli",
+    },
 )]
-fn replay_cassette_name_precedence(
-    #[case] argv: &[&str],
-    #[case] config_file: Option<&str>,
-    #[case] env_vars: &[(&str, &str)],
-    #[case] expected_cassette_name: &str,
-) {
-    let loaded = load_with_child(argv, config_file, env_vars).expect("config should load");
-    assert_eq!(loaded.cassette_name, expected_cassette_name);
+fn replay_cassette_name_precedence(#[case] scenario: LayeringScenario<'static, &'static str>) {
+    let loaded = load_with_child(scenario.argv, scenario.config_file, scenario.env_vars)
+        .expect("config should load");
+    assert_eq!(loaded.cassette_name, scenario.expected);
     assert_eq!(loaded.mode, ModeSnapshot::Replay);
 }
 
@@ -110,51 +122,55 @@ fn replay_localization_defaults_to_fallback_locale() {
 
 #[rstest]
 #[case(
-    &["spycatcher-harness", "replay"],
-    Some(REPLAY_LOCALIZATION_FILE_CONFIG),
-    &[],
-    (Some("en-GB"), "en-US"),
+    LayeringScenario {
+        argv: &["spycatcher-harness", "replay"],
+        config_file: Some(REPLAY_LOCALIZATION_FILE_CONFIG),
+        env_vars: &[],
+        expected: (Some("en-GB"), "en-US"),
+    },
 )]
 #[case(
-    &["spycatcher-harness", "replay"],
-    Some(REPLAY_LOCALIZATION_FILE_CONFIG),
-    &[
-        ("SPYCATCHER_HARNESS_CMDS_REPLAY_LOCALIZATION__LOCALE", "en-AU"),
-        (
-            "SPYCATCHER_HARNESS_CMDS_REPLAY_LOCALIZATION__FALLBACK_LOCALE",
-            "en-US"
-        ),
-    ],
-    (Some("en-AU"), "en-US"),
+    LayeringScenario {
+        argv: &["spycatcher-harness", "replay"],
+        config_file: Some(REPLAY_LOCALIZATION_FILE_CONFIG),
+        env_vars: &[
+            ("SPYCATCHER_HARNESS_CMDS_REPLAY_LOCALIZATION__LOCALE", "en-AU"),
+            (
+                "SPYCATCHER_HARNESS_CMDS_REPLAY_LOCALIZATION__FALLBACK_LOCALE",
+                "en-US",
+            ),
+        ],
+        expected: (Some("en-AU"), "en-US"),
+    },
 )]
 #[case(
-    &[
-        "spycatcher-harness",
-        "replay",
-        "--locale",
-        "en-CA",
-        "--fallback-locale",
-        "en-US",
-    ],
-    Some(REPLAY_LOCALIZATION_FILE_CONFIG),
-    &[
-        ("SPYCATCHER_HARNESS_CMDS_REPLAY_LOCALIZATION__LOCALE", "en-AU"),
-        (
-            "SPYCATCHER_HARNESS_CMDS_REPLAY_LOCALIZATION__FALLBACK_LOCALE",
-            "en-US"
-        ),
-    ],
-    (Some("en-CA"), "en-US"),
+    LayeringScenario {
+        argv: &[
+            "spycatcher-harness",
+            "replay",
+            "--locale",
+            "en-CA",
+            "--fallback-locale",
+            "en-US",
+        ],
+        config_file: Some(REPLAY_LOCALIZATION_FILE_CONFIG),
+        env_vars: &[
+            ("SPYCATCHER_HARNESS_CMDS_REPLAY_LOCALIZATION__LOCALE", "en-AU"),
+            (
+                "SPYCATCHER_HARNESS_CMDS_REPLAY_LOCALIZATION__FALLBACK_LOCALE",
+                "en-US",
+            ),
+        ],
+        expected: (Some("en-CA"), "en-US"),
+    },
 )]
 fn replay_localization_precedence(
-    #[case] argv: &[&str],
-    #[case] config_file: Option<&str>,
-    #[case] env_vars: &[(&str, &str)],
-    #[case] expected: (Option<&str>, &str),
+    #[case] scenario: LayeringScenario<'static, (Option<&'static str>, &'static str)>,
 ) {
-    let loaded = load_with_child(argv, config_file, env_vars).expect("config should load");
+    let loaded = load_with_child(scenario.argv, scenario.config_file, scenario.env_vars)
+        .expect("config should load");
 
-    let (expected_locale, expected_fallback_locale) = expected;
+    let (expected_locale, expected_fallback_locale) = scenario.expected;
     assert_eq!(loaded.localization.locale.as_deref(), expected_locale);
     assert_eq!(
         loaded.localization.fallback_locale,

@@ -197,7 +197,11 @@ fn load_layered_config(cli_layering_world: &CliLayeringWorld) {
     let argv = cli_layering_world.argv.take().unwrap_or_default();
     let config_file = cli_layering_world.config_file.take().unwrap_or_default();
     let env_vars = cli_layering_world.env_vars.take().unwrap_or_default();
-    let result = load_isolated_config(&argv, &config_file, &env_vars);
+    let result = load_isolated_config(&IsolatedConfigInput {
+        argv,
+        config_file,
+        env_vars,
+    });
     cli_layering_world.result.set(result);
 }
 

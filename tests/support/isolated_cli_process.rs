@@ -133,6 +133,12 @@ fn run_child(
         .env("TEMP", work_dir.path())
         .env("TMPDIR", work_dir.path());
 
+    // Forward only LLVM's profile destination so child probes are counted in
+    // coverage while configuration and other environment values stay cleared.
+    if let Some(profile_file) = std::env::var_os("LLVM_PROFILE_FILE") {
+        command.env("LLVM_PROFILE_FILE", profile_file);
+    }
+
     for name in [
         "PATH",
         "SystemRoot",

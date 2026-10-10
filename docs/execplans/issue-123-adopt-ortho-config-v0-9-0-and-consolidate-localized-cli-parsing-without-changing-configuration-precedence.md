@@ -5,7 +5,7 @@ This ExecPlan is a living document. Keep `Constraints`, `Tolerances`, `Risks`,
 `Outcomes & retrospective`, `Conformance basis`, and `Verification plan`
 current.
 
-Status: COMPLETE
+Status: IN PROGRESS
 
 ## Purpose / big picture
 
@@ -258,6 +258,25 @@ observable.
   `1194b85`; verify remote parity at `94cb2fc`. Update and read back draft PR
   #147 with the required title reference, `Closes #123`, current gate evidence,
   and a terminal References section containing the Lody session link.
+- [x] (2026-10-10) Diagnose the first post-rebase hosted CI failure: the
+  coverage ratchet measured 87.09% against an 88.00% minimum. The isolated CLI
+  probes cleared `LLVM_PROFILE_FILE` along with configuration inputs, so child
+  executions did not contribute to coverage. Forward only that instrumentation
+  variable; a CI-equivalent local coverage run then measured 88.99%. The hosted
+  CodeScene review also flagged string-heavy test helper signatures; group the
+  related scenario inputs and verify the files with `cs review`. The final
+  local coverage rerun reached 89.04%; see the completed validation entry
+  below. Hosted revalidation remains pending.
+- [x] (2026-10-10 22:00Z) Complete the post-fix validation sequence. The four
+  requested CLI suites passed (24 layering unit, 9 layering BDD, 40
+  localization unit, and 6 binary localization cases), followed by
+  `make check-fmt`, `make test` (432 tests and 27 doctests; 4 ignored),
+  `make typecheck`, `make lint`, spelling, Markdown, Mermaid,
+  workflow-contract, and `make test-make-all` gates. The locked Rust 1.89.0
+  all-targets, all-features check passed. CI-equivalent coverage measured 3,354
+  of 3,767 lines (89.04%), above the 88.00% minimum. CodeRabbit reviewed the
+  validated diff and reported zero findings. Hosted checks for the follow-up
+  commit remain pending.
 
 ## Surprises & discoveries
 
