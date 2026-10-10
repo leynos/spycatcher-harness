@@ -140,3 +140,41 @@ impl Localizer for CatalogueCompatibleLocalizer<'_> {
         self.localizer.locale()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    //! Tests the compatibility adapter's delegation of locale metadata.
+
+    use i18n_embed::unic_langid::{LanguageIdentifier, langid};
+    use ortho_config::{LocalizationArgs, Localizer};
+
+    use super::CatalogueCompatibleLocalizer;
+
+    struct LocaleProbe {
+        locale: LanguageIdentifier,
+    }
+
+    impl Localizer for LocaleProbe {
+        fn lookup(&self, _id: &str, _args: Option<&LocalizationArgs<'_>>) -> Option<String> {
+            None
+        }
+
+        fn locale(&self) -> Option<&LanguageIdentifier> {
+            Some(&self.locale)
+        }
+    }
+
+    #[test]
+    fn compatibility_localizer_forwards_locale_metadata() {
+        let localizer = LocaleProbe {
+            locale: langid!("fr"),
+        };
+        let compatible = CatalogueCompatibleLocalizer {
+            localizer: &localizer,
+            binary: String::from("demo"),
+            version: None,
+        };
+
+        assert_eq!(compatible.locale(), Some(&localizer.locale));
+    }
+}
