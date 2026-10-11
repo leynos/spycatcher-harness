@@ -1645,12 +1645,12 @@ checksum = "04744f49eae99ab78e0d5c0b603ab218f515ea8cfe5a456d7629ad883a3b6e7d"
 
 [[package]]
 name = "ortho_config"
-version = "0.8.0"
+version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9314c7a4be184287f3f9a66fcbcec054ac215d4975152df86b7aadeae8d5e019"
+checksum = "e1e1275151857af166ec59cab125a6fec5d2d0ddceda70a8c50c83c45456b953"
 dependencies = [
  "camino",
- "cap-std 3.4.5",
+ "cap-std 4.0.3",
  "clap",
  "clap-dispatch",
  "directories",
@@ -1663,7 +1663,7 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror 2.0.21",
- "toml 0.9.12+spec-1.1.0",
+ "toml 1.1.6+spec-1.1.0",
  "tracing",
  "uncased",
  "unic-langid",
@@ -1672,9 +1672,9 @@ dependencies = [
 
 [[package]]
 name = "ortho_config_macros"
-version = "0.8.0"
+version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a3941ab7c592a0b93aadf12ce30e0ef3d01af87b46c8f363d8157dc33273ba83"
+checksum = "8ca0f4ba149c15111da8c4d3b6180af452d44c36049b25c22b0902d2383a1da9"
 dependencies = [
  "heck",
  "proc-macro2",
@@ -2680,6 +2680,7 @@ dependencies = [
  "tokio",
  "toml 1.1.6+spec-1.1.0",
  "tracing",
+ "tracing-subscriber",
  "tracing-test",
  "url",
  "uuid",
@@ -2955,21 +2956,6 @@ dependencies = [
 
 [[package]]
 name = "toml"
-version = "0.9.12+spec-1.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cf92845e79fc2e2def6a5d828f0801e29a2f8acc037becc5ab08595c7d5e9863"
-dependencies = [
- "indexmap",
- "serde_core",
- "serde_spanned 1.1.1",
- "toml_datetime 0.7.5+spec-1.1.0",
- "toml_parser",
- "toml_writer",
- "winnow 0.7.15",
-]
-
-[[package]]
-name = "toml"
 version = "1.1.6+spec-1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "920602543f0911ab71da12c50d59701da54c196d1a2bf5cb4b75667f137a406a"
@@ -2990,15 +2976,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "22cddaf88f4fbc13c51aebbf5f8eceb5c7c5a9da2ac40a13519eb5b0a0e8f11c"
 dependencies = [
  "serde",
-]
-
-[[package]]
-name = "toml_datetime"
-version = "0.7.5+spec-1.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "92e1cfed4a3038bc5a127e35a2d360f145e1f4b971b551a2ba5fd7aedf7e1347"
-dependencies = [
- "serde_core",
 ]
 
 [[package]]

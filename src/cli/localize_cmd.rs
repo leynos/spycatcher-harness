@@ -5,11 +5,9 @@
 //! Fluent catalogue when translations are available.
 
 use clap::{Command, CommandFactory, Parser};
-use ortho_config::{LocalizationArgs, Localizer, localize_clap_error_with_command};
+use ortho_config::{LocalizationArgs, Localizer};
 
 const ROOT_COMMAND_ID: &str = "cli";
-
-type CommandStringApplicator = fn(Command, String) -> Command;
 
 /// Extension trait that applies localized copy to a [`Command`].
 ///
@@ -32,11 +30,10 @@ pub trait LocalizeCmd {
 }
 
 impl LocalizeCmd for Command {
-    fn localize(mut self, localizer: &dyn Localizer) -> Self {
+    fn localize(self, localizer: &dyn Localizer) -> Self {
         let command_id = command_identifier(&self);
-        self = localize_command_copy(self, &command_id, localizer);
-        self = localize_subcommands(self, localizer);
-        self
+        let prepared_command = localize_command_copy(self, &command_id, localizer);
+        localize_subcommands(prepared_command, localizer)
     }
 }
 
@@ -76,15 +73,9 @@ where
     I: IntoIterator<Item = T>,
     T: Into<std::ffi::OsString> + Clone,
 {
-    let mut command = C::command().localize(localizer);
-    let matches = command
-        .try_get_matches_from_mut(iter)
-        .map_err(|error| localize_clap_error_with_command(error, localizer, Some(&command)))?;
-
-    C::from_arg_matches(&matches).map_err(|match_error| {
-        let command_error = match_error.with_cmd(&command);
-        localize_clap_error_with_command(command_error, localizer, Some(&command))
-    })
+    let command = C::command().localize(localizer);
+    ortho_config::parse_localized_command::<C, _, _>(command, iter, localizer)
+        .map(|(parsed, _matches)| parsed)
 }
 
 fn command_identifier(command: &Command) -> String {
@@ -94,61 +85,96 @@ fn command_identifier(command: &Command) -> String {
     }
 }
 
-fn localize_command_copy(
-    mut command: Command,
-    command_id: &str,
-    localizer: &dyn Localizer,
-) -> Command {
-    let args = command_args(&command);
-    let ctx = LocalizeContext {
+fn localize_command_copy(command: Command, command_id: &str, localizer: &dyn Localizer) -> Command {
+    let compatibility_localizer = CatalogueCompatibleLocalizer {
         localizer,
-        args: Some(&args),
+        binary: command.get_name().to_owned(),
+        version: command.get_version().map(str::to_owned),
     };
-    let fields: &[(&str, CommandStringApplicator)] = &[
-        ("-about", |cmd, value| cmd.about(value)),
-        ("-long-about", |cmd, value| cmd.long_about(value)),
-        ("-version", apply_localized_version),
-        ("-usage", |cmd, value| cmd.override_usage(value)),
-        ("-merge-help", |cmd, value| cmd.after_long_help(value)),
-    ];
 
-    for (suffix, apply) in fields {
-        command = apply_localized_string(command, &format!("{command_id}{suffix}"), &ctx, *apply);
-    }
-
-    command
+    ortho_config::LocalizeCmd::with_base(command, command_id)
+        .localize_self(&compatibility_localizer)
 }
 
 fn localize_subcommands(command: Command, localizer: &dyn Localizer) -> Command {
-    command.mut_subcommands(|subcommand| subcommand.localize(localizer))
+    command.mut_subcommands(|subcommand| LocalizeCmd::localize(subcommand, localizer))
 }
 
-fn apply_localized_version(command: Command, value: String) -> Command {
-    command.version(value)
-}
-
-fn command_args(command: &Command) -> LocalizationArgs<'static> {
-    let mut args = LocalizationArgs::new();
-    args.insert("binary", command.get_name().to_owned().into());
-    if let Some(version) = command.get_version() {
-        args.insert("version", version.to_owned().into());
-    }
-    args
-}
-
-struct LocalizeContext<'a> {
+/// Bridges the current catalogue contract to `OrthoConfig`'s command localizer.
+///
+/// The project catalogue predates `OrthoConfig`'s metadata identifiers: it uses
+/// hyphens in `long-about` and `merge-help` where Clap names the fields
+/// `long_about` and `after_long_help`, and supplies both formatting arguments
+/// to each command lookup. Keep that translation policy at this adapter
+/// boundary while delegating the command-field traversal upstream.
+struct CatalogueCompatibleLocalizer<'a> {
     localizer: &'a dyn Localizer,
-    args: Option<&'a LocalizationArgs<'a>>,
+    binary: String,
+    version: Option<String>,
 }
 
-fn apply_localized_string(
-    command: Command,
-    key: &str,
-    ctx: &LocalizeContext<'_>,
-    apply: CommandStringApplicator,
-) -> Command {
-    match ctx.localizer.lookup(key, ctx.args) {
-        Some(value) => apply(command, value),
-        None => command,
+impl Localizer for CatalogueCompatibleLocalizer<'_> {
+    fn lookup(&self, id: &str, args: Option<&LocalizationArgs<'_>>) -> Option<String> {
+        let compatible_id = id
+            .strip_suffix("-long_about")
+            .map(|prefix| format!("{prefix}-long-about"))
+            .or_else(|| {
+                id.strip_suffix("-after_long_help")
+                    .map(|prefix| format!("{prefix}-merge-help"))
+            });
+        let mut compatible_args = args.cloned().unwrap_or_default();
+        compatible_args.insert("binary", self.binary.clone().into());
+        if let Some(version) = &self.version {
+            compatible_args.insert("version", version.clone().into());
+        } else {
+            compatible_args.remove("version");
+        }
+
+        self.localizer.lookup(
+            compatible_id.as_deref().unwrap_or(id),
+            Some(&compatible_args),
+        )
+    }
+
+    fn locale(&self) -> Option<&i18n_embed::unic_langid::LanguageIdentifier> {
+        self.localizer.locale()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    //! Tests the compatibility adapter's delegation of locale metadata.
+
+    use i18n_embed::unic_langid::{LanguageIdentifier, langid};
+    use ortho_config::{LocalizationArgs, Localizer};
+
+    use super::CatalogueCompatibleLocalizer;
+
+    struct LocaleProbe {
+        locale: LanguageIdentifier,
+    }
+
+    impl Localizer for LocaleProbe {
+        fn lookup(&self, _id: &str, _args: Option<&LocalizationArgs<'_>>) -> Option<String> {
+            None
+        }
+
+        fn locale(&self) -> Option<&LanguageIdentifier> {
+            Some(&self.locale)
+        }
+    }
+
+    #[test]
+    fn compatibility_localizer_forwards_locale_metadata() {
+        let localizer = LocaleProbe {
+            locale: langid!("fr"),
+        };
+        let compatible = CatalogueCompatibleLocalizer {
+            localizer: &localizer,
+            binary: String::from("demo"),
+            version: None,
+        };
+
+        assert_eq!(compatible.locale(), Some(&localizer.locale));
     }
 }

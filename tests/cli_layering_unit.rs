@@ -1,7 +1,7 @@
 //! Unit tests for CLI layered configuration loading.
 //!
 //! This suite exercises [`spycatcher_harness::cli::load_subcommand_config_from_iter`]
-//! in isolation using `figment::Jail` to control the filesystem and environment.
+//! in isolated child processes to control configuration discovery and environment.
 //! It covers:
 //!
 //! - Cassette-name precedence (CLI > env > config file > default) for `replay`.
@@ -17,48 +17,15 @@
 //! - `src/bin/spycatcher_harness.rs` (inline tests) — startup locale-plan and
 //!   loader construction unit tests.
 
-use std::cell::RefCell;
-
-use eyre::{Result, eyre};
-use ortho_config::figment;
-use proptest::prelude::*;
 use rstest::rstest;
 
-use spycatcher_harness::cli::load_subcommand_config_from_iter;
-use spycatcher_harness::{HarnessConfig, config};
+#[path = "support/cli_config_snapshot.rs"]
+mod cli_config_snapshot;
+#[path = "support/isolated_cli_process.rs"]
+mod isolated_cli_process;
 
-/// Loads a [`HarnessConfig`] under `figment::Jail` using `argv`, optional
-/// `config_file` contents, and `env_vars`, returning the loaded config or
-/// conversion error.
-#[expect(
-    clippy::result_large_err,
-    reason = "figment::Jail callback requires figment::error::Result"
-)]
-fn load_with_jail(
-    argv: &[&str],
-    config_file: Option<&str>,
-    env_vars: &[(&str, &str)],
-) -> Result<HarnessConfig> {
-    let loaded = RefCell::new(None);
-
-    figment::Jail::try_with(|jail| {
-        if let Some(content) = config_file {
-            jail.create_file(".spycatcher_harness.toml", content)?;
-        }
-        for (key, value) in env_vars {
-            jail.set_env(key, value);
-        }
-        let cfg = load_subcommand_config_from_iter(argv)
-            .map_err(|error| figment::Error::from(error.to_string()))?;
-        loaded.replace(Some(cfg));
-        Ok(())
-    })
-    .map_err(|error| eyre!(error.to_string()))?;
-
-    loaded
-        .into_inner()
-        .ok_or_else(|| eyre!("configuration load did not execute"))
-}
+use cli_config_snapshot::load_config_snapshot as load_with_child;
+use isolated_cli_process::ModeSnapshot;
 
 const REPLAY_FILE_CONFIG: &str = "[cmds.replay]\ncassette_name = \"from_file\"\n";
 const REPLAY_LOCALIZATION_FILE_CONFIG: &str = concat!(
@@ -67,174 +34,87 @@ const REPLAY_LOCALIZATION_FILE_CONFIG: &str = concat!(
     "fallback_locale = \"en-US\"\n",
 );
 
-/// Generates lowercase two- or three-letter language subtags as a strategy.
-fn language_subtag() -> impl Strategy<Value = String> {
-    proptest::collection::vec(b'a'..=b'z', 2..=3)
-        .prop_map(|bytes| bytes.into_iter().map(char::from).collect())
-}
-
-/// Generates uppercase two-letter region subtags as a strategy.
-fn region_subtag() -> impl Strategy<Value = String> {
-    proptest::collection::vec(b'A'..=b'Z', 2)
-        .prop_map(|bytes| bytes.into_iter().map(char::from).collect())
-}
-
-/// Generates titlecase four-letter script subtags as a strategy.
-fn script_subtag() -> impl Strategy<Value = String> {
-    (b'A'..=b'Z', proptest::collection::vec(b'a'..=b'z', 3))
-        .prop_map(|(first, rest)| std::iter::once(first).chain(rest).map(char::from).collect())
-}
-
-/// Generates lowercase five- to eight-letter variant subtags as a strategy.
-fn variant_subtag() -> impl Strategy<Value = String> {
-    prop_oneof![
-        Just(String::from("valencia")),
-        proptest::collection::vec(b'a'..=b'z', 5..=8)
-            .prop_map(|bytes| bytes.into_iter().map(char::from).collect()),
-    ]
-}
-
-/// Generates valid locale text such as `xx`, `xx-Xxxx`, `xx-YY`, or
-/// `xx-valencia` as a strategy.
-fn valid_locale_text() -> impl Strategy<Value = String> {
-    (
-        language_subtag(),
-        proptest::option::of(script_subtag()),
-        proptest::option::of(region_subtag()),
-        proptest::option::of(variant_subtag()),
-    )
-        .prop_map(|(language, script, region, variant)| {
-            let mut locale = language;
-            for subtag in [script, region, variant].into_iter().flatten() {
-                locale.push('-');
-                locale.push_str(&subtag);
-            }
-            locale
-        })
-}
-
-fn optional_locale_text() -> impl Strategy<Value = Option<String>> {
-    proptest::option::of(valid_locale_text())
-}
-
-proptest! {
-    #[test]
-    fn cli_locale_validation_accepts_generated_valid_language_identifiers(
-        locale in valid_locale_text(),
-        fallback_locale in valid_locale_text(),
-    ) {
-        let loaded = load_with_jail(
-            &[
-                "spycatcher-harness",
-                "replay",
-                "--locale",
-                locale.as_str(),
-                "--fallback-locale",
-                fallback_locale.as_str(),
-            ],
-            None,
-            &[],
-        )
-        .map_err(|error| TestCaseError::fail(error.to_string()))?;
-
-        prop_assert_eq!(loaded.localization.locale.as_deref(), Some(locale.as_str()));
-        prop_assert_eq!(loaded.localization.fallback_locale, fallback_locale);
-    }
-
-    #[test]
-    fn replay_localization_layering_preserves_precedence_and_fallback(
-        file_locale in optional_locale_text(),
-        env_locale in optional_locale_text(),
-        cli_locale in optional_locale_text(),
-        file_fallback_locale in valid_locale_text(),
-        env_fallback_locale in optional_locale_text(),
-        cli_fallback_locale in optional_locale_text(),
-    ) {
-        let config_file = format!(
-            "[cmds.replay.localization]\nlocale = \"{}\"\nfallback_locale = \"{}\"\n",
-            file_locale.as_deref().unwrap_or("en-GB"),
-            file_fallback_locale
-        );
-        let mut argv = vec!["spycatcher-harness", "replay"];
-        if let Some(locale) = cli_locale.as_deref() {
-            argv.extend(["--locale", locale]);
-        }
-        if let Some(fallback_locale) = cli_fallback_locale.as_deref() {
-            argv.extend(["--fallback-locale", fallback_locale]);
-        }
-
-        let mut env_vars = Vec::new();
-        if let Some(locale) = env_locale.as_deref() {
-            env_vars.push(("SPYCATCHER_HARNESS_CMDS_REPLAY_LOCALIZATION__LOCALE", locale));
-        }
-        if let Some(fallback_locale) = env_fallback_locale.as_deref() {
-            env_vars.push((
-                "SPYCATCHER_HARNESS_CMDS_REPLAY_LOCALIZATION__FALLBACK_LOCALE",
-                fallback_locale,
-            ));
-        }
-
-        let loaded = load_with_jail(&argv, Some(config_file.as_str()), &env_vars)
-            .map_err(|error| TestCaseError::fail(error.to_string()))?;
-        let expected_locale = cli_locale
-            .as_deref()
-            .or(env_locale.as_deref())
-            .or(file_locale.as_deref())
-            .or(Some("en-GB"));
-        let expected_fallback_locale = cli_fallback_locale
-            .as_deref()
-            .or(env_fallback_locale.as_deref())
-            .unwrap_or(file_fallback_locale.as_str());
-
-        prop_assert_eq!(loaded.localization.locale.as_deref(), expected_locale);
-        prop_assert_eq!(
-            loaded.localization.fallback_locale.as_str(),
-            expected_fallback_locale
-        );
-        prop_assert!(!loaded.localization.fallback_locale.is_empty());
-    }
+#[derive(Debug)]
+struct LayeringScenario<'a, Expected> {
+    argv: &'a [&'a str],
+    config_file: Option<&'a str>,
+    env_vars: &'a [(&'a str, &'a str)],
+    expected: Expected,
 }
 
 #[rstest]
 #[case(
-    &["spycatcher-harness", "replay"],
-    None,
-    &[],
-    "default",
+    LayeringScenario {
+        argv: &["spycatcher-harness", "replay"],
+        config_file: None,
+        env_vars: &[],
+        expected: "default",
+    },
 )]
 #[case(
-    &["spycatcher-harness", "replay"],
-    Some(REPLAY_FILE_CONFIG),
-    &[],
-    "from_file",
+    LayeringScenario {
+        argv: &["spycatcher-harness", "replay"],
+        config_file: Some(REPLAY_FILE_CONFIG),
+        env_vars: &[],
+        expected: "from_file",
+    },
 )]
 #[case(
-    &["spycatcher-harness", "replay"],
-    Some(REPLAY_FILE_CONFIG),
-    &[("SPYCATCHER_HARNESS_CMDS_REPLAY_CASSETTE_NAME", "from_env")],
-    "from_env",
+    LayeringScenario {
+        argv: &["spycatcher-harness", "replay"],
+        config_file: Some(REPLAY_FILE_CONFIG),
+        env_vars: &[("SPYCATCHER_HARNESS_CMDS_REPLAY_CASSETTE_NAME", "from_env")],
+        expected: "from_env",
+    },
 )]
 #[case(
-    &["spycatcher-harness", "replay", "--cassette-name", "from_cli"],
-    Some(REPLAY_FILE_CONFIG),
-    &[("SPYCATCHER_HARNESS_CMDS_REPLAY_CASSETTE_NAME", "from_env")],
-    "from_cli",
+    LayeringScenario {
+        argv: &["spycatcher-harness", "replay", "--cassette-name", "from_cli"],
+        config_file: Some(REPLAY_FILE_CONFIG),
+        env_vars: &[("SPYCATCHER_HARNESS_CMDS_REPLAY_CASSETTE_NAME", "from_env")],
+        expected: "from_cli",
+    },
 )]
-fn replay_cassette_name_precedence(
-    #[case] argv: &[&str],
-    #[case] config_file: Option<&str>,
-    #[case] env_vars: &[(&str, &str)],
-    #[case] expected_cassette_name: &str,
+fn replay_cassette_name_precedence(#[case] scenario: LayeringScenario<'static, &'static str>) {
+    let loaded = load_with_child(scenario.argv, scenario.config_file, scenario.env_vars)
+        .expect("config should load");
+    assert_eq!(loaded.cassette_name, scenario.expected);
+    assert_eq!(loaded.mode, ModeSnapshot::Replay);
+}
+
+#[rstest]
+#[case("record", ModeSnapshot::Record)]
+#[case("replay", ModeSnapshot::Replay)]
+#[case("verify", ModeSnapshot::Verify)]
+fn cassette_name_precedence_is_preserved_for_each_command(
+    #[case] subcommand: &str,
+    #[case] expected_mode: ModeSnapshot,
 ) {
-    let loaded = load_with_jail(argv, config_file, env_vars).expect("config should load");
-    assert_eq!(loaded.cassette_name, expected_cassette_name);
-    assert_eq!(loaded.mode, config::Mode::Replay);
+    let config = format!("[cmds.{subcommand}]\ncassette_name = \"from_file\"\n");
+    let env_name = format!(
+        "SPYCATCHER_HARNESS_CMDS_{}_CASSETTE_NAME",
+        subcommand.to_uppercase()
+    );
+    let loaded = load_with_child(
+        &[
+            "spycatcher-harness",
+            subcommand,
+            "--cassette-name",
+            "from_cli",
+        ],
+        Some(&config),
+        &[(env_name.as_str(), "from_env")],
+    )
+    .expect("config should load");
+
+    assert_eq!(loaded.mode, expected_mode);
+    assert_eq!(loaded.cassette_name, "from_cli");
 }
 
 #[rstest]
 fn replay_localization_defaults_to_fallback_locale() {
     let loaded =
-        load_with_jail(&["spycatcher-harness", "replay"], None, &[]).expect("config should load");
+        load_with_child(&["spycatcher-harness", "replay"], None, &[]).expect("config should load");
 
     assert_eq!(loaded.localization.locale, None);
     assert_eq!(loaded.localization.fallback_locale, "en-US");
@@ -242,51 +122,55 @@ fn replay_localization_defaults_to_fallback_locale() {
 
 #[rstest]
 #[case(
-    &["spycatcher-harness", "replay"],
-    Some(REPLAY_LOCALIZATION_FILE_CONFIG),
-    &[],
-    (Some("en-GB"), "en-US"),
+    LayeringScenario {
+        argv: &["spycatcher-harness", "replay"],
+        config_file: Some(REPLAY_LOCALIZATION_FILE_CONFIG),
+        env_vars: &[],
+        expected: (Some("en-GB"), "en-US"),
+    },
 )]
 #[case(
-    &["spycatcher-harness", "replay"],
-    Some(REPLAY_LOCALIZATION_FILE_CONFIG),
-    &[
-        ("SPYCATCHER_HARNESS_CMDS_REPLAY_LOCALIZATION__LOCALE", "en-AU"),
-        (
-            "SPYCATCHER_HARNESS_CMDS_REPLAY_LOCALIZATION__FALLBACK_LOCALE",
-            "en-US"
-        ),
-    ],
-    (Some("en-AU"), "en-US"),
+    LayeringScenario {
+        argv: &["spycatcher-harness", "replay"],
+        config_file: Some(REPLAY_LOCALIZATION_FILE_CONFIG),
+        env_vars: &[
+            ("SPYCATCHER_HARNESS_CMDS_REPLAY_LOCALIZATION__LOCALE", "en-AU"),
+            (
+                "SPYCATCHER_HARNESS_CMDS_REPLAY_LOCALIZATION__FALLBACK_LOCALE",
+                "en-US",
+            ),
+        ],
+        expected: (Some("en-AU"), "en-US"),
+    },
 )]
 #[case(
-    &[
-        "spycatcher-harness",
-        "replay",
-        "--locale",
-        "en-CA",
-        "--fallback-locale",
-        "en-US",
-    ],
-    Some(REPLAY_LOCALIZATION_FILE_CONFIG),
-    &[
-        ("SPYCATCHER_HARNESS_CMDS_REPLAY_LOCALIZATION__LOCALE", "en-AU"),
-        (
-            "SPYCATCHER_HARNESS_CMDS_REPLAY_LOCALIZATION__FALLBACK_LOCALE",
-            "en-US"
-        ),
-    ],
-    (Some("en-CA"), "en-US"),
+    LayeringScenario {
+        argv: &[
+            "spycatcher-harness",
+            "replay",
+            "--locale",
+            "en-CA",
+            "--fallback-locale",
+            "en-US",
+        ],
+        config_file: Some(REPLAY_LOCALIZATION_FILE_CONFIG),
+        env_vars: &[
+            ("SPYCATCHER_HARNESS_CMDS_REPLAY_LOCALIZATION__LOCALE", "en-AU"),
+            (
+                "SPYCATCHER_HARNESS_CMDS_REPLAY_LOCALIZATION__FALLBACK_LOCALE",
+                "en-US",
+            ),
+        ],
+        expected: (Some("en-CA"), "en-US"),
+    },
 )]
 fn replay_localization_precedence(
-    #[case] argv: &[&str],
-    #[case] config_file: Option<&str>,
-    #[case] env_vars: &[(&str, &str)],
-    #[case] expected: (Option<&str>, &str),
+    #[case] scenario: LayeringScenario<'static, (Option<&'static str>, &'static str)>,
 ) {
-    let loaded = load_with_jail(argv, config_file, env_vars).expect("config should load");
+    let loaded = load_with_child(scenario.argv, scenario.config_file, scenario.env_vars)
+        .expect("config should load");
 
-    let (expected_locale, expected_fallback_locale) = expected;
+    let (expected_locale, expected_fallback_locale) = scenario.expected;
     assert_eq!(loaded.localization.locale.as_deref(), expected_locale);
     assert_eq!(
         loaded.localization.fallback_locale,
@@ -301,7 +185,7 @@ fn env_nested_locale_wins_over_file_only_cli_alias() {
         "locale = \"en-GB\"\n",
         "fallback_locale = \"en-GB\"\n",
     );
-    let loaded = load_with_jail(
+    let loaded = load_with_child(
         &["spycatcher-harness", "replay"],
         Some(config),
         &[
@@ -323,7 +207,7 @@ fn env_nested_locale_wins_over_file_only_cli_alias() {
 
 #[rstest]
 fn cli_locale_alias_wins_over_env_nested_locale() {
-    let loaded = load_with_jail(
+    let loaded = load_with_child(
         &[
             "spycatcher-harness",
             "replay",
@@ -351,12 +235,12 @@ fn cli_locale_alias_wins_over_env_nested_locale() {
 }
 
 #[rstest]
-#[case("record", config::Mode::Record)]
-#[case("replay", config::Mode::Replay)]
-#[case("verify", config::Mode::Verify)]
+#[case("record", ModeSnapshot::Record)]
+#[case("replay", ModeSnapshot::Replay)]
+#[case("verify", ModeSnapshot::Verify)]
 fn localization_overrides_work_for_each_subcommand(
     #[case] subcommand: &str,
-    #[case] expected_mode: config::Mode,
+    #[case] expected_mode: ModeSnapshot,
 ) {
     let config = format!(
         "[cmds.{subcommand}.localization]\n\
@@ -368,8 +252,56 @@ fn localization_overrides_work_for_each_subcommand(
         "SPYCATCHER_HARNESS_CMDS_{}_LOCALIZATION__LOCALE",
         subcommand.to_uppercase()
     );
-    let env_vars = [(env_locale.as_str(), "en-CA")];
-    let loaded = load_with_jail(&argv, Some(&config), &env_vars).expect("config should load");
+    let env_fallback_locale = format!(
+        "SPYCATCHER_HARNESS_CMDS_{}_LOCALIZATION__FALLBACK_LOCALE",
+        subcommand.to_uppercase()
+    );
+    let env_vars = [
+        (env_locale.as_str(), "en-CA"),
+        (env_fallback_locale.as_str(), "en-AU"),
+    ];
+    let loaded = load_with_child(&argv, Some(&config), &env_vars).expect("config should load");
+
+    assert_eq!(loaded.mode, expected_mode);
+    assert_eq!(loaded.localization.locale.as_deref(), Some("en-CA"));
+    assert_eq!(loaded.localization.fallback_locale, "en-AU");
+}
+
+#[rstest]
+#[case("record", ModeSnapshot::Record)]
+#[case("replay", ModeSnapshot::Replay)]
+#[case("verify", ModeSnapshot::Verify)]
+fn explicit_locale_flags_override_nested_values_for_each_subcommand(
+    #[case] subcommand: &str,
+    #[case] expected_mode: ModeSnapshot,
+) {
+    let config = format!(
+        "[cmds.{subcommand}.localization]\nlocale = \"en-GB\"\nfallback_locale = \"en-GB\"\n"
+    );
+    let env_locale = format!(
+        "SPYCATCHER_HARNESS_CMDS_{}_LOCALIZATION__LOCALE",
+        subcommand.to_uppercase()
+    );
+    let env_fallback_locale = format!(
+        "SPYCATCHER_HARNESS_CMDS_{}_LOCALIZATION__FALLBACK_LOCALE",
+        subcommand.to_uppercase()
+    );
+    let loaded = load_with_child(
+        &[
+            "spycatcher-harness",
+            subcommand,
+            "--locale",
+            "en-CA",
+            "--fallback-locale",
+            "en-US",
+        ],
+        Some(&config),
+        &[
+            (env_locale.as_str(), "en-AU"),
+            (env_fallback_locale.as_str(), "en-AU"),
+        ],
+    )
+    .expect("config should load");
 
     assert_eq!(loaded.mode, expected_mode);
     assert_eq!(loaded.localization.locale.as_deref(), Some("en-CA"));
@@ -378,13 +310,13 @@ fn localization_overrides_work_for_each_subcommand(
 
 #[rstest]
 fn invalid_cli_locale_fails_loading() {
-    let error = load_with_jail(
+    let error = load_with_child(
         &["spycatcher-harness", "replay", "--locale", "not_a_locale"],
         None,
         &[],
     )
     .expect_err("invalid locale should fail loading");
-    let message = error.to_string();
+    let message = error.clone();
 
     insta::assert_snapshot!(
         message,
@@ -407,13 +339,13 @@ fn record_supports_cmds_namespace_for_nested_upstream_values() {
         "api_key_env = \"TEST_API_KEY\"\n"
     );
 
-    let loaded = load_with_jail(&["spycatcher-harness", "record"], Some(config), &[])
+    let loaded = load_with_child(&["spycatcher-harness", "record"], Some(config), &[])
         .expect("record config should load");
     let upstream = loaded
         .upstream
         .expect("record config should contain upstream values");
     assert_eq!(loaded.cassette_name, "cassette_a");
-    assert_eq!(loaded.mode, config::Mode::Record);
+    assert_eq!(loaded.mode, ModeSnapshot::Record);
     assert_eq!(upstream.base_url.as_str(), "https://example.invalid/api");
     assert_eq!(upstream.api_key_env, "TEST_API_KEY");
 }
@@ -421,21 +353,21 @@ fn record_supports_cmds_namespace_for_nested_upstream_values() {
 #[rstest]
 fn verify_supports_cmds_namespace_overrides() {
     let config = "[cmds.verify]\ncassette_name = \"verify_cassette\"\n";
-    let loaded = load_with_jail(&["spycatcher-harness", "verify"], Some(config), &[])
+    let loaded = load_with_child(&["spycatcher-harness", "verify"], Some(config), &[])
         .expect("verify config should load");
     assert_eq!(loaded.cassette_name, "verify_cassette");
-    assert_eq!(loaded.mode, config::Mode::Verify);
+    assert_eq!(loaded.mode, ModeSnapshot::Verify);
 }
 
 #[rstest]
 fn invalid_values_fail_loading() {
-    let error = load_with_jail(
+    let error = load_with_child(
         &["spycatcher-harness", "replay"],
         None,
         &[("SPYCATCHER_HARNESS_CMDS_REPLAY_LISTEN", "not-an-address")],
     )
     .expect_err("invalid listen should fail loading");
-    let message = error.to_string();
+    let message = error.clone();
     assert!(
         (message.contains("invalid") && message.contains("address"))
             || (message.contains("socket") && message.contains("parse")),

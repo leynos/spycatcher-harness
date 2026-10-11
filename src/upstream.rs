@@ -210,7 +210,7 @@ fn to_outbound_header(name: &str, value: &[u8]) -> HarnessResult<(HeaderName, He
 }
 
 #[inline]
-fn should_forward_header(name: &str) -> bool {
+const fn should_forward_header(name: &str) -> bool {
     !name.eq_ignore_ascii_case("authorization")
 }
 
