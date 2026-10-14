@@ -21,6 +21,7 @@ use crate::record_helpers::{StubUpstream, load_cassette, unique_cassette_path};
 fn a_stub_upstream_that_returns_an_open_router_stream_for_replay(
     replay_world: &ReplayWorld,
 ) -> Result<(), Box<dyn Error>> {
+    replay_world.ensure_runtime()?;
     let upstream = replay_world
         .runtime
         .with_ref(|runtime| StubUpstream::start_stream(runtime, sample_stream_transcript()))

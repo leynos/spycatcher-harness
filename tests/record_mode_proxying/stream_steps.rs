@@ -15,6 +15,7 @@ use crate::record_mode_proxying::world::ProxyWorld;
 fn a_stub_upstream_that_returns_an_openai_style_sse_stream(
     proxy_world: &ProxyWorld,
 ) -> Result<(), Box<dyn Error>> {
+    proxy_world.ensure_runtime()?;
     let upstream = proxy_world
         .runtime
         .with_ref(|runtime| StubUpstream::start_stream(runtime, sample_stream_transcript()))

@@ -10,14 +10,7 @@ fn non_stream_interaction_round_trips_without_loss(sample_non_stream_interaction
         interactions: vec![sample_non_stream_interaction],
         ..Cassette::new()
     };
-    let mut bytes = Vec::new();
-    cassette
-        .write_to(&mut bytes)
-        .expect("cassette serialization should succeed");
-
-    let decoded =
-        Cassette::from_reader(bytes.as_slice()).expect("cassette deserialization should succeed");
-
+    let decoded = round_trip_cassette(&cassette).expect("non-stream cassette should round-trip");
     assert_eq!(decoded, cassette);
 }
 
@@ -27,15 +20,14 @@ fn stream_interaction_round_trips_without_loss(sample_stream_interaction: Intera
         interactions: vec![sample_stream_interaction],
         ..Cassette::new()
     };
-    let mut bytes = Vec::new();
-    cassette
-        .write_to(&mut bytes)
-        .expect("cassette serialization should succeed");
-
-    let decoded =
-        Cassette::from_reader(bytes.as_slice()).expect("cassette deserialization should succeed");
-
+    let decoded = round_trip_cassette(&cassette).expect("stream cassette should round-trip");
     assert_eq!(decoded, cassette);
+}
+
+fn round_trip_cassette(cassette: &Cassette) -> HarnessResult<Cassette> {
+    let mut bytes = Vec::new();
+    cassette.write_to(&mut bytes)?;
+    Cassette::from_reader(bytes.as_slice())
 }
 
 #[rstest]

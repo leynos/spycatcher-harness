@@ -2,13 +2,9 @@
 //!
 //! Step definitions and scenario bindings for the feature file at
 //! `tests/features/cassette_schema_versioning.feature`.
-#![expect(
-    clippy::expect_used,
-    reason = "BDD step functions use expect for step precondition enforcement"
-)]
-
 use camino::Utf8PathBuf;
 use cap_std::{ambient_authority, fs_utf8::Dir};
+use eyre::WrapErr;
 use rstest::fixture;
 use rstest_bdd::Slot;
 use rstest_bdd_macros::{ScenarioState, given, scenario, then, when};
@@ -41,11 +37,11 @@ fn setup_replay_config(
     cassette_world: &CassetteWorld,
     name_prefix: &str,
     cassette_json: &serde_json::Value,
-) {
+) -> eyre::Result<()> {
     let cassette_name = unique_cassette_name(name_prefix);
     let cassette_dir = Utf8PathBuf::from("target/test-replay-bdd");
     let cassette_path = cassette_dir.join(&cassette_name);
-    write_cassette(&cassette_path, cassette_json);
+    write_cassette(&cassette_path, cassette_json)?;
     cassette_world.expected_cassette_path.set(cassette_path);
     cassette_world.config.set(HarnessConfig {
         mode: spycatcher_harness::config::Mode::Replay,
@@ -53,22 +49,23 @@ fn setup_replay_config(
         cassette_name,
         ..HarnessConfig::default()
     });
+    Ok(())
 }
 
 #[given("a replay configuration with a supported cassette")]
-fn a_replay_configuration_with_a_supported_cassette(cassette_world: &CassetteWorld) {
-    setup_replay_config(
-        cassette_world,
-        "supported",
-        &serde_json::to_value(Cassette::new()).expect("empty cassette should serialize"),
-    );
+fn a_replay_configuration_with_a_supported_cassette(
+    cassette_world: &CassetteWorld,
+) -> eyre::Result<()> {
+    let cassette_json =
+        serde_json::to_value(Cassette::new()).wrap_err("empty cassette should serialize")?;
+    setup_replay_config(cassette_world, "supported", &cassette_json)
 }
 
 #[given("a replay configuration with cassette format version {version:u32}")]
 fn a_replay_configuration_with_cassette_format_version(
     cassette_world: &CassetteWorld,
     version: u32,
-) {
+) -> eyre::Result<()> {
     setup_replay_config(
         cassette_world,
         "unsupported",
@@ -76,52 +73,60 @@ fn a_replay_configuration_with_cassette_format_version(
             "format_version": version,
             "interactions": [],
         }),
-    );
+    )
 }
 
 #[when("the replay harness is started")]
-fn the_replay_harness_is_started(cassette_world: &CassetteWorld) {
+fn the_replay_harness_is_started(cassette_world: &CassetteWorld) -> eyre::Result<()> {
     let cfg = cassette_world
         .config
         .take()
-        .expect("config must be set before starting");
-    let rt = build_runtime();
+        .ok_or_else(|| eyre::eyre!("config must be set before starting"))?;
+    let rt = build_runtime().wrap_err("test runtime should build")?;
     let result = rt.block_on(start_harness(cfg));
     cassette_world.start_result.set(result);
+    Ok(())
 }
 
 #[then("the replay harness is running")]
-fn the_replay_harness_is_running(cassette_world: &CassetteWorld) {
+fn the_replay_harness_is_running(cassette_world: &CassetteWorld) -> eyre::Result<()> {
     let is_ok = cassette_world
         .start_result
         .with_ref(Result::is_ok)
-        .expect("start_result must be set");
-    assert!(is_ok, "expected replay harness to be running");
+        .ok_or_else(|| eyre::eyre!("start_result must be set"))?;
+    eyre::ensure!(is_ok, "expected replay harness to be running");
+    Ok(())
 }
 
 #[then("the replay cassette path matches the configured directory and name")]
 fn the_replay_cassette_path_matches_the_configured_directory_and_name(
     cassette_world: &CassetteWorld,
-) {
+) -> eyre::Result<()> {
     let path = cassette_world
         .start_result
         .with_ref(|result| {
             result
                 .as_ref()
-                .expect("replay harness should be running")
-                .cassette_path
-                .clone()
+                .map(|harness| harness.cassette_path.clone())
+                .map_err(ToString::to_string)
         })
-        .expect("start_result must be set");
+        .ok_or_else(|| eyre::eyre!("start_result must be set"))?
+        .map_err(|error| eyre::eyre!("replay harness should be running: {error}"))?;
     let expected = cassette_world
         .expected_cassette_path
         .with_ref(Utf8PathBuf::clone)
-        .expect("expected_cassette_path must be set");
-    assert_eq!(path, expected);
+        .ok_or_else(|| eyre::eyre!("expected_cassette_path must be set"))?;
+    eyre::ensure!(
+        path == expected,
+        "cassette path mismatch: actual {path}, expected {expected}",
+    );
+    Ok(())
 }
 
 #[then("startup fails with an unsupported cassette format error")]
-fn startup_fails_with_an_unsupported_cassette_format_error(cassette_world: &CassetteWorld) {
+fn startup_fails_with_an_unsupported_cassette_format_error(
+    cassette_world: &CassetteWorld,
+) -> eyre::Result<()> {
     let is_unsupported = cassette_world
         .start_result
         .with_ref(|result| {
@@ -130,20 +135,26 @@ fn startup_fails_with_an_unsupported_cassette_format_error(cassette_world: &Cass
                 Err(HarnessError::UnsupportedCassetteFormatVersion { .. })
             )
         })
-        .expect("start_result must be set");
-    assert!(is_unsupported, "expected unsupported cassette format error");
+        .ok_or_else(|| eyre::eyre!("start_result must be set"))?;
+    eyre::ensure!(is_unsupported, "expected unsupported cassette format error");
+    Ok(())
 }
 
 #[then("the error mentions format version {version:u32}")]
-fn the_error_mentions_format_version(cassette_world: &CassetteWorld, version: u32) {
+fn the_error_mentions_format_version(
+    cassette_world: &CassetteWorld,
+    version: u32,
+) -> eyre::Result<()> {
     let message = cassette_world
         .start_result
-        .with_ref(|result| format!("{}", result.as_ref().expect_err("expected an error")))
-        .expect("start_result must be set");
-    assert!(
+        .with_ref(|result| result.as_ref().err().map(ToString::to_string))
+        .ok_or_else(|| eyre::eyre!("start_result must be set"))?
+        .ok_or_else(|| eyre::eyre!("expected an error"))?;
+    eyre::ensure!(
         message.contains(&version.to_string()),
         "error should mention version {version}, got: {message}",
     );
+    Ok(())
 }
 
 #[scenario(
@@ -162,27 +173,26 @@ fn replay_startup_rejects_an_unsupported_cassette_version(cassette_world: Casset
     let _ = cassette_world;
 }
 
-fn write_cassette(cassette_path: &Utf8PathBuf, value: &serde_json::Value) {
+fn write_cassette(cassette_path: &Utf8PathBuf, value: &serde_json::Value) -> eyre::Result<()> {
     let root_dir =
-        Dir::open_ambient_dir(".", ambient_authority()).expect("ambient root should open");
-    let parent_option = cassette_path.parent();
-    let parent_dir = parent_option.map_or_else(
-        || root_dir.try_clone().expect("root directory should clone"),
-        |parent_path| {
+        Dir::open_ambient_dir(".", ambient_authority()).wrap_err("ambient root should open")?;
+    let parent_dir = match cassette_path.parent() {
+        Some(parent_path) => {
             root_dir
                 .create_dir_all(parent_path)
-                .expect("cassette parent directory should be created");
+                .wrap_err("cassette parent directory should be created")?;
             root_dir
                 .open_dir(parent_path)
-                .expect("cassette parent directory should open")
-        },
-    );
+                .wrap_err("cassette parent directory should open")?
+        }
+        None => root_dir,
+    };
+    let file_name = cassette_path
+        .file_name()
+        .ok_or_else(|| eyre::eyre!("cassette path should contain a file name"))?;
     let file = parent_dir
-        .create(
-            cassette_path
-                .file_name()
-                .expect("cassette path should contain a file name"),
-        )
-        .expect("cassette file should open");
-    serde_json::to_writer_pretty(file, value).expect("cassette json should write");
+        .create(file_name)
+        .wrap_err("cassette file should open")?;
+    serde_json::to_writer_pretty(file, value).wrap_err("cassette JSON should write")?;
+    Ok(())
 }

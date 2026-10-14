@@ -26,6 +26,7 @@ pub(crate) const STREAMING_REQUEST: &[u8] =
 fn a_stub_upstream_that_returns_a_successful_chat_completion(
     proxy_world: &ProxyWorld,
 ) -> Result<(), Box<dyn Error>> {
+    proxy_world.ensure_runtime()?;
     let upstream = proxy_world
         .runtime
         .with_ref(|runtime| StubUpstream::start(runtime, sample_success_body()))
@@ -58,6 +59,7 @@ fn a_record_mode_harness_configured_for_that_upstream_with_header_redaction(
 fn a_record_mode_harness_configured_with_an_unavailable_upstream(
     proxy_world: &ProxyWorld,
 ) -> Result<(), Box<dyn Error>> {
+    proxy_world.ensure_runtime()?;
     let cassette_path = unique_cassette_path("failure");
     let base_url = Url::parse("http://127.0.0.1:1/api/v1")
         .map_err(|error| std::io::Error::other(format!("test fixture URL is invalid: {error}")))?;

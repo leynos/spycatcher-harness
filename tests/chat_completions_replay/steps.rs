@@ -38,6 +38,7 @@ struct HarnessTarget<'a> {
 fn a_stub_upstream_that_returns_a_successful_chat_completion_for_replay(
     replay_world: &ReplayWorld,
 ) -> Result<(), Box<dyn Error>> {
+    replay_world.ensure_runtime()?;
     let upstream = replay_world
         .runtime
         .with_ref(|runtime| StubUpstream::start(runtime, sample_success_body()))

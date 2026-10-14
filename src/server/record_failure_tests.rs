@@ -1,14 +1,13 @@
 //! Failure-policy tests for record-mode orchestration.
 
+use super::record_tests_helpers::{cassette_fixture, load_cassette};
 use super::*;
-use camino::{Utf8Path, Utf8PathBuf};
+use eyre::WrapErr;
 use futures_util::StreamExt;
 use rstest::rstest;
 use std::sync::atomic::AtomicU64;
 
-use crate::cassette::{
-    Cassette, CassetteReader, InteractionMetadata, filesystem::FilesystemCassetteStore,
-};
+use crate::cassette::{InteractionMetadata, filesystem::FilesystemCassetteStore};
 use crate::http_exchange::{ObservedResponse, parse_json_bytes};
 use crate::protocol::CHAT_COMPLETIONS_PATH;
 use crate::server::record_metadata::MetadataFactory;
@@ -97,10 +96,10 @@ impl MetadataFactory for FailingMetadataFactory {
 
 #[rstest]
 #[tokio::test]
-async fn recording_failure_still_returns_upstream_response() {
-    let cassette = cassette_fixture("record-fail");
+async fn recording_failure_still_returns_upstream_response() -> eyre::Result<()> {
+    let cassette = cassette_fixture("record-fail")?;
     let cassette_store = FilesystemCassetteStore::open_or_create_for_record(&cassette.path)
-        .expect("cassette should open");
+        .wrap_err("cassette should open for recording")?;
     let failure_count = Arc::new(AtomicU64::new(0));
     let service = RecordService {
         cassette_store: Arc::new(Mutex::new(cassette_store)),
@@ -121,14 +120,31 @@ async fn recording_failure_still_returns_upstream_response() {
     let proxied = service
         .handle_chat_completions(sample_request())
         .await
-        .expect("upstream response should be returned despite recording failure");
+        .map_err(|error| {
+            eyre::eyre!("upstream response should be returned despite recording failure: {error:?}")
+        })?;
 
-    assert_eq!(proxied.status, 200);
+    eyre::ensure!(
+        proxied.status == 200,
+        "upstream response status should be preserved; got {}",
+        proxied.status
+    );
     let ProxyBody::Buffered(body) = proxied.body else {
-        panic!("expected buffered response");
+        eyre::bail!("expected buffered response");
     };
-    assert_eq!(body, br#"{"id":"ok"}"#.to_vec());
-    assert_eq!(failure_count.load(Ordering::Relaxed), 1);
+    let expected_body = br#"{"id":"ok"}"#.to_vec();
+    eyre::ensure!(
+        body == expected_body,
+        "buffered response should preserve the upstream bytes; got {:?}, expected {:?}",
+        body,
+        expected_body
+    );
+    let actual_failure_count = failure_count.load(Ordering::Relaxed);
+    eyre::ensure!(
+        actual_failure_count == 1,
+        "recording failure should increment the failure count once; got {actual_failure_count}"
+    );
+    Ok(())
 }
 
 #[rstest]
@@ -138,10 +154,10 @@ async fn recording_failure_still_returns_upstream_response() {
 async fn stream_parse_failure_still_returns_upstream_chunks_without_recording(
     #[case] chunks: Vec<Vec<u8>>,
     #[case] expected_streamed: Vec<u8>,
-) {
-    let cassette = cassette_fixture("stream-parse-fail");
+) -> eyre::Result<()> {
+    let cassette = cassette_fixture("stream-parse-fail")?;
     let cassette_store = FilesystemCassetteStore::open_or_create_for_record(&cassette.path)
-        .expect("cassette should open");
+        .wrap_err("cassette should open for recording")?;
     let failure_count = Arc::new(AtomicU64::new(0));
     let service = RecordService {
         cassette_store: Arc::new(Mutex::new(cassette_store)),
@@ -161,18 +177,34 @@ async fn stream_parse_failure_still_returns_upstream_chunks_without_recording(
     let proxied = service
         .handle_chat_completions(request)
         .await
-        .expect("malformed stream should still be proxied");
+        .map_err(|error| eyre::eyre!("malformed stream should still be proxied: {error:?}"))?;
     let ProxyBody::Stream(mut body) = proxied.body else {
-        panic!("expected streaming response");
+        eyre::bail!("expected streaming response");
     };
     let mut streamed = Vec::new();
-    while let Some(chunk) = body.next().await {
-        streamed.extend_from_slice(&chunk.expect("upstream chunk should be forwarded"));
+    while let Some(chunk_res) = body.next().await {
+        let forwarded_chunk = chunk_res.wrap_err("upstream chunk should be forwarded")?;
+        streamed.extend_from_slice(&forwarded_chunk);
     }
 
-    assert_eq!(streamed, expected_streamed);
-    assert_eq!(failure_count.load(Ordering::Relaxed), 1);
-    assert!(load_cassette(&cassette.path).interactions.is_empty());
+    eyre::ensure!(
+        streamed == expected_streamed,
+        "streamed bytes should match the upstream chunks; got {:?}, expected {:?}",
+        streamed,
+        expected_streamed
+    );
+    let actual_failure_count = failure_count.load(Ordering::Relaxed);
+    eyre::ensure!(
+        actual_failure_count == 1,
+        "stream parsing failure should increment the failure count once; got {actual_failure_count}"
+    );
+    let persisted = load_cassette(&cassette.path)?;
+    eyre::ensure!(
+        persisted.interactions.is_empty(),
+        "stream parse failure should not record an interaction; got {}",
+        persisted.interactions.len()
+    );
+    Ok(())
 }
 
 #[derive(Debug, Clone)]
@@ -214,47 +246,5 @@ fn sample_response(body: &[u8]) -> ObservedResponse {
         proxy_headers: vec![("content-type".to_owned(), b"application/json".to_vec())],
         body: body.to_vec(),
         parsed_json: parse_json_bytes(body),
-    }
-}
-
-fn load_cassette(cassette_path: &Utf8Path) -> Cassette {
-    let store = match FilesystemCassetteStore::open_for_replay(cassette_path) {
-        Ok(store) => store,
-        Err(error) => panic!("cassette should reopen: {error}"),
-    };
-    match store.load() {
-        Ok(cassette) => cassette,
-        Err(error) => panic!("cassette should decode: {error}"),
-    }
-}
-
-struct CassetteFixture {
-    path: Utf8PathBuf,
-    _temp_dir: tempfile::TempDir,
-}
-
-fn cassette_fixture(name: &str) -> CassetteFixture {
-    let temp_dir = match tempfile::Builder::new()
-        .prefix(&format!("record-service-{name}-"))
-        .tempdir_in(".")
-    {
-        Ok(dir) => dir,
-        Err(error) => panic!("temporary cassette directory should be created: {error}"),
-    };
-    let cwd = match std::env::current_dir() {
-        Ok(path) => path,
-        Err(error) => panic!("current directory should be available: {error}"),
-    };
-    let relative_dir = match temp_dir.path().strip_prefix(&cwd) {
-        Ok(path) => path,
-        Err(error) => panic!("temporary cassette directory should be project-relative: {error}"),
-    };
-    let path = match Utf8PathBuf::from_path_buf(relative_dir.join("cassette.json")) {
-        Ok(path) => path,
-        Err(path) => panic!("temporary cassette path should be UTF-8: {path:?}"),
-    };
-    CassetteFixture {
-        path,
-        _temp_dir: temp_dir,
     }
 }

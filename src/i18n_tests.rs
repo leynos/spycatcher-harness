@@ -127,12 +127,16 @@ fn localize_harness_error_falls_back_when_loader_is_unloaded(
         localize_harness_error(&loader, &error),
         @"invalid configuration: missing upstream"
     );
-    assert_log_contains(logs_contain("harness-error-invalid-config"));
+    assert_log_contains(
+        logs_contain("harness-error-invalid-config"),
+        "harness-error-invalid-config",
+    );
     Ok(())
 }
 
-fn assert_log_contains(has_expected_log: bool) {
-    assert!(has_expected_log);
+#[track_caller]
+fn assert_log_contains(has_expected_log: bool, marker: &str) {
+    assert!(has_expected_log, "missing fallback diagnostic: {marker}");
 }
 
 #[rstest]

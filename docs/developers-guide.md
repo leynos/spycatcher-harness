@@ -147,6 +147,45 @@ Detailed dev-dependency rationale and test layout conventions now live in
 [`testing-guide.md`](testing-guide.md). Keep this guide focused on build
 configuration, module layout, internal abstractions, and review residuals.
 
+### Shared test infrastructure
+
+`tests/support/test_utils.rs::build_runtime` returns
+`std::io::Result<tokio::runtime::Runtime>`. Propagate runtime-construction
+failures with `?`; for example, a BDD step can use
+`let runtime = build_runtime()?;`.
+
+The replay and record-mode proxy BDD worlds create their runtime lazily through
+`ensure_runtime()`. Call it before using the runtime in a step. It does nothing
+when the world already has a runtime and propagates construction errors to the
+step result.
+
+Record-service unit-test helpers in `src/server/record_tests_helpers.rs` return
+`eyre::Result`, including `cassette_fixture`, `service_fixture`,
+`service_fixture_ephemeral`, and `load_cassette`. Use `?` so
+temporary-directory, path, cassette-open, and cassette-decode failures retain
+their context. Keep the `CassetteFixture` alive while the service uses its
+path; its `TempDir` owns the fixture directory's lifetime. The replay and proxy
+BDD cassette readers return boxed errors instead; propagate those with `?` as
+well.
+
+For build-standard reader tests, use `create_fake_program(label, script)?` from
+`tests/build_standard/fake_program.rs`; it returns
+`std::io::Result<FakeProgram>` and creates an executable in an owned, unique
+scratch directory. Pass `program.path()` to `Command::new` and retain
+`FakeProgram` until the child finishes, for example through
+`wait_with_output()`; dropping it removes the directory. The helper writes the
+script in a child and waits for successful writer completion before returning,
+so the parent does not hold the writer's writable descriptor while it later
+launches the stand-in.
+
+Matching-test helpers such as `nth_response` and `extract_response_id` return
+`Option` when the interaction, response kind, or response ID may be absent.
+Check the option explicitly. For a non-stream response, for example, assert
+`assert_eq!(extract_response_id(&interaction), Some("response-id"))`; assert
+`None` when testing a stream response or missing ID. When a sample cassette
+guarantees an indexed response, use `expect` with an interaction-specific
+message rather than silently substituting a default.
+
 ## Module layout
 
 The library crate (`src/lib.rs`) contains the following top-level public and

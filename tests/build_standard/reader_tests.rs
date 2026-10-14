@@ -284,45 +284,29 @@ fn a_parse_failure_names_the_route_that_produced_it(#[case] text: &str) {
     );
 }
 
-/// Writes an executable script into a scratch directory and returns its path.
 #[cfg(unix)]
-fn fake_program(scratch: &str, script: &str) -> std::path::PathBuf {
-    use cap_std::{
-        ambient_authority,
-        fs::{Dir, OpenOptions, OpenOptionsExt},
-    };
-    let tmp = Dir::open_ambient_dir(env!("CARGO_TARGET_TMPDIR"), ambient_authority())
-        .expect("open the scratch root");
-    if let Err(error) = tmp.remove_dir_all(scratch) {
-        assert_eq!(
-            error.kind(),
-            std::io::ErrorKind::NotFound,
-            "clear the scratch: {error}"
-        );
-    }
-    tmp.create_dir(scratch)
-        .expect("create the scratch directory");
-    let dir = tmp.open_dir(scratch).expect("open the scratch directory");
-    let mut options = OpenOptions::new();
-    options.write(true).create_new(true).mode(0o755);
-    let mut file = dir.open_with("make", &options).expect("create the script");
-    std::io::Write::write_all(&mut file, script.as_bytes()).expect("write the script");
-    std::path::Path::new(env!("CARGO_TARGET_TMPDIR"))
-        .join(scratch)
-        .join("make")
-}
+#[path = "fake_program.rs"]
+mod fake_program;
 
 /// A failing program's context, actual status and both streams survive.
 #[cfg(unix)]
 #[test]
-fn a_failed_run_keeps_its_context_status_and_distinct_streams() {
-    let fake = fake_program(
+fn a_failed_run_keeps_its_context_status_and_distinct_streams() -> std::io::Result<()> {
+    let fake = fake_program::create_fake_program(
         "failing-make",
         "#!/bin/sh\necho OUT-PAYLOAD\necho ERR-PAYLOAD >&2\nexit 4\n",
-    );
-    let message = dry_run_with(&fake.display().to_string(), "lint", Host::Linux, None)
+    )?;
+    let message = dry_run_with(fake.path().as_str(), "lint", Host::Linux, None)
         .expect_err("the stand-in fails")
         .to_string();
+    assert_failed_program_context(&message);
+    Ok(())
+}
+
+/// Asserts that a failed program's diagnostic preserves its execution context.
+#[cfg(unix)]
+#[track_caller]
+fn assert_failed_program_context(message: &str) {
     for wanted in [
         "-n lint",
         "Linux",

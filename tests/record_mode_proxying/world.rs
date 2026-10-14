@@ -14,7 +14,7 @@ mod test_utils;
 use test_utils::build_runtime;
 
 /// Shared state for record-mode proxying scenarios.
-#[derive(ScenarioState)]
+#[derive(Default, ScenarioState)]
 pub(crate) struct ProxyWorld {
     pub(crate) runtime: Slot<Arc<tokio::runtime::Runtime>>,
     pub(crate) config: Slot<HarnessConfig>,
@@ -25,18 +25,11 @@ pub(crate) struct ProxyWorld {
     pub(crate) shutdown_result: Slot<HarnessResult<()>>,
 }
 
-impl Default for ProxyWorld {
-    fn default() -> Self {
-        let runtime = Slot::new();
-        runtime.set(Arc::new(build_runtime()));
-        Self {
-            runtime,
-            config: Slot::default(),
-            cassette_path: Slot::default(),
-            harness: Slot::default(),
-            response: Slot::default(),
-            upstream: Slot::default(),
-            shutdown_result: Slot::default(),
+impl ProxyWorld {
+    pub(crate) fn ensure_runtime(&self) -> Result<(), std::io::Error> {
+        if self.runtime.with_ref(|_| ()).is_none() {
+            self.runtime.set(Arc::new(build_runtime()?));
         }
+        Ok(())
     }
 }

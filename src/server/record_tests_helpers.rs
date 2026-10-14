@@ -1,6 +1,7 @@
 //! Shared test infrastructure for record-mode unit tests.
 use super::*;
 use camino::{Utf8Path, Utf8PathBuf};
+use eyre::WrapErr;
 use futures_util::StreamExt;
 use std::sync::atomic::AtomicU64;
 
@@ -101,36 +102,38 @@ pub(crate) async fn assert_error_does_not_append(
     env_provider: FakeEnvProvider,
     request: ObservedRequest,
     check_error: impl FnOnce(RecordError),
-) {
-    let cassette = cassette_fixture(slug);
+) -> eyre::Result<()> {
+    let cassette = cassette_fixture(slug)?;
     let service = service_fixture(
         &cassette.path,
         FakeUpstream {
             response: Ok(sample_response(br#"{"id":"unused"}"#)),
         },
         env_provider,
-    );
+    )?;
 
-    let error = service
-        .handle_chat_completions(request)
-        .await
-        .expect_err("expected handle_chat_completions to return Err");
+    let Err(error) = service.handle_chat_completions(request).await else {
+        eyre::bail!("expected handle_chat_completions to return Err");
+    };
 
     check_error(error);
-    assert!(load_cassette(&cassette.path).interactions.is_empty());
+    let persisted = load_cassette(&cassette.path)?;
+    eyre::ensure!(
+        persisted.interactions.is_empty(),
+        "no interaction should be recorded after the error"
+    );
+    Ok(())
 }
 
 pub(crate) fn service_fixture(
     cassette_path: &Utf8Path,
     upstream: FakeUpstream,
     env_provider: FakeEnvProvider,
-) -> RecordService<FakeUpstream, FakeEnvProvider, FakeMetadataFactory> {
-    let cassette_store = TestResult(FilesystemCassetteStore::open_or_create_for_record(
-        cassette_path,
-    ))
-    .expect("cassette should open");
+) -> eyre::Result<RecordService<FakeUpstream, FakeEnvProvider, FakeMetadataFactory>> {
+    let cassette_store = FilesystemCassetteStore::open_or_create_for_record(cassette_path)
+        .wrap_err("cassette should open for recording")?;
 
-    RecordService {
+    Ok(RecordService {
         cassette_store: Arc::new(Mutex::new(cassette_store)),
         upstream_client: upstream,
         env_provider,
@@ -142,7 +145,7 @@ pub(crate) fn service_fixture(
         recorded_count: Arc::new(AtomicU64::new(0)),
         failure_count: Arc::new(AtomicU64::new(0)),
         interaction_seq: Arc::new(AtomicU64::new(0)),
-    }
+    })
 }
 
 pub(crate) struct ServiceFixture {
@@ -155,45 +158,39 @@ pub(crate) struct CassetteFixture {
     pub(crate) temp_dir: tempfile::TempDir,
 }
 
-pub(crate) fn service_fixture_ephemeral(env_provider: FakeEnvProvider) -> ServiceFixture {
-    let CassetteFixture { path, temp_dir } = cassette_fixture("default");
+pub(crate) fn service_fixture_ephemeral(
+    env_provider: FakeEnvProvider,
+) -> eyre::Result<ServiceFixture> {
+    let CassetteFixture { path, temp_dir } = cassette_fixture("default")?;
     let service = service_fixture(
         &path,
         FakeUpstream {
             response: Ok(sample_response(br#"{"id":"ok"}"#)),
         },
         env_provider,
-    );
-    ServiceFixture {
+    )?;
+    Ok(ServiceFixture {
         service,
         _temp_dir: temp_dir,
-    }
+    })
 }
 
-pub(crate) fn cassette_fixture(name: &str) -> CassetteFixture {
-    let temp_dir = match tempfile::Builder::new()
+pub(crate) fn cassette_fixture(name: &str) -> eyre::Result<CassetteFixture> {
+    let temp_dir = tempfile::Builder::new()
         .prefix(&format!("record-service-{name}-"))
         .tempdir_in(".")
-    {
-        Ok(dir) => dir,
-        Err(error) => panic!("temporary cassette directory should be created: {error}"),
-    };
-    let cwd = match std::env::current_dir() {
-        Ok(path) => path,
-        Err(error) => panic!("current directory should be available: {error}"),
-    };
-    let relative_dir = match temp_dir.path().strip_prefix(&cwd) {
-        Ok(path) => path,
-        Err(error) => panic!("temporary cassette directory should be project-relative: {error}"),
-    };
-    let cassette_path = match Utf8PathBuf::from_path_buf(relative_dir.join("cassette.json")) {
-        Ok(path) => path,
-        Err(path) => panic!("temporary cassette path should be UTF-8: {path:?}"),
-    };
-    CassetteFixture {
+        .wrap_err("temporary cassette directory should be created")?;
+    let cwd = std::env::current_dir().wrap_err("current directory should be available")?;
+    let relative_dir = temp_dir
+        .path()
+        .strip_prefix(&cwd)
+        .wrap_err("temporary cassette directory should be project-relative")?;
+    let cassette_path = Utf8PathBuf::from_path_buf(relative_dir.join("cassette.json"))
+        .map_err(|path| eyre::eyre!("temporary cassette path should be UTF-8: {path:?}"))?;
+    Ok(CassetteFixture {
         path: cassette_path,
         temp_dir,
-    }
+    })
 }
 
 pub(crate) fn sample_request(parsed_json: Option<serde_json::Value>) -> ObservedRequest {
@@ -224,19 +221,10 @@ pub(crate) fn sample_response(body: &[u8]) -> ObservedResponse {
     }
 }
 
-pub(crate) fn load_cassette(cassette_path: &Utf8Path) -> Cassette {
-    let store = TestResult(FilesystemCassetteStore::open_for_replay(cassette_path))
-        .expect("cassette should reopen");
-    TestResult(store.load()).expect("cassette should decode")
-}
-
-pub(crate) struct TestResult<T, E>(Result<T, E>);
-
-impl<T, E: std::fmt::Display> TestResult<T, E> {
-    pub(crate) fn expect(self, message: &str) -> T {
-        match self.0 {
-            Ok(value) => value,
-            Err(error) => panic!("{message}: {error}"),
-        }
-    }
+pub(crate) fn load_cassette(cassette_path: &Utf8Path) -> eyre::Result<Cassette> {
+    let store = FilesystemCassetteStore::open_for_replay(cassette_path)
+        .wrap_err("cassette should reopen for replay")?;
+    store
+        .load()
+        .wrap_err("cassette should decode after reopening")
 }

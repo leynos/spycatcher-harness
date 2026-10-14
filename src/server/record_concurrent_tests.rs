@@ -1,12 +1,23 @@
 //! Concurrent record-mode stress test.
 use super::record_tests_helpers::*;
+use eyre::WrapErr;
 
 use crate::http_exchange::{ObservedRequest, parse_json_bytes};
 use crate::protocol::CHAT_COMPLETIONS_PATH;
 
+/// Adds request context and debug detail to a concurrent record error.
+fn report_concurrent_request_error(error: &super::RecordError) -> eyre::Report {
+    match error {
+        super::RecordError::MissingApiKeyNotConfigured => {
+            eyre::eyre!("concurrent request should succeed: MissingApiKeyNotConfigured")
+        }
+        super::RecordError::Internal => eyre::eyre!("concurrent request should succeed: Internal"),
+    }
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-async fn concurrent_requests_are_recorded_without_data_loss() {
-    let cassette = cassette_fixture("concurrent");
+async fn concurrent_requests_are_recorded_without_data_loss() -> eyre::Result<()> {
+    let cassette = cassette_fixture("concurrent")?;
     let body = br#"{"model":"gpt-test","messages":[]}"#;
 
     let service = std::sync::Arc::new(service_fixture(
@@ -15,7 +26,7 @@ async fn concurrent_requests_are_recorded_without_data_loss() {
             response: Ok(sample_response(br#"{"id":"ok"}"#)),
         },
         FakeEnvProvider(Some("concurrent-key".to_owned())),
-    ));
+    )?);
 
     let handles: Vec<_> = (0..8)
         .map(|_| {
@@ -29,22 +40,22 @@ async fn concurrent_requests_are_recorded_without_data_loss() {
                 body: body.to_vec(),
                 parsed_json: parse_json_bytes(body),
             };
-            tokio::spawn(async move {
-                svc.handle_chat_completions(req)
-                    .await
-                    .expect("concurrent request should succeed")
-            })
+            tokio::spawn(async move { svc.handle_chat_completions(req).await })
         })
         .collect();
 
     for handle in handles {
-        handle.await.expect("task should not panic");
+        let request_result = handle
+            .await
+            .wrap_err("concurrent request task should not panic")?;
+        request_result.map_err(|error| report_concurrent_request_error(&error))?;
     }
 
-    let persisted = load_cassette(&cassette.path);
-    assert_eq!(
-        (persisted.interactions.len(), service.counters()),
-        (8, (8, 0)),
-        "all eight concurrent interactions must be persisted and counted"
+    let persisted = load_cassette(&cassette.path)?;
+    let actual = (persisted.interactions.len(), service.counters());
+    eyre::ensure!(
+        actual == (8, (8, 0)),
+        "all eight concurrent interactions must be persisted and counted; got {actual:?}"
     );
+    Ok(())
 }

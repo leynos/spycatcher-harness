@@ -10,56 +10,65 @@ use crate::server::record_metadata::{Clock, MetadataFactory, SessionMetadata, Sy
 
 #[rstest]
 #[tokio::test]
-async fn missing_api_key_does_not_append() {
+async fn missing_api_key_does_not_append() -> eyre::Result<()> {
     assert_error_does_not_append(
         "missing-key",
         FakeEnvProvider(None),
         sample_request(None),
         |error| assert_eq!(error, RecordError::MissingApiKeyNotConfigured),
     )
-    .await;
+    .await?;
+    Ok(())
 }
 #[rstest]
-fn resolve_api_key_returns_key_when_present() {
-    let fixture = service_fixture_ephemeral(FakeEnvProvider(Some("my-secret".to_owned())));
+fn resolve_api_key_returns_key_when_present() -> eyre::Result<()> {
+    let fixture = service_fixture_ephemeral(FakeEnvProvider(Some("my-secret".to_owned())))?;
+    let api_key = fixture.service.resolve_api_key().map_err(|error| {
+        eyre::eyre!("API key should resolve when env provider has a value: {error:?}")
+    })?;
 
-    assert_eq!(
-        fixture
-            .service
-            .resolve_api_key()
-            .expect("API key should resolve when env provider has a value"),
-        "my-secret",
+    eyre::ensure!(
+        api_key == "my-secret",
+        "API key should match the configured environment value; got {:?}",
+        api_key
     );
+    Ok(())
 }
 #[rstest]
-fn resolve_api_key_errors_when_absent() {
-    let fixture = service_fixture_ephemeral(FakeEnvProvider(None));
+fn resolve_api_key_errors_when_absent() -> eyre::Result<()> {
+    let fixture = service_fixture_ephemeral(FakeEnvProvider(None))?;
 
-    assert!(matches!(
-        fixture.service.resolve_api_key(),
-        Err(RecordError::MissingApiKeyNotConfigured)
-    ));
+    eyre::ensure!(
+        matches!(
+            fixture.service.resolve_api_key(),
+            Err(RecordError::MissingApiKeyNotConfigured)
+        ),
+        "missing API key should return the configuration error"
+    );
+    Ok(())
 }
 #[rstest]
 #[tokio::test]
-async fn upstream_transport_failure_does_not_append() {
-    let cassette = cassette_fixture("upstream-fail");
+async fn upstream_transport_failure_does_not_append() -> eyre::Result<()> {
+    let cassette = cassette_fixture("upstream-fail")?;
     let service = service_fixture(
         &cassette.path,
         FakeUpstream { response: Err(()) },
         FakeEnvProvider(Some("token".to_owned())),
-    );
+    )?;
 
     let result = service.handle_chat_completions(sample_request(None)).await;
 
-    assert!(
+    eyre::ensure!(
         matches!(result, Err(RecordError::Internal)),
         "upstream transport failure should return RecordError::Internal"
     );
-    assert!(
-        load_cassette(&cassette.path).interactions.is_empty(),
+    let persisted = load_cassette(&cassette.path)?;
+    eyre::ensure!(
+        persisted.interactions.is_empty(),
         "no interaction should be recorded on upstream failure"
     );
+    Ok(())
 }
 #[rstest]
 fn system_clock_produces_rfc3339_string() {
@@ -101,36 +110,51 @@ fn session_metadata_uses_injected_session_start() {
 }
 #[rstest]
 #[tokio::test]
-async fn invalid_json_response_keeps_exact_bytes() {
-    let cassette = cassette_fixture("invalid-json");
+async fn invalid_json_response_keeps_exact_bytes() -> eyre::Result<()> {
+    let cassette = cassette_fixture("invalid-json")?;
     let service = service_fixture(
         &cassette.path,
         FakeUpstream {
             response: Ok(sample_response(br#"{"broken": true"#)),
         },
         FakeEnvProvider(Some("token".to_owned())),
-    );
+    )?;
 
     let proxied = service
         .handle_chat_completions(sample_request(None))
         .await
-        .expect("request should succeed");
+        .map_err(|error| eyre::eyre!("request should succeed: {error:?}"))?;
 
     let ProxyBody::Buffered(proxied_body) = proxied.body else {
-        panic!("expected buffered response");
+        eyre::bail!("expected buffered response");
     };
-    assert_eq!(proxied_body, br#"{"broken": true"#.to_vec());
-    let persisted = load_cassette(&cassette.path);
+    let expected_body = br#"{"broken": true"#.to_vec();
+    eyre::ensure!(
+        proxied_body == expected_body,
+        "buffered response should preserve the exact invalid JSON bytes; got {:?}, expected {:?}",
+        proxied_body,
+        expected_body
+    );
+    let persisted = load_cassette(&cassette.path)?;
     let interaction = persisted
         .interactions
         .first()
-        .expect("expected one recorded interaction");
+        .ok_or_else(|| eyre::eyre!("expected one recorded interaction"))?;
     let RecordedResponse::NonStream {
         body, parsed_json, ..
     } = &interaction.response
     else {
-        panic!("expected non-stream response");
+        eyre::bail!("expected non-stream response");
     };
-    assert_eq!(body, &br#"{"broken": true"#.to_vec());
-    assert_eq!(parsed_json, &None);
+    eyre::ensure!(
+        body == &expected_body,
+        "persisted response should preserve the exact invalid JSON bytes; got {:?}, expected {:?}",
+        body,
+        expected_body
+    );
+    eyre::ensure!(
+        parsed_json.is_none(),
+        "invalid JSON response should not have a parsed value"
+    );
+    Ok(())
 }
