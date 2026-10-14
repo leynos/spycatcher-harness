@@ -310,6 +310,13 @@ Test-module paths follow the source file that declares them:
   Its nested `tests/cli_layering/support.rs` contains the Jail loader, fixture
   constants and locale strategies, with only parent-used items exposed through
   `pub(super)`. This helper is not a separate Cargo integration-test crate.
+- `tests/chat_completions_replay/harness_config.rs` is a private test-support
+  module. Its `pub(super)` record/replay configuration builders are re-exported
+  by `steps.rs` for chat replay and `stream_steps.rs`. The private
+  `split_cassette_path` helper requires both a parent directory and file name.
+- `tests/replay_matching_modes/helpers.rs` is a private test-support module
+  with a shared `pub(super) assert_slot_string_eq` response-ID slot assertion.
+  Matching steps use it to report unset or unequal named slots consistently.
 
 The binary installs one fallible tracing subscriber before early CLI parsing.
 It writes warnings and errors to stderr without ANSI escape sequences, using a

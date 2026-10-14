@@ -1237,6 +1237,14 @@ bytes, stream append boundaries, and output flushing remain unchanged. This
 structural decision does not mark further Rust baseline enforcement or roadmap
 work complete; earlier implementation decisions retain their historical paths.
 
+2026-10-14 addendum: The chat-completions replay integration-test target keeps
+its `pub(super)` record/replay builders and cassette-path decomposition in the
+private `tests/chat_completions_replay/harness_config.rs` module, shared by
+chat and stream steps through `steps.rs`. The replay-matching target keeps its
+`pub(super)` response-ID slot assertion in the private
+`tests/replay_matching_modes/helpers.rs` module. These boundaries preserve the
+existing integration-test targets and scenario names.
+
 ## Source references
 
 [^1]: `turn2search0` OpenRouter API behaviour and model/provider compatibility
