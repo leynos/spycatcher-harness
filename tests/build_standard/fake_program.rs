@@ -1,4 +1,4 @@
-//! Isolated executable fixtures whose writable descriptors stay out of test threads.
+//! Isolated executable fixtures whose writable descriptors stay out of the test process.
 
 use std::io;
 use std::process::{Command, Output};

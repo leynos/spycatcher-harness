@@ -129,3 +129,23 @@ fn sequential_strict_cassette_exhausted_returns_mismatch(
     );
     Ok(())
 }
+
+/// The fallible fixture forwards cassette validation errors to its caller.
+#[rstest]
+fn sequential_engine_propagates_a_missing_hash_error(mut sample_cassette: Cassette) {
+    sample_cassette
+        .interactions
+        .first_mut()
+        .expect("the sample cassette should contain an interaction")
+        .request
+        .stable_hash = None;
+    let error = sequential_engine(sample_cassette)
+        .expect_err("the fixture should reject an interaction without a stable hash");
+    let crate::error::HarnessError::InvalidCassette { message } = error else {
+        panic!("the fixture should preserve the InvalidCassette error variant");
+    };
+    assert!(
+        message.contains("index 0"),
+        "the fixture error should identify the invalid interaction: {message}"
+    );
+}

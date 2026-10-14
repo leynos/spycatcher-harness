@@ -6,10 +6,10 @@
 - **Status**: Local models falsified; hosted cause inconclusive
 - **Falsification role**: `alchemist`
 
-**Planning agent boundary**: The planning agent prepared this document only.
-The parent selects one hypothesis per alchemist assignment. No experiment,
-build, gate, source change, commit, or publication has been performed by the
-planning agent.
+At initial drafting, the two local mechanism experiments below were proposed,
+not run. No source change, additional local build or gate, commit, or
+publication had been made for this investigation. The returned experiment
+results were added later in this document.
 
 ## Problem statement
 
@@ -24,16 +24,16 @@ not assume that the file remained open in its creating function.
 
 Table 1. Evidence and inquiry boundary.
 
-| Aspect             | Details                                                                                                    |
-| ------------------ | ---------------------------------------------------------------------------------------------------------- |
-| Baseline           | `093f55dc64dc26c44f68d1829c13f462573998ff`, tree `19ce1feaf8245a67dcc908590abc9fc0a443e812`                |
-| Checkout           | `deliver-test-quality-20261014`; clean at intake                                                           |
-| Hosted observation | Run `38504143579`, attempt 1, coverage step, 2026-10-14 03:14:07 UTC                                       |
-| Fixture            | `tests/build_standard/reader_tests.rs:289-355`                                                             |
-| Launch             | `tests/build_standard/support.rs:116-151`, `dry_run_with`                                                  |
-| Reproduction rate  | One supplied hosted failure; recurrence rate unknown                                                       |
-| Scope              | Two deterministic Linux/Python mechanism experiments; one execution per selected hypothesis                |
-| Exclusions         | Rust, Cargo, full gates, services, credentials, unrelated processes, stress loops, CI reruns, source fixes |
+| Aspect             | Details                                                                                                                               |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------- |
+| Baseline           | `093f55dc64dc26c44f68d1829c13f462573998ff`, tree `19ce1feaf8245a67dcc908590abc9fc0a443e812`                                           |
+| Checkout           | `deliver-test-quality-20261014`; clean at intake                                                                                      |
+| Hosted observation | Run `38504143579`, attempt 1, coverage step, 2026-10-14 03:14:07 UTC                                                                  |
+| Fixture            | Baseline `093f55d`: `tests/build_standard/reader_tests.rs:289-355`; current fixture: `tests/build_standard/fake_program.rs`           |
+| Launch             | Baseline `093f55d`: `tests/build_standard/support.rs:116-151`, `dry_run_with`; current caller: `tests/build_standard/reader_tests.rs` |
+| Reproduction rate  | One supplied hosted failure; recurrence rate unknown                                                                                  |
+| Scope              | Two deterministic Linux/Python mechanism experiments; one execution per selected hypothesis                                           |
+| Exclusions         | Rust, Cargo, full gates, services, credentials, unrelated processes, stress loops, CI reruns, source fixes                            |
 
 The reviewed `fake_program` removes and recreates
 `CARGO_TARGET_TMPDIR/failing-make`, opens `make` for exclusive creation and
