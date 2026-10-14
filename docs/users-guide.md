@@ -420,6 +420,12 @@ be ruled out while investigating startup behaviour. The binary uses the same
 `NoOpLocalizer` fallback automatically when localized CLI resources cannot be
 loaded.
 
+The binary writes warning and error diagnostics to stderr without ANSI escape
+sequences. Invalid early locale settings produce a warning before falling back
+to the next locale, and enabling the diagnostic switch produces a warning that
+identifies the switch. Help and version text continue to use stdout; warnings
+do not change a successful help or version request's exit status.
+
 ### Configuration file shape
 
 Create `.spycatcher_harness.toml` in the working directory:

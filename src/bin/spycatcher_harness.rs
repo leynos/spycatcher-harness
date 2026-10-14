@@ -22,7 +22,7 @@ use thiserror::Error;
 #[path = "spycatcher_harness/process_output.rs"]
 mod process_output;
 
-use process_output::{write_display_output, write_error_output};
+use process_output::{initialize_tracing, write_display_output, write_error_output};
 
 /// Errors returned while preparing startup localization.
 #[derive(Debug, Error)]
@@ -47,6 +47,7 @@ enum StartupLocalizationError {
 
 /// Application entry point.
 fn main() -> eyre::Result<()> {
+    initialize_tracing()?;
     let config = load_config_or_display_output()?;
     let language_loader =
         build_language_loader(&config.localization).wrap_err("failed to prepare localization")?;
