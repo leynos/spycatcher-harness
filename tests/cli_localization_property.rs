@@ -6,10 +6,13 @@
 //! command structure intact, remains idempotent for the bundled catalogue, and
 //! preserves the offending argument text when clap errors are localized.
 
+use std::collections::BTreeSet;
+
 use clap::{Arg, Command};
 use i18n_embed::unic_langid::langid;
 use ortho_config::localize_clap_error_with_command;
 use proptest::prelude::*;
+use rstest::rstest;
 use spycatcher_harness::cli::localization::LocalizeCmd;
 use spycatcher_harness::cli::localizer::build_cli_localizer;
 
@@ -24,6 +27,50 @@ fn identifier() -> impl Strategy<Value = String> {
     "[a-z][a-z0-9-]{1,8}".prop_map(String::from)
 }
 
+/// Keep arbitrary raw identifiers outside the fixture's recognized long options.
+///
+/// A raw `help` becomes `unknown-help`, preserving its text while avoiding both
+/// the built-in `--help` action and the fixture's `--known` option.
+fn unknown_argument_name(raw: &str) -> String {
+    format!("unknown-{raw}")
+}
+
+/// Localize genuinely unknown options even when their raw names are reserved.
+#[rstest]
+#[case::help("help")]
+#[case::known("known")]
+#[case::version("version")]
+fn reserved_raw_names_produce_localized_unknown_arguments(#[case] raw: &str) {
+    let localizer = build_cli_localizer(langid!("en-US"));
+    let command = Command::new("spycatcher-harness").arg(Arg::new("known").long("known"));
+    let unknown_argument = format!("--{}", unknown_argument_name(raw));
+    let error = command
+        .clone()
+        .try_get_matches_from(["spycatcher-harness", unknown_argument.as_str()])
+        .expect_err("namespaced option should remain unknown");
+
+    assert_eq!(
+        error.kind(),
+        clap::error::ErrorKind::UnknownArgument,
+        "the raw name must not select help or a recognized option"
+    );
+    let localized = localize_clap_error_with_command(error, localizer.as_ref(), Some(&command));
+    let rendered = localized.to_string();
+
+    assert!(
+        rendered.contains("unknown argument"),
+        "localized error must describe the unknown option: {rendered}"
+    );
+    assert!(
+        rendered.contains(&unknown_argument),
+        "localized error must retain the complete option {unknown_argument}: {rendered}"
+    );
+}
+
+/// Generate bounded trees without rejecting or removing colliding children.
+///
+/// Every shrink remaps siblings through `command_spec_node`, so two children
+/// both drawn as `b-` retain their order and distinct command names.
 fn command_spec() -> impl Strategy<Value = CommandSpec> {
     command_spec_leaf().prop_recursive(2, 8, 2, |inner| {
         (
@@ -31,20 +78,102 @@ fn command_spec() -> impl Strategy<Value = CommandSpec> {
             identifier(),
             proptest::collection::vec(inner, 0..3),
         )
-            .prop_map(|(name, arg, subcommands)| CommandSpec {
-                name,
-                arg,
-                subcommands,
-            })
+            .prop_map(|(name, arg, subcommands)| command_spec_node(name, &arg, subcommands))
     })
 }
 
+/// Generate a terminal command with an argument outside Clap's built-in names.
+///
+/// A drawn argument `help` becomes `option-help`, retaining random material
+/// without colliding with the automatically generated `--help` flag.
 fn command_spec_leaf() -> impl Strategy<Value = CommandSpec> {
-    (identifier(), identifier()).prop_map(|(name, arg)| CommandSpec {
+    (identifier(), identifier()).prop_map(|(name, arg)| command_spec_node(name, &arg, Vec::new()))
+}
+
+/// Keep every child while assigning sibling names and reserving built-in flags.
+///
+/// Two children named `b-` become `child-0-b-` and `child-1-b-`; an argument
+/// named `version` becomes `option-version` beside Clap's version flag.
+fn command_spec_node(name: String, arg: &str, mut subcommands: Vec<CommandSpec>) -> CommandSpec {
+    for (index, child) in subcommands.iter_mut().enumerate() {
+        child.name = format!("child-{index}-{}", child.name);
+    }
+    CommandSpec {
         name,
-        arg,
-        subcommands: Vec::new(),
-    })
+        arg: format!("option-{arg}"),
+        subcommands,
+    }
+}
+
+/// Build two levels of equal-name siblings without dropping either branch.
+///
+/// For `name = "help"`, all seven nodes remain while sibling names avoid the
+/// built-in help subcommand at both levels.
+fn duplicate_sibling_tree(name: &str, arg: &str) -> CommandSpec {
+    let leaf = command_spec_node(name.to_owned(), arg, Vec::new());
+    let branch = command_spec_node(name.to_owned(), arg, vec![leaf.clone(), leaf]);
+    command_spec_node("root".to_owned(), arg, vec![branch.clone(), branch])
+}
+
+/// Check sibling uniqueness independently of the ordinal naming construction.
+///
+/// A tree containing two siblings both named `b-` returns false, even if their
+/// argument names differ; grandchildren are checked in their own parent scope.
+fn has_unique_sibling_names(spec: &CommandSpec) -> bool {
+    let names: BTreeSet<_> = spec.subcommands.iter().map(|child| &child.name).collect();
+    names.len() == spec.subcommands.len() && spec.subcommands.iter().all(has_unique_sibling_names)
+}
+
+/// Retain both differently configured siblings from the persisted shrunk failure.
+#[test]
+fn shrunk_duplicate_siblings_remain_valid() {
+    let first = command_spec_node("b-".to_owned(), "a0", Vec::new());
+    let second = command_spec_node("b-".to_owned(), "aa", Vec::new());
+    let spec = command_spec_node("a0".to_owned(), "aa", vec![first, second]);
+
+    assert_eq!(
+        spec.subcommands.len(),
+        2,
+        "neither shrunk sibling may be discarded"
+    );
+    assert!(
+        has_unique_sibling_names(&spec),
+        "the shrunk siblings must be distinct"
+    );
+    assert_eq!(
+        spec.subcommands
+            .iter()
+            .map(|child| child.arg.as_str())
+            .collect::<Vec<_>>(),
+        vec!["option-a0", "option-aa"],
+        "the siblings' different arguments must survive"
+    );
+    command_from_spec(&spec).version("0.1.0").debug_assert();
+}
+
+/// Preserve duplicate-name branches and validate Clap's built-in name boundary.
+#[rstest]
+#[case::auto_help("help", "help")]
+#[case::auto_version("version", "version")]
+fn duplicate_names_remain_valid_in_nested_trees(#[case] name: &str, #[case] arg: &str) {
+    let spec = duplicate_sibling_tree(name, arg);
+
+    assert_eq!(
+        spec.subcommands.len(),
+        2,
+        "both top-level siblings must remain"
+    );
+    assert!(
+        spec.subcommands
+            .iter()
+            .all(|child| child.subcommands.len() == 2),
+        "both grandchildren must remain under each sibling"
+    );
+    assert!(
+        has_unique_sibling_names(&spec),
+        "siblings must have unique names at every level"
+    );
+    command_from_spec(&spec).version("0.1.0").debug_assert();
 }
 
 fn command_from_spec(spec: &CommandSpec) -> Command {
@@ -77,6 +206,24 @@ fn command_render(command: &mut Command) -> Result<String, TestCaseError> {
 }
 
 proptest! {
+    /// Validate every generated tree against Clap without removing nested nodes.
+    #[test]
+    fn generated_command_trees_satisfy_clap_invariants(spec in command_spec()) {
+        prop_assert!(has_unique_sibling_names(&spec));
+        command_from_spec(&spec).version("0.1.0").debug_assert();
+    }
+
+    /// Keep equal random sibling names valid at two deliberately populated levels.
+    #[test]
+    fn equal_random_names_preserve_nested_siblings(name in identifier(), arg in identifier()) {
+        let spec = duplicate_sibling_tree(&name, &arg);
+
+        prop_assert_eq!(spec.subcommands.len(), 2);
+        prop_assert!(spec.subcommands.iter().all(|child| child.subcommands.len() == 2));
+        prop_assert!(has_unique_sibling_names(&spec));
+        command_from_spec(&spec).version("0.1.0").debug_assert();
+    }
+
     #[test]
     fn localize_preserves_generated_command_structure(spec in command_spec()) {
         let command = command_from_spec(&spec);
@@ -100,7 +247,7 @@ proptest! {
 
     #[test]
     fn localized_unknown_argument_preserves_argument_text(
-        unknown in identifier().prop_filter("must differ from known flag", |value| value != "known"),
+        unknown in identifier().prop_map(|raw| unknown_argument_name(&raw)),
     ) {
         let localizer = build_cli_localizer(langid!("en-US"));
         let command = Command::new("spycatcher-harness").arg(Arg::new("known").long("known"));
