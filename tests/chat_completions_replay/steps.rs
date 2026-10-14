@@ -1,14 +1,14 @@
 //! Step definitions for chat completions replay scenarios.
 
 use std::error::Error;
-use std::net::SocketAddr;
 use std::sync::Arc;
 
 use rstest_bdd_macros::{given, then, when};
-use url::Url;
 
-use spycatcher_harness::config::{ListenAddr, Mode, UpstreamConfig, UpstreamKind};
+use spycatcher_harness::config::{UpstreamConfig, UpstreamKind};
 use spycatcher_harness::{HarnessConfig, RunningHarness, start_harness};
+
+pub(super) use super::harness_config::{make_record_config, make_replay_config};
 
 use crate::chat_completions_replay::support::{
     assert_response_error_kind, replay_response, response_error, response_error_kind,
@@ -333,56 +333,4 @@ fn send_request_to_harness_slot(
         .ok_or_else(|| std::io::Error::other("runtime must be set"))??;
     target.response_slot.set(response);
     Ok(())
-}
-
-pub(super) fn make_record_config(
-    cassette_path: &camino::Utf8PathBuf,
-    upstream: UpstreamConfig,
-) -> Result<HarnessConfig, Box<dyn Error>> {
-    let (cassette_dir, cassette_name) = split_cassette_path(cassette_path)?;
-
-    Ok(HarnessConfig {
-        listen: ListenAddr::from(SocketAddr::from(([127, 0, 0, 1], 0))),
-        mode: Mode::Record,
-        cassette_dir,
-        cassette_name,
-        upstream: Some(upstream),
-        ..HarnessConfig::default()
-    })
-}
-
-pub(super) fn make_replay_config(
-    cassette_path: &camino::Utf8PathBuf,
-) -> Result<HarnessConfig, Box<dyn Error>> {
-    let (cassette_dir, cassette_name) = split_cassette_path(cassette_path)?;
-    let base_url = Url::parse("http://127.0.0.1:1/api/v1")
-        .map_err(|error| std::io::Error::other(format!("test fixture URL is invalid: {error}")))?;
-
-    Ok(HarnessConfig {
-        listen: ListenAddr::from(SocketAddr::from(([127, 0, 0, 1], 0))),
-        mode: Mode::Replay,
-        cassette_dir,
-        cassette_name,
-        upstream: Some(UpstreamConfig {
-            kind: UpstreamKind::OpenRouter,
-            base_url,
-            api_key_env: "SPYCATCHER_REPLAY_SHOULD_NOT_READ".to_owned(),
-            extra_headers: std::collections::BTreeMap::new(),
-        }),
-        ..HarnessConfig::default()
-    })
-}
-
-fn split_cassette_path(
-    cassette_path: &camino::Utf8PathBuf,
-) -> Result<(camino::Utf8PathBuf, String), Box<dyn Error>> {
-    let cassette_name = cassette_path
-        .file_name()
-        .ok_or_else(|| std::io::Error::other("cassette path should contain a file name"))?
-        .to_owned();
-    let cassette_dir = cassette_path
-        .parent()
-        .ok_or_else(|| std::io::Error::other("cassette path should contain a parent directory"))?
-        .to_path_buf();
-    Ok((cassette_dir, cassette_name))
 }

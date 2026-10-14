@@ -7,8 +7,8 @@ use spycatcher_harness::config::MatchMode;
 
 use super::fixtures::{InteractionSpec, build_cassette};
 use super::helpers::{
-    check_matched_count, check_mode_order, check_response_set, extract_response_id,
-    initialize_engine, run_requests,
+    assert_slot_string_eq, check_matched_count, check_mode_order, check_response_set,
+    extract_response_id, initialize_engine, run_requests,
 };
 use super::world::MatchingWorld;
 
@@ -268,20 +268,6 @@ fn a_second_request_arrives(
 
     matching_world.engine.set(engine);
     result
-}
-
-fn assert_slot_string_eq(
-    slot: &rstest_bdd::Slot<String>,
-    slot_name: &str,
-    expected: &str,
-) -> Result<(), Box<dyn std::error::Error>> {
-    let value = slot
-        .with_ref(String::clone)
-        .ok_or_else(|| format!("{slot_name} must be set"))?;
-    if value != expected {
-        return Err(format!("{slot_name} should equal {expected:?}, got {value:?}").into());
-    }
-    Ok(())
 }
 
 #[then("all three requests receive the corresponding recorded interaction")]

@@ -135,3 +135,20 @@ pub(super) fn check_mode_order(
         }
     }
 }
+
+/// Checks a named response-ID slot against its expected value.
+/// For example, a slot containing `"resp_a"` compared with `"resp_a"` returns
+/// `Ok(())`; an unset slot or different value returns a diagnostic error.
+pub(super) fn assert_slot_string_eq(
+    slot: &rstest_bdd::Slot<String>,
+    slot_name: &str,
+    expected: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let value = slot
+        .with_ref(String::clone)
+        .ok_or_else(|| format!("{slot_name} must be set"))?;
+    if value != expected {
+        return Err(format!("{slot_name} should equal {expected:?}, got {value:?}").into());
+    }
+    Ok(())
+}
