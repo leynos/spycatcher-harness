@@ -16,6 +16,18 @@ use rstest::rstest;
 use spycatcher_harness::cli::localization::LocalizeCmd;
 use spycatcher_harness::cli::localizer::build_cli_localizer;
 
+/// Keep a raw command name paired with its raw option name before normalization.
+///
+/// The `help`/`help` identity remains raw until `command_spec_node` reserves the
+/// option namespace and its parent assigns a unique sibling name.
+#[derive(Clone, Debug)]
+struct CommandIdentity {
+    /// Raw command name retained when the parent assigns its sibling ordinal.
+    command_name: String,
+    /// Raw option name placed in the reserved-safe namespace by the node builder.
+    option_name: String,
+}
+
 #[derive(Clone, Debug)]
 struct CommandSpec {
     name: String,
@@ -78,7 +90,15 @@ fn command_spec() -> impl Strategy<Value = CommandSpec> {
             identifier(),
             proptest::collection::vec(inner, 0..3),
         )
-            .prop_map(|(name, arg, subcommands)| command_spec_node(name, &arg, subcommands))
+            .prop_map(|(name, arg, subcommands)| {
+                command_spec_node(
+                    CommandIdentity {
+                        command_name: name,
+                        option_name: arg,
+                    },
+                    subcommands,
+                )
+            })
     })
 }
 
@@ -87,14 +107,26 @@ fn command_spec() -> impl Strategy<Value = CommandSpec> {
 /// A drawn argument `help` becomes `option-help`, retaining random material
 /// without colliding with the automatically generated `--help` flag.
 fn command_spec_leaf() -> impl Strategy<Value = CommandSpec> {
-    (identifier(), identifier()).prop_map(|(name, arg)| command_spec_node(name, &arg, Vec::new()))
+    (identifier(), identifier()).prop_map(|(name, arg)| {
+        command_spec_node(
+            CommandIdentity {
+                command_name: name,
+                option_name: arg,
+            },
+            Vec::new(),
+        )
+    })
 }
 
 /// Keep every child while assigning sibling names and reserving built-in flags.
 ///
 /// Two children named `b-` become `child-0-b-` and `child-1-b-`; an argument
 /// named `version` becomes `option-version` beside Clap's version flag.
-fn command_spec_node(name: String, arg: &str, mut subcommands: Vec<CommandSpec>) -> CommandSpec {
+fn command_spec_node(identity: CommandIdentity, mut subcommands: Vec<CommandSpec>) -> CommandSpec {
+    let CommandIdentity {
+        command_name: name,
+        option_name: arg,
+    } = identity;
     for (index, child) in subcommands.iter_mut().enumerate() {
         child.name = format!("child-{index}-{}", child.name);
     }
@@ -107,12 +139,18 @@ fn command_spec_node(name: String, arg: &str, mut subcommands: Vec<CommandSpec>)
 
 /// Build two levels of equal-name siblings without dropping either branch.
 ///
-/// For `name = "help"`, all seven nodes remain while sibling names avoid the
-/// built-in help subcommand at both levels.
-fn duplicate_sibling_tree(name: &str, arg: &str) -> CommandSpec {
-    let leaf = command_spec_node(name.to_owned(), arg, Vec::new());
-    let branch = command_spec_node(name.to_owned(), arg, vec![leaf.clone(), leaf]);
-    command_spec_node("root".to_owned(), arg, vec![branch.clone(), branch])
+/// A raw `help`/`help` identity retains all seven nodes while sibling names
+/// avoid the built-in help subcommand at both levels.
+fn duplicate_sibling_tree(identity: CommandIdentity) -> CommandSpec {
+    let leaf = command_spec_node(identity.clone(), Vec::new());
+    let branch = command_spec_node(identity.clone(), vec![leaf.clone(), leaf]);
+    command_spec_node(
+        CommandIdentity {
+            command_name: "root".to_owned(),
+            option_name: identity.option_name,
+        },
+        vec![branch.clone(), branch],
+    )
 }
 
 /// Check sibling uniqueness independently of the ordinal naming construction.
@@ -127,9 +165,27 @@ fn has_unique_sibling_names(spec: &CommandSpec) -> bool {
 /// Retain both differently configured siblings from the persisted shrunk failure.
 #[test]
 fn shrunk_duplicate_siblings_remain_valid() {
-    let first = command_spec_node("b-".to_owned(), "a0", Vec::new());
-    let second = command_spec_node("b-".to_owned(), "aa", Vec::new());
-    let spec = command_spec_node("a0".to_owned(), "aa", vec![first, second]);
+    let first = command_spec_node(
+        CommandIdentity {
+            command_name: "b-".to_owned(),
+            option_name: "a0".to_owned(),
+        },
+        Vec::new(),
+    );
+    let second = command_spec_node(
+        CommandIdentity {
+            command_name: "b-".to_owned(),
+            option_name: "aa".to_owned(),
+        },
+        Vec::new(),
+    );
+    let spec = command_spec_node(
+        CommandIdentity {
+            command_name: "a0".to_owned(),
+            option_name: "aa".to_owned(),
+        },
+        vec![first, second],
+    );
 
     assert_eq!(
         spec.subcommands.len(),
@@ -153,10 +209,10 @@ fn shrunk_duplicate_siblings_remain_valid() {
 
 /// Preserve duplicate-name branches and validate Clap's built-in name boundary.
 #[rstest]
-#[case::auto_help("help", "help")]
-#[case::auto_version("version", "version")]
-fn duplicate_names_remain_valid_in_nested_trees(#[case] name: &str, #[case] arg: &str) {
-    let spec = duplicate_sibling_tree(name, arg);
+#[case::auto_help(CommandIdentity { command_name: "help".to_owned(), option_name: "help".to_owned() })]
+#[case::auto_version(CommandIdentity { command_name: "version".to_owned(), option_name: "version".to_owned() })]
+fn duplicate_names_remain_valid_in_nested_trees(#[case] identity: CommandIdentity) {
+    let spec = duplicate_sibling_tree(identity);
 
     assert_eq!(
         spec.subcommands.len(),
@@ -216,7 +272,7 @@ proptest! {
     /// Keep equal random sibling names valid at two deliberately populated levels.
     #[test]
     fn equal_random_names_preserve_nested_siblings(name in identifier(), arg in identifier()) {
-        let spec = duplicate_sibling_tree(&name, &arg);
+        let spec = duplicate_sibling_tree(CommandIdentity { command_name: name, option_name: arg });
 
         prop_assert_eq!(spec.subcommands.len(), 2);
         prop_assert!(spec.subcommands.iter().all(|child| child.subcommands.len() == 2));
