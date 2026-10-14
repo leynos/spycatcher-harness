@@ -1,12 +1,12 @@
 //! Unit tests for adapter-neutral replay orchestration.
 
-#[path = "replay_tests/concurrent_stream.rs"]
+#[path = "concurrent_stream.rs"]
 mod concurrent_stream;
 
 use super::*;
 use crate::cassette::{
-    Cassette, CassetteFormatVersion, Interaction, InteractionMetadata, RecordedResponse,
-    StreamEvent,
+    Cassette, CassetteFormatVersion, IgnorePathConfig, Interaction, InteractionMetadata,
+    RecordedRequest, RecordedResponse, StreamEvent,
 };
 use crate::config::MatchMode;
 use crate::protocol::CHAT_COMPLETIONS_PATH;

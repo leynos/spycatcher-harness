@@ -16,8 +16,13 @@ use spycatcher_harness::cli::{CliConfigError, load_subcommand_config_with_locali
 use spycatcher_harness::config::LocalizationConfig;
 use spycatcher_harness::i18n::{HarnessLocalizations, localize_harness_error};
 use spycatcher_harness::start_harness;
-use std::{io::Write, sync::Arc};
+use std::sync::Arc;
 use thiserror::Error;
+
+#[path = "spycatcher_harness/process_output.rs"]
+mod process_output;
+
+use process_output::{write_display_output, write_error_output};
 
 /// Errors returned while preparing startup localization.
 #[derive(Debug, Error)]
@@ -86,18 +91,6 @@ fn handle_cli_config_result(
         }
         Err(error) => Err(error).wrap_err("failed to load merged command config"),
     }
-}
-
-fn write_display_output(output: &str) -> std::io::Result<()> {
-    let mut stdout = std::io::stdout().lock();
-    stdout.write_all(output.as_bytes())?;
-    stdout.flush()
-}
-
-fn write_error_output(output: &str) -> std::io::Result<()> {
-    let mut stderr = std::io::stderr().lock();
-    stderr.write_all(output.as_bytes())?;
-    stderr.flush()
 }
 
 fn select_cli_localizer() -> (&'static str, Arc<dyn Localizer>) {

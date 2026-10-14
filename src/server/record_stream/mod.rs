@@ -14,7 +14,7 @@ use log::{error, info};
 
 use super::{RecordError, RecordService};
 use crate::cassette::{
-    IgnorePathConfig, Interaction, RecordedRequest, RecordedResponse, StreamEvent, StreamTiming,
+    IgnorePathConfig, Interaction, RecordedRequest, RecordedResponse, StreamTiming,
 };
 use crate::http_exchange::{ObservedRequest, ProxyBody, ProxyResponse, redact_headers};
 use crate::protocol::{CHAT_COMPLETIONS_PROTOCOL_ID, upstream_id};
@@ -23,6 +23,10 @@ use crate::sse::{SseParseError, SseParser};
 use crate::upstream::StreamingObservedResponse;
 use crate::upstream::{ChatCompletionsRequest, ChatCompletionsUpstream, EnvProvider};
 use crate::{HarnessError, HarnessResult};
+
+mod state;
+
+use self::state::{CompletedStream, StreamRecordingState, process_stream_chunk};
 
 impl<U, E, M> RecordService<U, E, M>
 where
@@ -167,154 +171,6 @@ where
             },
             metadata,
         })
-    }
-}
-
-struct CompletedStream {
-    status: u16,
-    headers: Vec<(String, String)>,
-    raw_transcript: Vec<u8>,
-    events: Vec<StreamEvent>,
-    ttft_ms: u64,
-    chunk_offsets_ms: Vec<u64>,
-}
-
-struct StreamRecordingState<U, E, M> {
-    service: RecordService<U, E, M>,
-    request: Option<ObservedRequest>,
-    status: u16,
-    headers: Vec<(String, String)>,
-    upstream_body: BoxStream<'static, HarnessResult<Bytes>>,
-    interaction_id: String,
-    interaction_start: Instant,
-    upstream_start: Instant,
-    parser: SseParser,
-    raw_transcript: Vec<u8>,
-    events: Vec<StreamEvent>,
-    chunk_offsets_ms: Vec<u64>,
-    ttft_ms: Option<u64>,
-    recording_failed: bool,
-}
-
-async fn process_stream_chunk<U, E, M>(
-    mut state: StreamRecordingState<U, E, M>,
-) -> HarnessResult<Option<(Bytes, StreamRecordingState<U, E, M>)>>
-where
-    U: ChatCompletionsUpstream + Clone + Send + Sync + 'static,
-    E: EnvProvider + Clone + Send + Sync + 'static,
-    M: MetadataFactory,
-{
-    let Some(chunk_result) = state.upstream_body.next().await else {
-        state.finish_recording().await;
-        return Ok(None);
-    };
-    let chunk = chunk_result.inspect_err(|error| {
-        state.service.failure_count.fetch_add(1, Ordering::Relaxed);
-        error!(
-            target: "spycatcher.harness.record",
-            "upstream stream chunk failed interaction_id={} mode=record \
-             protocol={} outcome=stream_failed cassette={} error={error}",
-            state.interaction_id,
-            CHAT_COMPLETIONS_PROTOCOL_ID,
-            upstream_id(state.service.upstream.kind),
-        );
-    })?;
-    state.observe_chunk(&chunk);
-    Ok(Some((chunk, state)))
-}
-
-impl<U, E, M> StreamRecordingState<U, E, M>
-where
-    U: ChatCompletionsUpstream + Clone + Send + Sync + 'static,
-    E: EnvProvider + Clone + Send + Sync + 'static,
-    M: MetadataFactory,
-{
-    fn observe_chunk(&mut self, chunk: &Bytes) {
-        if self.recording_failed {
-            return;
-        }
-        let elapsed = millis_u64(self.upstream_start.elapsed().as_millis());
-        self.ttft_ms.get_or_insert(elapsed);
-        self.raw_transcript.extend_from_slice(chunk);
-        let new_events = match self.parser.feed(chunk) {
-            Ok(events) => events,
-            Err(parse_error) => {
-                self.recording_failed = true;
-                self.service.failure_count.fetch_add(1, Ordering::Relaxed);
-                let error = stream_parse_failure(parse_error);
-                error!(
-                    target: "spycatcher.harness.record",
-                    "upstream stream parse failed interaction_id={} mode=record \
-                     protocol={} outcome=parse_failed cassette={} error={error}",
-                    self.interaction_id,
-                    CHAT_COMPLETIONS_PROTOCOL_ID,
-                    upstream_id(self.service.upstream.kind),
-                );
-                return;
-            }
-        };
-        self.chunk_offsets_ms
-            .extend(std::iter::repeat_n(elapsed, new_events.len()));
-        self.events.extend(new_events);
-    }
-
-    async fn finish_recording(mut self) {
-        if self.recording_failed {
-            return;
-        }
-        match self.parser.finish() {
-            Ok(new_events) => {
-                let elapsed = millis_u64(self.upstream_start.elapsed().as_millis());
-                self.chunk_offsets_ms
-                    .extend(std::iter::repeat_n(elapsed, new_events.len()));
-                self.events.extend(new_events);
-                self.append_completed_recording().await;
-            }
-            Err(parse_error) => {
-                self.service.failure_count.fetch_add(1, Ordering::Relaxed);
-                let error = stream_parse_failure(parse_error);
-                error!(
-                    target: "spycatcher.harness.record",
-                    "upstream stream parse failed interaction_id={} mode=record \
-                     protocol={} outcome=parse_failed cassette={} error={error}",
-                    self.interaction_id,
-                    CHAT_COMPLETIONS_PROTOCOL_ID,
-                    upstream_id(self.service.upstream.kind),
-                );
-            }
-        }
-    }
-
-    async fn append_completed_recording(mut self) {
-        let Some(request) = self.request.take() else {
-            self.service.failure_count.fetch_add(1, Ordering::Relaxed);
-            error!(
-                target: "spycatcher.harness.record",
-                "stream cassette build failed interaction_id={} mode=record \
-                 protocol={} outcome=request_missing cassette={} error=request already taken",
-                self.interaction_id,
-                CHAT_COMPLETIONS_PROTOCOL_ID,
-                upstream_id(self.service.upstream.kind),
-            );
-            return;
-        };
-        let service = self.service.clone();
-        let interaction_id = self.interaction_id.clone();
-        let completed = CompletedStream {
-            status: self.status,
-            headers: self.headers,
-            raw_transcript: self.raw_transcript,
-            events: self.events,
-            ttft_ms: self.ttft_ms.unwrap_or(0),
-            chunk_offsets_ms: self.chunk_offsets_ms,
-        };
-        match self
-            .service
-            .build_stream_interaction(request, completed, self.interaction_start)
-        {
-            Ok(interaction) => persist_interaction(&service, &interaction_id, interaction).await,
-            Err(error) => log_stream_build_failure(&service, &interaction_id, &error),
-        }
     }
 }
 
