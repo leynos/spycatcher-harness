@@ -15,6 +15,32 @@ pub const DISABLE_LOCALIZATION_ENV: &str = "SPYCATCHER_HARNESS_DISABLE_LOCALIZAT
 const LOCALE_ENV: &str = "SPYCATCHER_HARNESS_LOCALE";
 /// Fallback locale setting read when the primary setting is absent or invalid.
 const FALLBACK_LOCALE_ENV: &str = "SPYCATCHER_HARNESS_FALLBACK_LOCALE";
+/// Couples an early locale variable with its invalid-value diagnostic.
+/// For example, `PRIMARY_LOCALE_SETTING` selects the primary variable and the
+/// warning that explains why selection proceeds to the fallback.
+struct LocaleEnvSetting {
+    /// Variable to read; `PRIMARY_LOCALE_SETTING.env_var` is `LOCALE_ENV`.
+    env_var: &'static str,
+    /// Warning for parse failures; the fallback setting explains the `en-US` default.
+    invalid_value_warning: &'static str,
+}
+
+/// Primary lookup and warning; an invalid value permits the fallback lookup.
+/// For example, `try_locale_from_env(&PRIMARY_LOCALE_SETTING)` returns `en-GB`
+/// when the primary variable contains `"en-GB"`.
+const PRIMARY_LOCALE_SETTING: LocaleEnvSetting = LocaleEnvSetting {
+    env_var: LOCALE_ENV,
+    invalid_value_warning: "invalid primary early CLI locale; trying fallback locale",
+};
+
+/// Fallback lookup and warning; an invalid value permits the `en-US` default.
+/// For example, `try_locale_from_env(&FALLBACK_LOCALE_SETTING)` returns `None`
+/// after warning when the fallback variable contains `"not_a_locale"`.
+const FALLBACK_LOCALE_SETTING: LocaleEnvSetting = LocaleEnvSetting {
+    env_var: FALLBACK_LOCALE_ENV,
+    invalid_value_warning: "invalid fallback early CLI locale; using en-US",
+};
+
 /// Embedded Fluent messages used to localize early CLI output.
 const CLI_FTL: &str = include_str!("../../i18n/en-US/spycatcher-harness.ftl");
 
@@ -85,14 +111,14 @@ pub fn parse_early_locale(candidate: Option<&str>) -> LanguageIdentifier {
 /// Reads and parses one early locale setting, warning when its value is invalid.
 /// For example, an environment value of `"en-GB"` yields that identifier;
 /// `"not_a_locale"` emits the supplied warning and returns `None`.
-fn try_locale_from_env(var: &str, warn_msg: &str) -> Option<LanguageIdentifier> {
-    let Ok(locale) = std::env::var(var) else {
+fn try_locale_from_env(setting: &LocaleEnvSetting) -> Option<LanguageIdentifier> {
+    let Ok(locale) = std::env::var(setting.env_var) else {
         return None;
     };
     match parse_locale(&locale) {
-        Ok(parsed) => Some(trace_selected_early_locale(var, parsed)),
+        Ok(parsed) => Some(trace_selected_early_locale(setting.env_var, parsed)),
         Err(error) => {
-            warn_invalid_early_locale(&error, warn_msg);
+            warn_invalid_early_locale(&error, setting.invalid_value_warning);
             None
         }
     }
@@ -123,17 +149,9 @@ fn warn_invalid_early_locale(
 /// environment values are ignored after emitting a warning.
 #[must_use]
 pub fn early_locale_plan() -> LanguageIdentifier {
-    try_locale_from_env(
-        LOCALE_ENV,
-        "invalid primary early CLI locale; trying fallback locale",
-    )
-    .or_else(|| {
-        try_locale_from_env(
-            FALLBACK_LOCALE_ENV,
-            "invalid fallback early CLI locale; using en-US",
-        )
-    })
-    .unwrap_or_else(|| langid!("en-US"))
+    try_locale_from_env(&PRIMARY_LOCALE_SETTING)
+        .or_else(|| try_locale_from_env(&FALLBACK_LOCALE_SETTING))
+        .unwrap_or_else(|| langid!("en-US"))
 }
 
 /// Returns true when CLI localization should be bypassed for diagnostics.
