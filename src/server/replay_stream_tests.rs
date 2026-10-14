@@ -116,6 +116,55 @@ async fn oversized_stream_body_records_streamed_delivery_metric() {
     );
 }
 
+/// Buffered events, the threshold-crossing event, and trailing events keep order.
+#[rstest]
+#[tokio::test]
+async fn threshold_crossing_preserves_buffered_and_remaining_events() {
+    let recorder = StreamMetricRecorder::default();
+    let _recorder_guard = metrics::set_default_local_recorder(&recorder);
+    let first = "a".repeat(32 * 1024);
+    let processing = "b".repeat(16 * 1024);
+    let crossing = "c".repeat(24 * 1024);
+    let prefix = format!("data: {first}\n\n: {processing}\n\n");
+    let through_crossing = format!("{prefix}data: {crossing}\n\n");
+    assert!(
+        prefix.len() < 64 * 1024,
+        "the first two events must fit inside the eager limit",
+    );
+    assert!(
+        through_crossing.len() > 64 * 1024,
+        "the third event must cross the eager limit",
+    );
+    let expected = format!("{through_crossing}data: [DONE]\n\n");
+    let body = build_stream_body(
+        vec![
+            data(&first),
+            comment(&processing),
+            data(&crossing),
+            data("[DONE]"),
+        ],
+        &labels(),
+    );
+
+    let bytes = to_bytes(body, 80 * 1024)
+        .await
+        .expect("body crossing the eager limit should remain readable");
+
+    assert_eq!(
+        bytes.as_ref(),
+        expected.as_bytes(),
+        "buffered, crossing and trailing events must retain their exact bytes",
+    );
+    assert!(
+        recorder.has_counter_with_label(
+            "spycatcher.replay.stream.delivery.total",
+            "delivery",
+            StreamDeliveryMode::Streamed.as_str(),
+        ),
+        "crossing the limit after buffered events should select streamed delivery",
+    );
+}
+
 proptest! {
     #[test]
     fn serialized_stream_event_lines_keep_sse_prefix(

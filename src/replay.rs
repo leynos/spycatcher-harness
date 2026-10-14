@@ -31,9 +31,13 @@ use replay_request::{canonicalize_observed_request, recorded_canonical_request, 
 /// Thread-safe replay orchestration boundary.
 #[derive(Debug, Clone)]
 pub(crate) struct ReplayService {
+    /// Shared cassette matcher guarded while a request is peeked and committed.
     engine: Arc<Mutex<ReplayMatchEngine>>,
+    /// Cassette and protocol labels attached to this service's telemetry.
     context: ReplayContext,
+    /// Number of successfully replayed interactions reported by this service.
     matched_count: Arc<AtomicU64>,
+    /// Number of cassette mismatches reported by this service.
     mismatch_count: Arc<AtomicU64>,
 }
 
@@ -84,6 +88,8 @@ impl ReplayService {
         self.match_recorded_response(observed_hash, canonical_request, is_stream_request)
     }
 
+    /// Rejects requests without a parsed JSON body before cassette matching.
+    /// For example, a request without parsed JSON returns `MalformedJson`.
     fn reject_unreplayable_request_shape(
         &self,
         request: &ObservedRequest,
@@ -96,6 +102,8 @@ impl ReplayService {
         }
     }
 
+    /// Records rejection metrics and logs the outcome with replay context.
+    /// For example, `malformed_json` labels the rejection metric and warning.
     fn log_rejection(&self, outcome: &'static str, path: &str) {
         let labels = self.metric_labels();
         record_replay_request(&labels, outcome);
@@ -109,6 +117,9 @@ impl ReplayService {
         );
     }
 
+    /// Peeks at a cassette match, builds its response, and commits the interaction.
+    /// For example, a valid matched response consumes one interaction; a
+    /// rejected response leaves that interaction available.
     fn match_recorded_response(
         &self,
         observed_hash: &str,
@@ -156,6 +167,9 @@ impl ReplayService {
         Ok(response)
     }
 
+    /// Records a successful match in metrics, counters, and the replay log.
+    /// For example, logging interaction 2 increments the matched count and
+    /// records the `matched` request outcome.
     fn log_match(&self, interaction_id: usize, observed_hash: &str) {
         record_replay_request(&self.metric_labels(), "matched");
         let matched_count = self.matched_count.fetch_add(1, Ordering::Relaxed) + 1;
@@ -171,6 +185,9 @@ impl ReplayService {
         );
     }
 
+    /// Records mismatch metrics and logs the expected and observed request details.
+    /// For example, a diagnostic at `Expected(3)` reports position 3 and
+    /// increments the mismatch count.
     fn log_mismatch(&self, diagnostic: &MismatchDiagnostic) {
         let labels = self.metric_labels();
         record_replay_request(&labels, "mismatch");
@@ -192,6 +209,8 @@ impl ReplayService {
         );
     }
 
+    /// Builds a replay response while preserving the recorded body shape.
+    /// For example, a non-stream recording retains its status, headers and bytes.
     fn response_from_recorded(
         &self,
         response: &RecordedResponse,
@@ -203,23 +222,14 @@ impl ReplayService {
                 headers,
                 body,
                 ..
-            } => {
-                if is_stream_request {
-                    self.log_rejection("stream_cassette_required", CHAT_COMPLETIONS_PATH);
-                    Err(ReplayError::StreamCassetteRequiredForStreamRequest)
-                } else {
-                    debug!(
-                        target: "spycatcher.harness.replay",
-                        "building replay response from recorded interaction \
-                         is_stream_request={is_stream_request} response_kind=non_stream",
-                    );
-                    Ok(ReplayResponse {
-                        status: *status,
-                        headers: headers.clone(),
-                        body: ReplayBody::OneShot(body.clone()),
-                    })
-                }
-            }
+            } => self.response_from_non_stream(
+                NonStreamReplayParts {
+                    status: *status,
+                    headers,
+                    body,
+                },
+                is_stream_request,
+            ),
             RecordedResponse::Stream {
                 status,
                 headers,
@@ -240,6 +250,34 @@ impl ReplayService {
                 })
             }
         }
+    }
+
+    /// Rejects streaming requests that only have a non-stream recording.
+    ///
+    /// Build the owned response only after validation so rejected requests do
+    /// not clone cassette data.
+    /// For example, a streaming request returns
+    /// `StreamCassetteRequiredForStreamRequest` before copying the body.
+    fn response_from_non_stream(
+        &self,
+        parts: NonStreamReplayParts<'_>,
+        is_stream_request: bool,
+    ) -> Result<ReplayResponse, ReplayError> {
+        if is_stream_request {
+            self.log_rejection("stream_cassette_required", CHAT_COMPLETIONS_PATH);
+            return Err(ReplayError::StreamCassetteRequiredForStreamRequest);
+        }
+
+        debug!(
+            target: "spycatcher.harness.replay",
+            "building replay response from recorded interaction \
+             is_stream_request={is_stream_request} response_kind=non_stream",
+        );
+        Ok(ReplayResponse {
+            status: parts.status,
+            headers: parts.headers.to_vec(),
+            body: ReplayBody::OneShot(parts.body.to_vec()),
+        })
     }
 }
 
@@ -269,7 +307,10 @@ impl Default for ReplayContext {
     }
 }
 
+/// Provides an interaction index for cassette-position diagnostics.
 trait InteractionPositionMetrics {
+    /// Returns the numeric interaction index associated with this position.
+    /// For example, `Expected(3)` yields 3.
     fn metric_id(&self) -> usize;
 }
 
@@ -279,6 +320,17 @@ impl InteractionPositionMetrics for crate::cassette::InteractionPosition {
             Self::Expected(index) | Self::Exhausted(index) | Self::KeyedMiss(index) => index,
         }
     }
+}
+
+/// Borrowed cassette fields used to build a non-stream replay response.
+#[derive(Clone, Copy)]
+struct NonStreamReplayParts<'a> {
+    /// Status code recorded in the cassette.
+    status: u16,
+    /// Headers recorded in their original order.
+    headers: &'a [(String, String)],
+    /// Response bytes recorded in the cassette.
+    body: &'a [u8],
 }
 
 /// Replay response data independent of the inbound HTTP framework.

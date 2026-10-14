@@ -45,13 +45,27 @@ pub(crate) async fn record_chat_completions_handler(
     }
 }
 
+/// Logs record-mode request events using only the URI path.
+/// For example, `/chat?key=secret` contributes `/chat` to both events.
 pub(super) fn log_chat_request(method: &Method, uri: &Uri) {
+    log_record_request_debug(method, uri);
+    log_record_request_info(method, uri);
+}
+
+/// Emits the debug event for a received record-mode request.
+/// For example, `POST /chat` logs the method and `/chat` path at debug level.
+fn log_record_request_debug(method: &Method, uri: &Uri) {
     debug!(
         target: "spycatcher.harness.record",
         method = %method,
         path = uri.path(),
         "record-mode request received",
     );
+}
+
+/// Emits the info event for a received record-mode chat completions request.
+/// For example, `POST /chat` logs the method and `/chat` path at info level.
+fn log_record_request_info(method: &Method, uri: &Uri) {
     info!(
         method = %method,
         path = uri.path(),
@@ -60,6 +74,8 @@ pub(super) fn log_chat_request(method: &Method, uri: &Uri) {
     );
 }
 
+/// Builds the JSON HTTP response for a record-mode error.
+/// For example, a missing upstream credential becomes a 502 response with a safe message.
 fn build_error_response(error: &RecordError) -> Response<axum::body::Body> {
     let (status, message) = record_error_http_mapping(error);
     let body_bytes = format!(r#"{{"error":{{"message":{}}}}}"#, json!(message));
@@ -71,6 +87,8 @@ fn build_error_response(error: &RecordError) -> Response<axum::body::Body> {
     response
 }
 
+/// Maps a recording error to its downstream HTTP status and safe message.
+/// For example, a missing upstream credential maps to 502 Bad Gateway.
 const fn record_error_http_mapping(error: &RecordError) -> (StatusCode, &'static str) {
     match error {
         RecordError::MissingApiKeyNotConfigured => (
@@ -81,6 +99,8 @@ const fn record_error_http_mapping(error: &RecordError) -> (StatusCode, &'static
     }
 }
 
+/// Builds the downstream HTTP response from a proxied status, headers, and body.
+/// For example, a streaming proxy body remains streaming in the returned response.
 fn build_proxy_response(response: ProxyResponse) -> Response<axum::body::Body> {
     let body = match response.body {
         ProxyBody::Buffered(bytes) => axum::body::Body::from(bytes),
@@ -108,6 +128,8 @@ fn build_proxy_response(response: ProxyResponse) -> Response<axum::body::Body> {
     built
 }
 
+/// Converts an upstream status number, falling back to 502 when it is invalid.
+/// For example, status 999 maps to `BAD_GATEWAY`.
 fn proxy_status_code(status: u16) -> StatusCode {
     if (100..=599).contains(&status) {
         StatusCode::from_u16(status).unwrap_or(StatusCode::BAD_GATEWAY)
