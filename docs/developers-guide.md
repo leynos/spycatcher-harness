@@ -286,13 +286,15 @@ children are private `mod` declarations; helpers needed by the parent use
 Rust source file within 400 lines without changing configuration precedence,
 matching semantics, stream persistence, or process output.
 
-| Private child module                           | Responsibility                                                                                          |
-| ---------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
-| `src/cassette/canonical/json/serialize.rs`     | Canonical JSON writing, escaping and ordering for `json/mod.rs`                                         |
-| `src/cassette/matching/selection.rs`           | Candidate selection and sequential/keyed cursor or consumption updates for `matching/mod.rs`            |
-| `src/replay_request.rs`                        | Observed-request canonicalization and matching-field access for `src/replay.rs`                         |
-| `src/server/record_stream/state.rs`            | Stream accumulation, chunk parsing, finalization and completed-record append for `record_stream/mod.rs` |
-| `src/bin/spycatcher_harness/process_output.rs` | Locked stdout/stderr writes and flushing for the sole binary entry point                                |
+| Private child module                                 | Responsibility                                                                                          |
+| ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| `src/cassette/canonical/json/serialize.rs`           | Canonical JSON writing, escaping and ordering for `json/mod.rs`                                         |
+| `src/cassette/matching/selection.rs`                 | Candidate selection and sequential/keyed cursor or consumption updates for `matching/mod.rs`            |
+| `src/replay_request.rs`                              | Observed-request canonicalization and matching-field access for `src/replay.rs`                         |
+| `src/server/record_stream/state.rs`                  | Stream accumulation, chunk parsing, finalization and completed-record append for `record_stream/mod.rs` |
+| `src/bin/spycatcher_harness/process_output.rs`       | Locked stdout/stderr writes and flushing for the sole binary entry point                                |
+| `src/bin/spycatcher_harness/cli_startup.rs`          | CLI localizer selection, parse-span lifetime, and configuration-result exit orchestration               |
+| `src/bin/spycatcher_harness/startup_localization.rs` | Configured locale validation, ordered selection, and embedded Fluent catalogue construction             |
 
 _Table 4: Private implementation children._
 

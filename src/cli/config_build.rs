@@ -107,20 +107,38 @@ fn apply_fallback_locale_override(
     fallback_locale_override: Option<&str>,
 ) -> Result<(), CliConfigError> {
     if let Some(fallback_locale_value) = fallback_locale_override {
-        tracing::debug!(
-            field = "fallback_locale",
-            value = fallback_locale_value,
-            "applying locale override"
-        );
-        validate_language_identifier("fallback_locale", fallback_locale_value)?;
-        fallback_locale_value.clone_into(&mut config.localization.fallback_locale);
+        apply_supplied_fallback_locale(config, fallback_locale_value)?;
     } else {
-        tracing::debug!(
-            field = "fallback_locale",
-            value = config.localization.fallback_locale.as_str(),
-            "using default fallback locale"
-        );
+        log_default_fallback_locale(&config.localization.fallback_locale);
     }
     validate_language_identifier("fallback_locale", &config.localization.fallback_locale)?;
     Ok(())
+}
+
+/// Logs and validates a supplied fallback before replacing the configured value.
+/// For example, `"en-GB"` replaces the fallback after validation; `"not_a_locale"`
+/// returns `InvalidLocale` while retaining the existing fallback.
+fn apply_supplied_fallback_locale(
+    config: &mut HarnessConfig,
+    fallback_locale_value: &str,
+) -> Result<(), CliConfigError> {
+    tracing::debug!(
+        field = "fallback_locale",
+        value = fallback_locale_value,
+        "applying locale override"
+    );
+    validate_language_identifier("fallback_locale", fallback_locale_value)?;
+    fallback_locale_value.clone_into(&mut config.localization.fallback_locale);
+    Ok(())
+}
+
+/// Logs retention of the configured fallback without changing or validating it.
+/// For example, `log_default_fallback_locale("en-US")` records `"en-US"` as the
+/// default fallback; the caller still validates that value afterwards.
+fn log_default_fallback_locale(fallback_locale_value: &str) {
+    tracing::debug!(
+        field = "fallback_locale",
+        value = fallback_locale_value,
+        "using default fallback locale"
+    );
 }
