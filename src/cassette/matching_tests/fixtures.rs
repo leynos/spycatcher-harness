@@ -141,11 +141,10 @@ pub(super) fn duplicate_hash_cassette() -> Cassette {
 
 /// Creates a `ReplayMatchEngine` in sequential strict mode from the sample cassette.
 #[fixture]
-pub(super) fn sequential_engine(sample_cassette: Cassette) -> ReplayMatchEngine {
-    match ReplayMatchEngine::new(sample_cassette, MatchMode::SequentialStrict) {
-        Ok(engine) => engine,
-        Err(e) => panic!("fixture cassette should have valid stable hashes: {e}"),
-    }
+pub(super) fn sequential_engine(
+    sample_cassette: Cassette,
+) -> crate::error::HarnessResult<ReplayMatchEngine> {
+    ReplayMatchEngine::new(sample_cassette, MatchMode::SequentialStrict)
 }
 
 // ── test helpers ─────────────────────────────────────────────────────────────
@@ -163,17 +162,11 @@ pub(super) fn consume_all(engine: &mut ReplayMatchEngine) {
 }
 
 /// Retrieves the nth response from the cassette.
-#[track_caller]
-pub(super) fn nth_response(cassette: &Cassette, n: usize) -> RecordedResponse {
-    cassette.interactions.get(n).map_or_else(
-        || {
-            panic!(
-                "interaction {n} does not exist in cassette (len = {})",
-                cassette.interactions.len()
-            )
-        },
-        |interaction| interaction.response.clone(),
-    )
+pub(super) fn nth_response(cassette: &Cassette, n: usize) -> Option<RecordedResponse> {
+    cassette
+        .interactions
+        .get(n)
+        .map(|interaction| interaction.response.clone())
 }
 
 /// Returns the matched interaction or panics if the outcome was a mismatch.
@@ -237,17 +230,13 @@ pub(super) fn assert_matched_response_eq(outcome: MatchOutcome<'_>, expected: &R
     assert_eq!(&interaction.response, expected);
 }
 
-#[track_caller]
-pub(super) fn extract_response_id(interaction: &Interaction) -> String {
+/// Returns the non-stream response ID when present as a string.
+pub(super) fn extract_response_id(interaction: &Interaction) -> Option<&str> {
     match &interaction.response {
         RecordedResponse::NonStream { parsed_json, .. } => parsed_json
             .as_ref()
             .and_then(|v| v.get("id"))
-            .and_then(|v| v.as_str())
-            .map_or_else(
-                || panic!("response has no string \"id\" field"),
-                std::borrow::ToOwned::to_owned,
-            ),
-        RecordedResponse::Stream { .. } => panic!("expected NonStream response"),
+            .and_then(|v| v.as_str()),
+        RecordedResponse::Stream { .. } => None,
     }
 }

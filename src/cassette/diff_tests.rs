@@ -8,6 +8,7 @@ use serde_json::{Value, json};
 
 use super::diff::canonical_diff_summary;
 
+#[track_caller]
 fn assert_diff_contains(expected: &Value, observed: &Value, needles: &[&str]) {
     let diff = canonical_diff_summary(expected, observed);
     for needle in needles {

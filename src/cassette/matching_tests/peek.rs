@@ -16,7 +16,7 @@ fn canonical_a() -> serde_json::Value {
 
 #[rstest]
 fn sequential_peek_match_does_not_advance_cursor(sample_cassette: Cassette) {
-    let expected_response_0 = nth_response(&sample_cassette, 0);
+    let expected_response_0 = nth_response(&sample_cassette, 0).expect("first interaction exists");
     let mut engine = ReplayMatchEngine::new(sample_cassette, MatchMode::SequentialStrict)
         .expect("fixture cassette should have valid stable hashes");
 
@@ -42,7 +42,7 @@ fn sequential_peek_match_does_not_advance_cursor(sample_cassette: Cassette) {
 
 #[rstest]
 fn sequential_peek_mismatch_does_not_advance_cursor(sample_cassette: Cassette) {
-    let expected_response_0 = nth_response(&sample_cassette, 0);
+    let expected_response_0 = nth_response(&sample_cassette, 0).expect("first interaction exists");
     let mut engine = ReplayMatchEngine::new(sample_cassette, MatchMode::SequentialStrict)
         .expect("fixture cassette should have valid stable hashes");
     let wrong_canonical = json!({"method": "GET", "path": "/wrong"});
@@ -72,19 +72,22 @@ fn keyed_peek_match_does_not_mark_interaction_consumed(duplicate_hash_cassette: 
     let canonical = json!({"method": "POST", "messages": [{"content": "first"}]});
 
     let peeked_first = expect_matched(engine.peek_match("hash_a", &canonical));
-    assert_eq!(extract_response_id(&peeked_first), "first_response");
+    assert_eq!(extract_response_id(&peeked_first), Some("first_response"));
     let peeked_again = expect_matched(engine.peek_match("hash_a", &canonical));
-    assert_eq!(extract_response_id(&peeked_again), "first_response");
+    assert_eq!(extract_response_id(&peeked_again), Some("first_response"));
 
     let consumed_first = expect_matched(engine.next_match("hash_a", &canonical));
-    assert_eq!(extract_response_id(&consumed_first), "first_response");
+    assert_eq!(extract_response_id(&consumed_first), Some("first_response"));
     let consumed_second = expect_matched(engine.next_match("hash_a", &canonical));
-    assert_eq!(extract_response_id(&consumed_second), "second_response");
+    assert_eq!(
+        extract_response_id(&consumed_second),
+        Some("second_response")
+    );
 }
 
 #[rstest]
 fn keyed_peek_mismatch_does_not_consume_later_match(sample_cassette: Cassette) {
-    let expected_response_0 = nth_response(&sample_cassette, 0);
+    let expected_response_0 = nth_response(&sample_cassette, 0).expect("first interaction exists");
     let mut engine = ReplayMatchEngine::new(sample_cassette, MatchMode::Keyed)
         .expect("fixture cassette should have valid stable hashes");
     let unknown_canonical = json!({"method": "DELETE", "path": "/unknown"});

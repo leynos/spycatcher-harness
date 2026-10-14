@@ -24,7 +24,7 @@ fn matching_non_stream_request_returns_recorded_response() {
             parsed_json: None,
         },
     )
-    .unwrap_or_else(|message| panic!("{message}"));
+    .expect("recorded non-stream interaction should build replay service");
 
     let response = service
         .handle_chat_completions(request)
@@ -52,7 +52,7 @@ fn mismatched_request_returns_diagnostic() {
             parsed_json: None,
         },
     )
-    .unwrap_or_else(|message| panic!("{message}"));
+    .expect("recorded mismatch interaction should build replay service");
 
     let error = service
         .handle_chat_completions(observed)
@@ -75,7 +75,7 @@ fn matched_stream_response_replays_as_events() {
             timing: None,
         },
     )
-    .unwrap_or_else(|message| panic!("{message}"));
+    .expect("empty stream interaction should build replay service");
 
     let response = service
         .handle_chat_completions(request)
@@ -111,7 +111,7 @@ fn matched_stream_response_preserves_recorded_events() {
             timing: None,
         },
     )
-    .unwrap_or_else(|message| panic!("{message}"));
+    .expect("recorded stream events should build replay service");
 
     let response = service
         .handle_chat_completions(request)
@@ -168,7 +168,7 @@ fn request_is_rejected_before_matching(
             parsed_json: None,
         },
     )
-    .unwrap_or_else(|message| panic!("{message}"));
+    .expect("rejection case should build replay service");
     let trigger = sample_observed_request(trigger_body);
 
     let error = service

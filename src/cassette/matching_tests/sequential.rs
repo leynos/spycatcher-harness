@@ -4,12 +4,10 @@ use rstest::rstest;
 use serde_json::json;
 
 use super::fixtures::{
-    assert_matched_response_eq, assert_mismatch_diagnostic, consume_all,
+    assert_matched, assert_matched_response_eq, assert_mismatch_diagnostic, consume_all,
     expect_mismatch_diagnostic, nth_response, sample_cassette, sequential_engine,
 };
-use crate::cassette::{
-    Cassette, DIAGNOSTIC_EXHAUSTED, InteractionPosition, MatchOutcome, ReplayMatchEngine,
-};
+use crate::cassette::{Cassette, DIAGNOSTIC_EXHAUSTED, InteractionPosition, ReplayMatchEngine};
 use crate::config::MatchMode;
 
 fn canonical_a() -> serde_json::Value {
@@ -26,9 +24,9 @@ fn canonical_c() -> serde_json::Value {
 
 #[rstest]
 fn sequential_strict_three_correct_requests_match_in_order(sample_cassette: Cassette) {
-    let expected_response_0 = nth_response(&sample_cassette, 0);
-    let expected_response_1 = nth_response(&sample_cassette, 1);
-    let expected_response_2 = nth_response(&sample_cassette, 2);
+    let expected_response_0 = nth_response(&sample_cassette, 0).expect("first interaction exists");
+    let expected_response_1 = nth_response(&sample_cassette, 1).expect("second interaction exists");
+    let expected_response_2 = nth_response(&sample_cassette, 2).expect("third interaction exists");
 
     let mut engine = ReplayMatchEngine::new(sample_cassette, MatchMode::SequentialStrict)
         .expect("fixture cassette should have valid stable hashes");
@@ -45,9 +43,9 @@ fn sequential_strict_three_correct_requests_match_in_order(sample_cassette: Cass
 
 #[rstest]
 fn sequential_strict_first_request_wrong_hash_returns_mismatch(
-    mut sequential_engine: ReplayMatchEngine,
-) {
-    let engine = &mut sequential_engine;
+    #[from(sequential_engine)] engine_result: crate::error::HarnessResult<ReplayMatchEngine>,
+) -> eyre::Result<()> {
+    let mut engine = engine_result?;
 
     let canonical_wrong = json!({"method": "GET", "path": "/wrong"});
     let outcome = engine.next_match("wrong_hash", &canonical_wrong);
@@ -58,18 +56,19 @@ fn sequential_strict_first_request_wrong_hash_returns_mismatch(
         "hash_a",
         "wrong_hash",
     );
-    assert!(!d.diff_summary.is_empty());
+    eyre::ensure!(!d.diff_summary.is_empty(), "mismatch should include a diff");
+    Ok(())
 }
 
 #[rstest]
 fn sequential_strict_second_request_wrong_hash_returns_mismatch(
-    mut sequential_engine: ReplayMatchEngine,
-) {
-    let engine = &mut sequential_engine;
+    #[from(sequential_engine)] engine_result: crate::error::HarnessResult<ReplayMatchEngine>,
+) -> eyre::Result<()> {
+    let mut engine = engine_result?;
 
     // First request matches.
     let outcome_first = engine.next_match("hash_a", &canonical_a());
-    assert!(matches!(outcome_first, MatchOutcome::Matched { .. }));
+    assert_matched(outcome_first);
 
     // Second request has wrong hash.
     let canonical_wrong = json!({"method": "GET", "path": "/wrong"});
@@ -81,15 +80,17 @@ fn sequential_strict_second_request_wrong_hash_returns_mismatch(
         "hash_b",
         "wrong_hash",
     );
+    Ok(())
 }
 
 #[rstest]
 fn sequential_strict_mismatch_does_not_advance_cursor(
     sample_cassette: Cassette,
-    mut sequential_engine: ReplayMatchEngine,
-) {
-    let expected_response_0 = nth_response(&sample_cassette, 0);
-    let engine = &mut sequential_engine;
+    #[from(sequential_engine)] engine_result: crate::error::HarnessResult<ReplayMatchEngine>,
+) -> eyre::Result<()> {
+    let expected_response_0 = nth_response(&sample_cassette, 0)
+        .ok_or_else(|| eyre::eyre!("first interaction should exist"))?;
+    let mut engine = engine_result?;
 
     // First request has wrong hash (causes mismatch).
     let canonical_wrong = json!({"method": "GET", "path": "/wrong"});
@@ -104,22 +105,27 @@ fn sequential_strict_mismatch_does_not_advance_cursor(
     // Second request with correct hash should still match interaction 0.
     let outcome_match = engine.next_match("hash_a", &canonical_a());
     assert_matched_response_eq(outcome_match, &expected_response_0);
+    Ok(())
 }
 
 #[rstest]
-fn sequential_strict_cassette_exhausted_returns_mismatch(mut sequential_engine: ReplayMatchEngine) {
+fn sequential_strict_cassette_exhausted_returns_mismatch(
+    #[from(sequential_engine)] engine_result: crate::error::HarnessResult<ReplayMatchEngine>,
+) -> eyre::Result<()> {
+    let mut engine = engine_result?;
     // Consume all three interactions.
-    consume_all(&mut sequential_engine);
+    consume_all(&mut engine);
 
     // Fourth request should fail with exhaustion diagnostic.
     let canonical_extra = json!({"method": "GET", "path": "/extra"});
-    let outcome = sequential_engine.next_match("hash_extra", &canonical_extra);
+    let outcome = engine.next_match("hash_extra", &canonical_extra);
 
     let d =
         expect_mismatch_diagnostic(outcome, InteractionPosition::Exhausted(3), "", "hash_extra");
-    assert!(
+    eyre::ensure!(
         d.diff_summary.starts_with(DIAGNOSTIC_EXHAUSTED),
         "expected exhausted diagnostic, got: {}",
         d.diff_summary
     );
+    Ok(())
 }

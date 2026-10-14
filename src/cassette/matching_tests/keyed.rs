@@ -78,13 +78,13 @@ fn keyed_mode_duplicate_hashes_consumed_in_order(duplicate_hash_cassette: Casset
     let canonical_a = json!({"method": "POST", "messages": [{"content": "first"}]});
     let outcome = engine.next_match("hash_a", &canonical_a);
     let interaction = expect_matched(outcome);
-    assert_eq!(extract_response_id(&interaction), "first_response");
+    assert_eq!(extract_response_id(&interaction), Some("first_response"));
 
     // Second request with hash_a should match the second interaction.
     let canonical_a2 = json!({"method": "POST", "messages": [{"content": "second"}]});
     let outcome_2 = engine.next_match("hash_a", &canonical_a2);
     let interaction_2 = expect_matched(outcome_2);
-    assert_eq!(extract_response_id(&interaction_2), "second_response");
+    assert_eq!(extract_response_id(&interaction_2), Some("second_response"));
 }
 
 #[rstest]
