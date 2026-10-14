@@ -5,7 +5,7 @@ This ExecPlan is a living document. Keep `Constraints`, `Tolerances`, `Risks`,
 `Outcomes & retrospective`, `Conformance basis`, and `Verification plan`
 current.
 
-Status: COMPLETE
+Status: IN PROGRESS
 
 ## Purpose / big picture
 
@@ -287,6 +287,30 @@ observable.
   action explicitly neither publishes coverage nor contacts CodeScene; `main`
   owns that check. Preserve this as an out-of-scope status, not a failed
   migration gate.
+- [x] (2026-10-14) Close the follow-up acceptance-evidence gaps: exercise help
+  and parse outcomes through the binary, prove startup failures leave record
+  resources untouched (including unreadable discovery before a valid later
+  candidate), witness no-CLI environment-over-file scalar precedence in record
+  and verify, and correct the discovery explanation in the users' guide. The
+  binary matrix now checks root and all subcommand help forms, parse-failure
+  status and stream separation, stock localized-parser fallback, and startup
+  isolation for malformed configuration, missing inheritance, invalid locale
+  values, and an unreadable first candidate before valid XDG configuration.
+  Record and verify tests now prove environment-over-file values for `listen`
+  and `cassette_dir` without CLI arguments.
+- [x] (2026-10-14) Add the focused evidence for the follow-up. The localization
+  unit suite passed all 40 tests, the binary localization and startup suite
+  passed all 20 cases, and the layering unit suite passed all 26 tests. The
+  unreadable-file case uses a regular file with read permissions removed and a
+  valid later XDG candidate. The discovery guide now distinguishes the
+  first-error behaviour of `load_and_merge_subcommand` from the accumulated
+  failures of `ConfigDiscovery::load_first`.
+- [x] (2026-10-14) Run all ten full gates sequentially on the follow-up tree:
+  `make check-fmt`, `make lint`, `make typecheck`, `make test`, spelling,
+  Markdown lint, Mermaid validation, workflow contracts, `make test-make-all`,
+  and the locked Rust 1.89.0 all-targets/all-features check. All passed;
+  `make test` reported 449 nextest cases and 27 doctests passed, with 4
+  ignored. Hosted validation for the newly pushed head remains pending.
 
 ## Surprises & discoveries
 

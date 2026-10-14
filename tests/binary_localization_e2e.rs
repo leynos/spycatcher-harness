@@ -4,13 +4,15 @@
 //! includes `main`, Clap argument parsing, layered configuration loading,
 //! language-loader construction, and user-facing error rendering.
 
-use std::net::TcpListener;
 use std::process::{Command, ExitStatus, Output};
 
 use eyre::WrapErr as _;
 use rstest::rstest;
 
 use spycatcher_harness::cli::localizer::DISABLE_LOCALIZATION_ENV;
+
+#[path = "binary_localization_e2e/startup_isolation.rs"]
+mod startup_isolation;
 
 /// Executes the binary with CLI localization variables removed from the child.
 /// For example, `localized_cli_output(&["--help"])` captures localized help on
@@ -32,16 +34,49 @@ fn localized_cli_output(args: &[&str]) -> std::io::Result<Output> {
 fn binary_emits_localized_help() {
     let output = localized_cli_output(&["--help"]).expect("binary should execute");
 
-    assert!(output.status.success(), "help should exit successfully");
+    assert_eq!(
+        output.status.code(),
+        Some(0),
+        "help should exit successfully"
+    );
+    assert!(output.stderr.is_empty(), "help should not write to stderr");
     let stdout = String::from_utf8(output.stdout).expect("stdout should be UTF-8");
     insta::assert_snapshot!(stdout);
+}
+
+#[rstest]
+#[case::root_short(&["-h"])]
+#[case::record_short(&["record", "-h"])]
+#[case::record_long(&["record", "--help"])]
+#[case::replay_short(&["replay", "-h"])]
+#[case::replay_long(&["replay", "--help"])]
+#[case::verify_short(&["verify", "-h"])]
+#[case::verify_long(&["verify", "--help"])]
+fn binary_help_requests_write_only_to_stdout(#[case] args: &[&str]) {
+    let output = localized_cli_output(args).expect("binary should execute");
+
+    assert_eq!(
+        output.status.code(),
+        Some(0),
+        "help should exit successfully"
+    );
+    assert!(!output.stdout.is_empty(), "help should write to stdout");
+    assert!(output.stderr.is_empty(), "help should not write to stderr");
 }
 
 #[test]
 fn binary_emits_localized_version() {
     let output = localized_cli_output(&["--version"]).expect("binary should execute");
 
-    assert!(output.status.success(), "version should exit successfully");
+    assert_eq!(
+        output.status.code(),
+        Some(0),
+        "version should exit successfully"
+    );
+    assert!(
+        output.stderr.is_empty(),
+        "version should not write to stderr"
+    );
     let stdout = String::from_utf8(output.stdout).expect("stdout should be UTF-8");
     insta::assert_snapshot!(stdout);
 }
@@ -50,77 +85,17 @@ fn binary_emits_localized_version() {
 fn binary_emits_localized_unknown_argument_error() {
     let output = localized_cli_output(&["replay", "--not-a-flag"]).expect("binary should execute");
 
+    assert_eq!(
+        output.status.code(),
+        Some(2),
+        "unknown arguments should use Clap's parse-failure status"
+    );
     assert!(
-        !output.status.success(),
-        "unknown arguments should fail parsing"
+        output.stdout.is_empty(),
+        "parse errors should not write to stdout"
     );
     let stderr = String::from_utf8(output.stderr).expect("stderr should be UTF-8");
     insta::assert_snapshot!(stderr);
-}
-
-#[test]
-fn binary_parse_failure_has_no_record_startup_side_effects() {
-    let temp_dir = tempfile::tempdir().expect("temporary directory should be created");
-    let held_listener = TcpListener::bind("127.0.0.1:0").expect("listener port should bind");
-    let listen_address = held_listener
-        .local_addr()
-        .expect("held listener should have a local address")
-        .to_string();
-    let upstream_listener = TcpListener::bind("127.0.0.1:0").expect("upstream port should bind");
-    upstream_listener
-        .set_nonblocking(true)
-        .expect("upstream listener should be non-blocking");
-    let upstream_url = format!(
-        "http://{}",
-        upstream_listener
-            .local_addr()
-            .expect("upstream listener should have a local address")
-    );
-    let cassette_dir = temp_dir.path().join("cassettes");
-    let listen_address_arg = listen_address.as_str();
-
-    let output = Command::new(env!("CARGO_BIN_EXE_spycatcher-harness"))
-        .env_clear()
-        .env(
-            "SPYCATCHER_HARNESS_CMDS_RECORD_UPSTREAM__BASE_URL",
-            upstream_url,
-        )
-        .env("OPENROUTER_API_KEY", "parse-failure-secret-sentinel")
-        .current_dir(temp_dir.path())
-        .args([
-            "record",
-            "--listen",
-            listen_address_arg,
-            "--cassette-dir",
-            "cassettes",
-            "--cassette-name",
-            "must-not-be-written",
-            "--not-a-flag",
-        ])
-        .output()
-        .expect("binary should execute");
-
-    assert!(
-        !output.status.success(),
-        "unknown argument should fail parsing"
-    );
-    let stderr = String::from_utf8(output.stderr).expect("stderr should be UTF-8");
-    assert!(
-        stderr.contains("unknown argument"),
-        "parse failure should reach the CLI error path: {stderr}"
-    );
-    assert!(
-        !stderr.contains("parse-failure-secret-sentinel"),
-        "parse failure diagnostics must not disclose the configured secret"
-    );
-    assert!(
-        !cassette_dir.exists(),
-        "parse failure must not create the cassette directory"
-    );
-    assert!(
-        matches!(upstream_listener.accept(), Err(error) if error.kind() == std::io::ErrorKind::WouldBlock),
-        "parse failure must not contact the configured upstream"
-    );
 }
 
 #[test]

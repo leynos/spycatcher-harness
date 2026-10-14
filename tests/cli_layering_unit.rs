@@ -27,6 +27,9 @@ mod isolated_cli_process;
 use cli_config_snapshot::load_config_snapshot as load_with_child;
 use isolated_cli_process::ModeSnapshot;
 
+#[path = "cli_layering_unit/scalar_layering.rs"]
+mod scalar_layering;
+
 const REPLAY_FILE_CONFIG: &str = "[cmds.replay]\ncassette_name = \"from_file\"\n";
 const REPLAY_LOCALIZATION_FILE_CONFIG: &str = concat!(
     "[cmds.replay.localization]\n",
