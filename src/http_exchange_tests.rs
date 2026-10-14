@@ -22,6 +22,8 @@ fn make_header_map(entries: &[(&str, &[u8])]) -> HeaderMap {
     map
 }
 
+/// Protects capture from connection and destination headers while retaining
+/// application headers.
 #[rstest]
 fn selected_request_headers_drop_hop_by_hop_and_framing_headers() {
     let headers = make_header_map(&[
@@ -40,6 +42,8 @@ fn selected_request_headers_drop_hop_by_hop_and_framing_headers() {
     );
 }
 
+/// Prevents differently cased credential names from bypassing redaction while
+/// retaining trace headers.
 #[rstest]
 fn redact_headers_matches_names_case_insensitively() {
     let headers = vec![
@@ -57,11 +61,14 @@ fn redact_headers_matches_names_case_insensitively() {
     );
 }
 
+/// Keeps malformed body bytes from being mistaken for successfully parsed JSON.
 #[rstest]
 fn parse_json_bytes_returns_none_for_invalid_json() {
     assert_eq!(parse_json_bytes(br#"{"unterminated": true"#), None);
 }
 
+/// Preserves opaque upstream header values in a stable textual cassette
+/// representation.
 #[rstest]
 fn selected_response_headers_preserve_non_utf8_values() {
     let headers = make_header_map(&[("x-raw", b"\xff\xfe")]);
@@ -72,6 +79,8 @@ fn selected_response_headers_preserve_non_utf8_values() {
     );
 }
 
+/// Keeps opaque upstream header bytes unchanged at the downstream proxy
+/// boundary.
 #[rstest]
 fn selected_response_proxy_headers_preserve_raw_values() {
     let headers = make_header_map(&[("x-raw", b"\xff\xfe")]);
@@ -82,6 +91,8 @@ fn selected_response_proxy_headers_preserve_raw_values() {
     );
 }
 
+/// Enforces dynamic Connection exclusions despite a neighbouring non-UTF-8
+/// token.
 #[rstest]
 #[case(
     b"keep-alive, x-hop" as &[u8],
@@ -108,6 +119,8 @@ fn selected_headers_drop_connection_token_headers(
     );
 }
 
+/// Keeps opaque inbound header bytes unchanged at the upstream forwarding
+/// boundary.
 #[rstest]
 fn selected_forward_headers_preserve_raw_values() {
     let headers = make_header_map(&[("x-raw", b"\xff\xfe")]);
@@ -125,6 +138,8 @@ mod prop_tests {
     use proptest::prelude::*;
 
     proptest! {
+        /// Checks every hop-by-hop name stays excluded across generated legal
+        /// header values.
         #[test]
         fn hop_by_hop_headers_are_always_dropped(value in "[a-zA-Z0-9]{1,16}") {
             for name in HOP_BY_HOP_HEADERS {
@@ -145,6 +160,8 @@ mod prop_tests {
     }
 
     proptest! {
+        /// Protects generated opaque header values from being silently
+        /// discarded.
         #[test]
         fn non_utf8_bytes_are_percent_encoded_not_dropped(
             suffix in proptest::collection::vec(0x80u8..=0xFFu8, 1..8),

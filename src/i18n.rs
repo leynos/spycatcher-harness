@@ -13,14 +13,22 @@ use rust_embed::RustEmbed;
 
 use crate::HarnessError;
 
+/// Fluent message ID for configuration errors with a `message` argument.
 const INVALID_CONFIG: &str = "harness-error-invalid-config";
+/// Fluent message ID for a missing cassette with a `cassette_name` argument.
 const CASSETTE_NOT_FOUND: &str = "harness-error-cassette-not-found";
+/// Fluent message ID for a request mismatch with interaction and diff arguments.
 const REQUEST_MISMATCH: &str = "harness-error-request-mismatch";
+/// Fluent message ID for an invalid cassette with a `message` argument.
 const INVALID_CASSETTE: &str = "harness-error-invalid-cassette";
+/// Fluent message ID for an unsupported format with version arguments.
 const UNSUPPORTED_CASSETTE_FORMAT_VERSION: &str =
     "harness-error-unsupported-cassette-format-version";
+/// Fluent message ID for an upstream failure with a `source` argument.
 const UPSTREAM_REQUEST_FAILED: &str = "harness-error-upstream-request-failed";
+/// Fluent message ID for an unavailable mode with a `mode` argument.
 const MODE_NOT_YET_IMPLEMENTED: &str = "harness-error-mode-not-yet-implemented";
+/// Fluent message ID for an I/O failure with a `source` argument.
 const IO: &str = "harness-error-io";
 
 /// Embedded Fluent resources owned by the harness library.
@@ -99,6 +107,10 @@ pub fn localize_harness_error(loader: &FluentLanguageLoader, error: &HarnessErro
     }
 }
 
+/// Maps an error to its Fluent message ID and named template arguments.
+///
+/// For example, `InvalidConfig` supplies `INVALID_CONFIG` and a `message`
+/// argument, while `RequestMismatch` supplies its interaction and diff details.
 fn harness_error_message(error: &HarnessError) -> (&'static str, HashMap<&'static str, String>) {
     match error {
         HarnessError::InvalidConfig { message } => (

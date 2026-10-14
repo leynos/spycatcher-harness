@@ -22,7 +22,9 @@ use crate::{HarnessError, HarnessResult};
 /// Runtime handle for a bound harness HTTP server.
 #[derive(Debug)]
 pub(crate) struct ServerHandle {
+    /// Sender used to request graceful shutdown of the serving task.
     shutdown: Option<oneshot::Sender<()>>,
+    /// Task that serves requests and reports listener or serving failures.
     task: JoinHandle<HarnessResult<()>>,
 }
 
@@ -85,6 +87,14 @@ pub(crate) async fn start_replay_server(
     start_server_with_router(cfg, router).await
 }
 
+/// Binds the configured address and starts serving the supplied router.
+/// For example, the returned `SocketAddr` identifies the bound listener endpoint;
+/// retain the `ServerHandle` and call `shutdown().await` to stop serving it. The
+/// spawned task owns the listener; the handle controls shutdown and task completion.
+///
+/// # Errors
+///
+/// Returns a harness error if binding or local-address lookup fails.
 async fn start_server_with_router(
     cfg: &HarnessConfig,
     router: Router,
@@ -93,6 +103,12 @@ async fn start_server_with_router(
     Ok((bound_addr, start_server(listener, router)))
 }
 
+/// Binds the configured socket address and returns the listener's local address.
+/// For example, configuring port `0` returns the port assigned by the operating system.
+///
+/// # Errors
+///
+/// Returns a harness error if binding or local-address lookup fails.
 async fn bind_listener(cfg: &HarnessConfig) -> HarnessResult<(TcpListener, SocketAddr)> {
     let listener = TcpListener::bind(cfg.listen.as_socket_addr())
         .await
@@ -101,6 +117,8 @@ async fn bind_listener(cfg: &HarnessConfig) -> HarnessResult<(TcpListener, Socke
     Ok((listener, bound_addr))
 }
 
+/// Starts serving a router on an already-bound listener.
+/// For example, retain the returned `ServerHandle` and call `shutdown().await` when finished.
 fn start_server(listener: TcpListener, router: Router) -> ServerHandle {
     let (shutdown_tx, shutdown_rx) = oneshot::channel::<()>();
     let task = spawn_server_task(listener, router, shutdown_rx);
@@ -111,6 +129,8 @@ fn start_server(listener: TcpListener, router: Router) -> ServerHandle {
     }
 }
 
+/// Spawns the serving task with a graceful-shutdown receiver.
+/// For example, dropping its sender closes the receiver and lets serving finish.
 fn spawn_server_task(
     listener: TcpListener,
     router: Router,

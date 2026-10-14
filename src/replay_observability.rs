@@ -75,6 +75,11 @@ pub(crate) fn record_replay_commit_failure(labels: &ReplayMetricLabels) {
     );
 }
 
+/// Emits a counter with the optional mismatch reason label.
+///
+/// For example, `increment_replay_counter(name, labels, "mismatch", Some("body"))`
+/// increments the counter with a `reason="body"` label; passing `None` omits the
+/// reason label while preserving the protocol, route and outcome labels.
 fn increment_replay_counter(
     metric_name: &'static str,
     labels: &ReplayMetricLabels,
@@ -137,6 +142,11 @@ pub(crate) fn record_stream_delivery(
     .record(bounded_event_count(event_count));
 }
 
+/// Caps event counts at the histogram's supported `u32` range.
+///
+/// For example, `bounded_event_count(42)` returns `42`. On 32- and 64-bit targets,
+/// `bounded_event_count(usize::MAX)` returns `u32::MAX`: an exactly representable
+/// maximum is retained, and a larger count is capped.
 fn bounded_event_count(event_count: usize) -> u32 {
     u32::try_from(event_count).unwrap_or(u32::MAX)
 }

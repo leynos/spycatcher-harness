@@ -15,6 +15,8 @@ use serde_json::Value;
 use crate::HarnessResult;
 use crate::config::RedactionConfig;
 
+/// Connection-specific headers excluded from forwarding and cassette capture.
+/// Headers additionally named by `Connection` are excluded dynamically.
 const HOP_BY_HOP_HEADERS: &[&str] = &[
     "connection",
     "keep-alive",
@@ -26,7 +28,11 @@ const HOP_BY_HOP_HEADERS: &[&str] = &[
     "upgrade",
 ];
 
+/// Request headers omitted in addition to connection-specific exclusions.
+/// These exclusions apply to both recorded strings and raw forwarding bytes.
 const REQUEST_ONLY_EXCLUDED_HEADERS: &[&str] = &["host", "content-length", "accept-encoding"];
+/// Captured response headers omitted from persistence and downstream proxying.
+/// The captured content length is excluded in addition to hop-by-hop headers.
 const RESPONSE_ONLY_EXCLUDED_HEADERS: &[&str] = &["content-length"];
 
 /// Captured inbound request data independent of the HTTP framework.
@@ -139,14 +145,23 @@ pub(crate) fn selected_response_proxy_headers(headers: &HeaderMap) -> Vec<(Strin
     selected_header_bytes(headers, RESPONSE_ONLY_EXCLUDED_HEADERS)
 }
 
+/// Selects permitted headers while preserving each value's original bytes.
+/// For example, with `X-Trace: abc` and `Host: example.test`, excluding `host`
+/// returns a vector containing only `("x-trace".to_owned(), b"abc".to_vec())`.
 fn selected_header_bytes(headers: &HeaderMap, excluded: &[&str]) -> Vec<(String, Vec<u8>)> {
     select_headers_unified(headers, excluded, |value| value.as_bytes().to_vec())
 }
 
+/// Selects permitted headers and converts their values to persistable strings.
+/// For example, `X-Trace: abc` becomes `("x-trace".to_owned(), "abc".to_owned())`;
+/// `Host` is omitted when `host` is passed in the exclusion list.
 fn selected_headers(headers: &HeaderMap, excluded: &[&str]) -> Vec<(String, String)> {
     select_headers_unified(headers, excluded, header_value_string)
 }
 
+/// Filters shared header exclusions before applying the caller's value mapping.
+/// For example, mapping value lengths with `|value| value.as_bytes().len()` on
+/// `X-Trace: abc` yields a vector entry `("x-trace".to_owned(), 3)` unless excluded.
 fn select_headers_unified<V>(
     headers: &HeaderMap,
     excluded: &[&str],
@@ -160,6 +175,9 @@ fn select_headers_unified<V>(
         .collect()
 }
 
+/// Retains textual header values or percent-encodes bytes rejected as text.
+/// For example, a value containing `abc` returns `"abc"`; a raw `0xff` byte
+/// returns `"%FF"`, preserving an opaque value without lossy replacement.
 fn header_value_string(value: &axum::http::HeaderValue) -> String {
     value.to_str().map_or_else(
         |_| percent_encode(value.as_bytes(), NON_ALPHANUMERIC).to_string(),
@@ -167,6 +185,9 @@ fn header_value_string(value: &axum::http::HeaderValue) -> String {
     )
 }
 
+/// Collects normalized header names from all comma-separated `Connection` values.
+/// For example, `Connection: X-Trace, keep-alive,,` produces the set containing
+/// `"x-trace"` and `"keep-alive"`, omitting the empty token.
 fn parse_connection_tokens(headers: &HeaderMap) -> HashSet<String> {
     headers
         .get_all(axum::http::header::CONNECTION)
@@ -177,6 +198,9 @@ fn parse_connection_tokens(headers: &HeaderMap) -> HashSet<String> {
         .collect()
 }
 
+/// Combines dynamic connection tokens, hop-by-hop names and caller exclusions.
+/// For example, `Connection: X-Secret` with an extra `"X-Local"` exclusion adds
+/// `"x-secret"` and `"x-local"` to the standard hop-by-hop exclusion set.
 fn build_disallowed_set(headers: &HeaderMap, excluded: &[&str]) -> HashSet<String> {
     let mut set = parse_connection_tokens(headers);
     for name in HOP_BY_HOP_HEADERS.iter().chain(excluded.iter()) {
@@ -185,6 +209,9 @@ fn build_disallowed_set(headers: &HeaderMap, excluded: &[&str]) -> HashSet<Strin
     set
 }
 
+/// Trims ASCII whitespace and lowercases ASCII bytes in a connection token.
+/// For example, `lowercase_trimmed_ascii_token(b" \tX-Trace\r ")` returns
+/// `"x-trace"`; all-whitespace input returns an empty string.
 fn lowercase_trimmed_ascii_token(token: &[u8]) -> String {
     let start = token
         .iter()
@@ -216,6 +243,10 @@ pub(crate) fn redact_headers(
         .collect()
 }
 
+/// Keeps a header only when no configured drop name matches it case-insensitively.
+/// For example, when `drop_headers` contains only `"Authorization"`,
+/// `should_persist_header("authorization", redaction)` returns `false`, while
+/// `should_persist_header("x-trace", redaction)` returns `true`.
 fn should_persist_header(name: &str, redaction: &RedactionConfig) -> bool {
     !redaction
         .drop_headers

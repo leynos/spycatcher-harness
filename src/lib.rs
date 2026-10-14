@@ -56,6 +56,7 @@ pub struct RunningHarness {
     pub addr: SocketAddr,
     /// The path to the cassette file in use.
     pub cassette_path: Utf8PathBuf,
+    /// Server task retained for graceful shutdown when a server was started.
     runtime: Option<ServerHandle>,
 }
 

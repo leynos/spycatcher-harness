@@ -13,7 +13,9 @@ use crate::cassette::StreamEvent;
 /// Incremental parser for UTF-8 Server-Sent Events streams.
 #[derive(Debug, Default)]
 pub(crate) struct SseParser {
+    /// Incomplete bytes retained across upstream chunks.
     buffer: Vec<u8>,
+    /// Data fields awaiting a blank-line event dispatch.
     data_lines: Vec<String>,
 }
 
@@ -65,6 +67,9 @@ impl SseParser {
         }
     }
 
+    /// Removes one complete UTF-8 line while retaining an incomplete suffix.
+    /// For example, buffering `b"data:x\nnext"` returns `Ok(Some("data:x".to_owned()))`
+    /// and retains `b"next"` for a later chunk.
     fn pop_line(&mut self) -> Result<Option<String>, SseParseError> {
         let Some((line_end, drain_to)) = line_bounds(&self.buffer) else {
             return Ok(None);
@@ -75,6 +80,9 @@ impl SseParser {
         Ok(Some(line))
     }
 
+    /// Interprets a completed SSE line and appends any emitted event.
+    /// For example, consuming `"data: hello"` queues `"hello"`; a subsequent empty
+    /// line dispatches an event containing those data bytes.
     fn consume_line(&mut self, line: &str, events: &mut Vec<StreamEvent>) {
         if line.is_empty() {
             self.dispatch_event(events);
@@ -87,6 +95,9 @@ impl SseParser {
         }
     }
 
+    /// Emits pending data fields as one event after a blank line.
+    /// For example, pending `"hello"` and `"world"` fields emit one event with bytes
+    /// `b"hello\nworld"`, then clear the pending fields.
     fn dispatch_event(&mut self, events: &mut Vec<StreamEvent>) {
         if self.data_lines.is_empty() {
             return;
@@ -98,6 +109,11 @@ impl SseParser {
     }
 }
 
+/// Returns a named SSE field's value after its optional leading space.
+///
+/// For example, `field_value("data: hello", "data")` returns `Some("hello")`,
+/// whereas `field_value("event: update", "data")` returns `None` because the
+/// requested field is absent.
 fn field_value<'a>(line: &'a str, expected_field: &str) -> Option<&'a str> {
     let (field, value) = line.split_once(':').map_or((line, ""), |(field, value)| {
         (field, strip_optional_space(value))
@@ -105,10 +121,20 @@ fn field_value<'a>(line: &'a str, expected_field: &str) -> Option<&'a str> {
     (field == expected_field).then_some(value)
 }
 
+/// Removes only the single optional space allowed after an SSE colon.
+///
+/// For example, `strip_optional_space(" value")` returns `"value"`, while
+/// `strip_optional_space("  value")` returns `" value"`, retaining the second space.
 fn strip_optional_space(value: &str) -> &str {
     value.strip_prefix(' ').unwrap_or(value)
 }
 
+/// Locates a complete line and its terminator, deferring a trailing CR.
+///
+/// The first offset excludes the terminator; the second is the number of bytes
+/// consumed including it. For example, `line_bounds(b"data:x\r\n")` returns
+/// `Some((6, 8))`, while `line_bounds(b"data:x\r")` returns `None` until the next
+/// chunk establishes whether the trailing CR starts a CRLF terminator.
 fn line_bounds(buffer: &[u8]) -> Option<(usize, usize)> {
     let mut index = 0;
     while let Some(byte) = buffer.get(index) {

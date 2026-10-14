@@ -27,6 +27,7 @@ use crate::upstream::{
 };
 use crate::{HarnessError, HarnessResult};
 
+/// Shared, lock-protected cassette store used by cloned record services.
 type SharedCassetteStore = Arc<Mutex<FilesystemCassetteStore>>;
 
 #[path = "record_stream/mod.rs"]
@@ -35,6 +36,7 @@ mod record_stream;
 /// Shared record-mode application state for the inbound server.
 #[derive(Debug, Clone)]
 pub(crate) struct RecordAppState {
+    /// Service that forwards requests and persists completed interactions.
     pub(crate) service: RecordService<ReqwestUpstreamClient, ProcessEnvProvider, SessionMetadata>,
 }
 
@@ -75,27 +77,41 @@ impl RecordAppState {
 /// Small orchestration boundary for one record-mode exchange.
 #[derive(Debug, Clone)]
 pub(crate) struct RecordService<U, E, M> {
+    /// Shared store used to append interactions from concurrent requests.
     cassette_store: SharedCassetteStore,
+    /// Upstream client used to forward chat-completions requests.
     upstream_client: U,
+    /// Injectable source for the upstream API key.
     env_provider: E,
+    /// Factory for timestamps and session-relative offsets.
     metadata: M,
+    /// Upstream endpoint and credential-variable configuration.
     upstream: UpstreamConfig,
+    /// Header redaction policy applied before cassette persistence.
     redaction: RedactionConfig,
+    /// Number of interactions successfully persisted in this session.
     recorded_count: Arc<AtomicU64>,
+    /// Number of upstream, build, or persistence failures observed.
     failure_count: Arc<AtomicU64>,
+    /// Next sequence number used to correlate request diagnostics.
     interaction_seq: Arc<AtomicU64>,
 }
 
 /// Request-level record-mode failures reported to the HTTP adapter.
 #[derive(Debug, PartialEq)]
 pub(crate) enum RecordError {
+    /// The configured credential variable was absent from the environment provider.
     MissingApiKeyNotConfigured,
+    /// An upstream, metadata, or cassette operation failed.
     Internal,
 }
 
+/// Timing context retained between an upstream response and cassette persistence.
 #[derive(Debug, Clone, Copy)]
 struct RecordTiming {
+    /// Milliseconds spent waiting for the upstream non-stream response.
     upstream_latency_ms: u128,
+    /// Instant used to derive the interaction's session-relative offset.
     interaction_start: Instant,
 }
 
@@ -105,6 +121,8 @@ where
     E: EnvProvider + Clone + Send + Sync + 'static,
     M: MetadataFactory,
 {
+    /// Reads the configured credential through the injected environment provider.
+    /// For example, a missing variable yields `MissingApiKeyNotConfigured`.
     fn resolve_api_key(&self) -> Result<String, RecordError> {
         self.env_provider
             .read(&self.upstream.api_key_env)
@@ -119,6 +137,8 @@ where
             })
     }
 
+    /// Returns persisted-interaction and failure counts in that order.
+    /// For example, one successful append and no failures yields `(1, 0)`.
     pub(crate) fn counters(&self) -> (u64, u64) {
         (
             self.recorded_count.load(Ordering::Relaxed),
@@ -202,6 +222,8 @@ where
         })
     }
 
+    /// Builds and persists a non-stream response, logging the outcome.
+    /// For example, a successful append increments the recorded count once.
     async fn record_response(
         &self,
         (request, upstream_response): (ObservedRequest, &crate::http_exchange::ObservedResponse),
@@ -251,6 +273,8 @@ where
         }
     }
 
+    /// Builds one cassette interaction with redacted headers and canonical fields.
+    /// For example, response bytes are retained while configured headers are redacted.
     fn build_interaction(
         &self,
         request: ObservedRequest,
@@ -297,6 +321,8 @@ where
         })
     }
 
+    /// Appends through the shared store on a blocking task so async workers can proceed.
+    /// For example, a poisoned store lock yields `RecordError::Internal`.
     async fn append_interaction(&self, interaction: Interaction) -> Result<(), RecordError> {
         let store = Arc::clone(&self.cassette_store);
         spawn_blocking(move || {

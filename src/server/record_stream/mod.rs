@@ -97,6 +97,8 @@ where
         })
     }
 
+    /// Wraps upstream chunks so each forwarded chunk is also observed for recording.
+    /// For example, a completed valid SSE stream is recorded after forwarding.
     fn recording_stream(
         &self,
         start: StreamingRecordStart,
@@ -121,6 +123,8 @@ where
         stream::try_unfold(state, process_stream_chunk).boxed()
     }
 
+    /// Combines the original request, captured stream, and metadata into one interaction.
+    /// For example, the captured event offsets become `StreamTiming` in the response.
     fn build_stream_interaction(
         &self,
         request: ObservedRequest,
@@ -174,14 +178,22 @@ where
     }
 }
 
+/// Values handed from the upstream response to the streaming recorder.
 struct StreamingRecordStart {
+    /// Original request to persist once streaming completes.
     request: ObservedRequest,
+    /// Upstream status, headers, and body stream to forward and capture.
     upstream_response: StreamingObservedResponse,
+    /// Identifier used to correlate stream diagnostics across the recording path.
     interaction_id: String,
+    /// Start time used when creating interaction metadata.
     interaction_start: Instant,
+    /// Start time used to measure stream event offsets.
     upstream_start: Instant,
 }
 
+/// Appends a completed stream interaction and updates success or failure counters.
+/// For example, a successful append increments `recorded_count` once.
 async fn persist_interaction<U, E, M>(
     service: &RecordService<U, E, M>,
     interaction_id: &str,
@@ -206,6 +218,8 @@ async fn persist_interaction<U, E, M>(
     }
 }
 
+/// Records an append failure with its interaction context.
+/// For example, a failed cassette write increments `failure_count` once.
 fn log_stream_write_failure<U, E, M>(
     service: &RecordService<U, E, M>,
     interaction_id: &str,
@@ -221,6 +235,8 @@ fn log_stream_write_failure<U, E, M>(
     );
 }
 
+/// Records a failed interaction build before any cassette append is attempted.
+/// For example, invalid canonical fields increment `failure_count` once.
 fn log_stream_build_failure<U, E, M>(
     service: &RecordService<U, E, M>,
     interaction_id: &str,
@@ -236,12 +252,16 @@ fn log_stream_build_failure<U, E, M>(
     );
 }
 
+/// Preserves an SSE parser error as the source of an upstream request failure.
+/// For example, malformed event bytes remain available through the boxed source.
 fn stream_parse_failure(error: SseParseError) -> HarnessError {
     HarnessError::UpstreamRequestFailed {
         source: Box::new(error),
     }
 }
 
+/// Converts elapsed milliseconds to `u64`, saturating if the duration is too large.
+/// For example, `u128::MAX` becomes `u64::MAX`.
 fn millis_u64(value: u128) -> u64 {
     u64::try_from(value).unwrap_or(u64::MAX)
 }

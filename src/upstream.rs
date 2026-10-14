@@ -28,6 +28,7 @@ pub(crate) const UPSTREAM_TIMEOUT: Duration = Duration::from_secs(30);
 /// preventing indefinite hangs on connection establishment.
 pub(crate) const UPSTREAM_CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 
+/// Extra-header names that could alter routing, framing, or preserved bytes.
 const FORBIDDEN_EXTRA_HEADERS: &[&str] = &[
     "host",
     "connection",
@@ -104,7 +105,9 @@ pub(crate) struct StreamingObservedResponse {
 /// Reqwest-backed upstream adapter for record mode.
 #[derive(Debug, Clone)]
 pub(crate) struct ReqwestUpstreamClient {
+    /// Client with a total timeout for buffered responses.
     client: Client,
+    /// Client with connection and read timeouts for streamed responses.
     stream_client: Client,
 }
 
@@ -153,6 +156,12 @@ impl ReqwestUpstreamClient {
             .await
     }
 
+    /// Sends a request with the selected client and retains response metadata.
+    /// For example, stream calls use `stream_client` while buffered calls use `client`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error for an invalid URL or header, or a failed upstream send.
     async fn execute_upstream_request_with_client(
         &self,
         client: &Client,
@@ -182,6 +191,8 @@ impl ReqwestUpstreamClient {
     }
 }
 
+/// Disables automatic decompression so response bytes remain unchanged.
+/// For example, a compressed response retains its original encoded body.
 fn base_client_builder() -> reqwest::ClientBuilder {
     Client::builder()
         .no_gzip()
@@ -190,6 +201,12 @@ fn base_client_builder() -> reqwest::ClientBuilder {
         .no_zstd()
 }
 
+/// Builds a client from the configured builder.
+/// For example, an invalid builder configuration becomes `InvalidConfig`.
+///
+/// # Errors
+///
+/// Returns `InvalidConfig` if Reqwest cannot construct the client.
 fn build_reqwest_client(builder: reqwest::ClientBuilder) -> HarnessResult<Client> {
     builder
         .build()
@@ -198,6 +215,12 @@ fn build_reqwest_client(builder: reqwest::ClientBuilder) -> HarnessResult<Client
         })
 }
 
+/// Validates a header name and its exact outbound value bytes.
+/// For example, an invalid header name yields `InvalidConfig`.
+///
+/// # Errors
+///
+/// Returns `InvalidConfig` for an invalid name or value.
 fn to_outbound_header(name: &str, value: &[u8]) -> HarnessResult<(HeaderName, HeaderValue)> {
     let header_name = HeaderName::try_from(name).map_err(|error| HarnessError::InvalidConfig {
         message: format!("invalid outbound header name {name:?}: {error}"),
@@ -209,17 +232,27 @@ fn to_outbound_header(name: &str, value: &[u8]) -> HarnessResult<(HeaderName, He
     Ok((header_name, header_value))
 }
 
+/// Rejects forwarding an inbound authorisation header, ignoring case.
+/// For example, `Authorization` is filtered before the configured bearer token is added.
 #[inline]
 fn should_forward_header(name: &str) -> bool {
     !name.eq_ignore_ascii_case("authorization")
 }
 
+/// Checks the configured-header denylist without regard to case.
+/// For example, `Content-Length` cannot override Reqwest's framing.
 fn is_forbidden_extra_header(name: &str) -> bool {
     FORBIDDEN_EXTRA_HEADERS
         .iter()
         .any(|forbidden| forbidden.eq_ignore_ascii_case(name))
 }
 
+/// Adds selected inbound headers while omitting the inbound authorisation.
+/// For example, a valid custom header is forwarded with its original value bytes.
+///
+/// # Errors
+///
+/// Returns `InvalidConfig` if a forwarded header has an invalid name or value.
 fn apply_forwarded_headers(
     mut builder: reqwest::RequestBuilder,
     headers: &[(String, Vec<u8>)],
@@ -234,6 +267,12 @@ fn apply_forwarded_headers(
     Ok(builder)
 }
 
+/// Adds configured extra headers after filtering authorisation and unsafe overrides.
+/// For example, `Content-Length` is rejected rather than replacing Reqwest's value.
+///
+/// # Errors
+///
+/// Returns `InvalidConfig` for a forbidden or malformed extra header.
 fn apply_extra_headers(
     mut builder: reqwest::RequestBuilder,
     extra_headers: &std::collections::BTreeMap<String, String>,
