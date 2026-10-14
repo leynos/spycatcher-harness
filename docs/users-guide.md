@@ -368,10 +368,13 @@ Each subcommand loads configuration using layered precedence:
 
 `CLI > env > config files > defaults`
 
-Configuration discovery distinguishes an absent optional file from a file that
-exists but cannot be read or parsed. If no candidate exists, defaults remain
-available; if all discovered candidates fail, the CLI reports the configuration
-error before starting the harness.
+The CLI loads configuration candidates in order through
+`load_and_merge_subcommand` and stops at the first loading error. A malformed
+or unreadable candidate therefore aborts configuration loading even when a
+later candidate is valid. If no candidate exists, defaults remain available.
+
+This differs from `ConfigDiscovery::load_first`, which tries later candidates
+after a failure and returns accumulated errors only when no candidate loads.
 
 Per-subcommand defaults are loaded from the `cmds` namespace in config files:
 
