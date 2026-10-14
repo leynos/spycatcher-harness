@@ -284,50 +284,19 @@ fn a_parse_failure_names_the_route_that_produced_it(#[case] text: &str) {
     );
 }
 
-/// Writes an executable script into a scratch directory and returns its path.
 #[cfg(unix)]
-fn fake_program(scratch: &str, script: &str) -> std::io::Result<std::path::PathBuf> {
-    use cap_std::{
-        ambient_authority,
-        fs::{Dir, OpenOptions, OpenOptionsExt},
-    };
-    let context = |operation: &str, error: std::io::Error| {
-        std::io::Error::new(error.kind(), format!("{operation} for {scratch}: {error}"))
-    };
-    let tmp = Dir::open_ambient_dir(env!("CARGO_TARGET_TMPDIR"), ambient_authority())
-        .map_err(|error| context("open the scratch root", error))?;
-    match tmp.remove_dir_all(scratch) {
-        Err(error) if error.kind() != std::io::ErrorKind::NotFound => {
-            return Err(context("clear the scratch", error));
-        }
-        _ => {}
-    }
-    tmp.create_dir(scratch)
-        .map_err(|error| context("create the scratch directory", error))?;
-    let dir = tmp
-        .open_dir(scratch)
-        .map_err(|error| context("open the scratch directory", error))?;
-    let mut options = OpenOptions::new();
-    options.write(true).create_new(true).mode(0o755);
-    let mut file = dir
-        .open_with("make", &options)
-        .map_err(|error| context("create the script", error))?;
-    std::io::Write::write_all(&mut file, script.as_bytes())
-        .map_err(|error| context("write the script", error))?;
-    Ok(std::path::Path::new(env!("CARGO_TARGET_TMPDIR"))
-        .join(scratch)
-        .join("make"))
-}
+#[path = "fake_program.rs"]
+mod fake_program;
 
 /// A failing program's context, actual status and both streams survive.
 #[cfg(unix)]
 #[test]
 fn a_failed_run_keeps_its_context_status_and_distinct_streams() -> std::io::Result<()> {
-    let fake = fake_program(
+    let fake = fake_program::create_fake_program(
         "failing-make",
         "#!/bin/sh\necho OUT-PAYLOAD\necho ERR-PAYLOAD >&2\nexit 4\n",
     )?;
-    let message = dry_run_with(&fake.display().to_string(), "lint", Host::Linux, None)
+    let message = dry_run_with(fake.path().as_str(), "lint", Host::Linux, None)
         .expect_err("the stand-in fails")
         .to_string();
     assert_failed_program_context(&message);
