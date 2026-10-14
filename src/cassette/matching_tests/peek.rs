@@ -42,24 +42,55 @@ fn sequential_peek_match_does_not_advance_cursor(sample_cassette: Cassette) {
     );
 }
 
+/// Matching policy, request, and expected diagnostic for a non-consuming peek.
+struct PeekMismatchCase {
+    /// Matching policy whose consumption state must remain unchanged.
+    mode: MatchMode,
+    /// Canonical request that must produce a mismatch.
+    wrong_canonical: serde_json::Value,
+    /// Hash of the mismatching request.
+    observed_hash: &'static str,
+    /// Cassette position reported by this matching policy.
+    expected_position: InteractionPosition,
+    /// Recorded hash reported by the mismatch diagnostic.
+    expected_hash: &'static str,
+}
+
+/// Repeated mismatching peeks leave the first response available for consumption.
 #[rstest]
-fn sequential_peek_mismatch_does_not_advance_cursor(sample_cassette: Cassette) {
+#[case::sequential(&PeekMismatchCase {
+    mode: MatchMode::SequentialStrict,
+    wrong_canonical: json!({"method": "GET", "path": "/wrong"}),
+    observed_hash: "wrong_hash",
+    expected_position: InteractionPosition::Expected(0),
+    expected_hash: "hash_a",
+})]
+#[case::keyed(&PeekMismatchCase {
+    mode: MatchMode::Keyed,
+    wrong_canonical: json!({"method": "DELETE", "path": "/unknown"}),
+    observed_hash: "unknown_hash",
+    expected_position: InteractionPosition::KeyedMiss(3),
+    expected_hash: "",
+})]
+fn peek_mismatch_does_not_consume_the_first_response(
+    sample_cassette: Cassette,
+    #[case] case: &PeekMismatchCase,
+) {
     let expected_response_0 = nth_response(&sample_cassette, 0).expect("first interaction exists");
-    let mut engine = ReplayMatchEngine::new(sample_cassette, MatchMode::SequentialStrict)
+    let mut engine = ReplayMatchEngine::new(sample_cassette, case.mode)
         .expect("fixture cassette should have valid stable hashes");
-    let wrong_canonical = json!({"method": "GET", "path": "/wrong"});
 
     assert_mismatch_diagnostic(
-        engine.peek_match("wrong_hash", &wrong_canonical),
-        InteractionPosition::Expected(0),
-        "hash_a",
-        "wrong_hash",
+        engine.peek_match(case.observed_hash, &case.wrong_canonical),
+        case.expected_position,
+        case.expected_hash,
+        case.observed_hash,
     );
     assert_mismatch_diagnostic(
-        engine.peek_match("wrong_hash", &wrong_canonical),
-        InteractionPosition::Expected(0),
-        "hash_a",
-        "wrong_hash",
+        engine.peek_match(case.observed_hash, &case.wrong_canonical),
+        case.expected_position,
+        case.expected_hash,
+        case.observed_hash,
     );
     assert_matched_response_eq(
         engine.next_match("hash_a", &canonical_a()),
@@ -84,31 +115,6 @@ fn keyed_peek_match_does_not_mark_interaction_consumed(duplicate_hash_cassette: 
     assert_eq!(
         extract_response_id(&consumed_second),
         Some("second_response")
-    );
-}
-
-#[rstest]
-fn keyed_peek_mismatch_does_not_consume_later_match(sample_cassette: Cassette) {
-    let expected_response_0 = nth_response(&sample_cassette, 0).expect("first interaction exists");
-    let mut engine = ReplayMatchEngine::new(sample_cassette, MatchMode::Keyed)
-        .expect("fixture cassette should have valid stable hashes");
-    let unknown_canonical = json!({"method": "DELETE", "path": "/unknown"});
-
-    assert_mismatch_diagnostic(
-        engine.peek_match("unknown_hash", &unknown_canonical),
-        InteractionPosition::KeyedMiss(3),
-        "",
-        "unknown_hash",
-    );
-    assert_mismatch_diagnostic(
-        engine.peek_match("unknown_hash", &unknown_canonical),
-        InteractionPosition::KeyedMiss(3),
-        "",
-        "unknown_hash",
-    );
-    assert_matched_response_eq(
-        engine.next_match("hash_a", &canonical_a()),
-        &expected_response_0,
     );
 }
 
