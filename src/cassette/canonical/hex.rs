@@ -42,7 +42,7 @@ pub(super) const fn decode_hex_digit(byte: u8) -> Option<u8> {
 pub(super) enum HexCase {
     /// Lowercase letters for stable hash output.
     Lower,
-    /// Uppercase letters for percent escapes and JSON escapes.
+    /// Uppercase letters for percent escapes.
     Upper,
 }
 

@@ -253,7 +253,7 @@ fn log_stream_build_failure<U, E, M>(
 }
 
 /// Preserves an SSE parser error as the source of an upstream request failure.
-/// For example, malformed event bytes remain available through the boxed source.
+/// For example, `IncompleteEvent` becomes `UpstreamRequestFailed` with that parser error as its source.
 fn stream_parse_failure(error: SseParseError) -> HarnessError {
     HarnessError::UpstreamRequestFailed {
         source: Box::new(error),
