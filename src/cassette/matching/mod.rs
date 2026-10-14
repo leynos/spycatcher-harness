@@ -76,18 +76,28 @@ pub enum MatchOutcome<'a> {
 /// Replay matching engine that consumes cassette interactions by match mode.
 #[derive(Debug)]
 pub struct ReplayMatchEngine {
+    /// Source cassette retaining the interactions returned by matches.
     cassette: Cassette,
+    /// Precomputed request data parallel to the cassette interactions.
     interactions: Vec<InteractionData>,
+    /// Determines whether matching advances in order or by request hash.
     mode: MatchMode,
+    /// Index of the next interaction in sequential mode.
     sequential_cursor: usize,
+    /// Recorded positions for each request hash in keyed mode.
     hash_to_indices: HashMap<String, Vec<usize>>,
+    /// Tracks which keyed interactions have already been replayed.
     consumed: Vec<bool>,
+    /// Policy used to canonicalize stream content during replay.
     stream_policy: StreamCanonicalPolicy,
 }
 
+/// Request data cached for one recorded interaction.
 #[derive(Debug, Clone)]
 struct InteractionData {
+    /// Stable hash used to select and diagnose the interaction.
     stable_hash: String,
+    /// Canonical request retained for mismatch diagnostics when available.
     canonical_request: Option<Value>,
 }
 impl ReplayMatchEngine {
@@ -253,6 +263,13 @@ impl ReplayMatchEngine {
         }
     }
 
+    /// Commits a previewed match when its interaction is still available.
+    ///
+    /// For example, a sequential engine with two interactions and cursor zero
+    /// returns `true` from `engine.commit_match(0)` and advances its cursor to
+    /// one. Repeating that call returns `false` and leaves the cursor at one.
+    /// In keyed mode, committing an unused interaction also returns `true`;
+    /// committing the same interaction again returns `false`.
     pub(crate) fn commit_match(&mut self, interaction_id: usize) -> bool {
         match self.mode {
             MatchMode::SequentialStrict

@@ -38,6 +38,8 @@ pub(crate) fn canonical_diff_summary(expected: &Value, observed: &Value) -> Stri
     changes.join("\n")
 }
 
+/// Walks corresponding JSON values and delegates by container shape.
+/// For example, two objects are compared by key before their values are visited.
 fn diff_recursive(expected: &Value, observed: &Value, path: &str, changes: &mut Vec<String>) {
     match (expected, observed) {
         (Value::Object(exp_map), Value::Object(obs_map)) => {
@@ -52,6 +54,8 @@ fn diff_recursive(expected: &Value, observed: &Value, path: &str, changes: &mut 
     }
 }
 
+/// Reports missing and added keys before recursively comparing shared keys.
+/// For example, an observed-only `id` key produces an `added: id` entry.
 fn diff_objects(
     exp_map: &serde_json::Map<String, Value>,
     obs_map: &serde_json::Map<String, Value>,
@@ -94,6 +98,8 @@ fn diff_objects(
     }
 }
 
+/// Compares array positions through the longer input, including missing elements.
+/// For example, an extra observed element at index 1 is reported as added.
 fn diff_arrays(exp_arr: &[Value], obs_arr: &[Value], path: &str, changes: &mut Vec<String>) {
     let max_len = exp_arr.len().max(obs_arr.len());
     for i in 0..max_len {
@@ -102,6 +108,8 @@ fn diff_arrays(exp_arr: &[Value], obs_arr: &[Value], path: &str, changes: &mut V
     }
 }
 
+/// Reports a changed, removed, or added element at its indexed path.
+/// For example, a missing observed element at `items[0]` is reported as removed.
 fn diff_array_element(
     exp_elem: Option<&Value>,
     obs_elem: Option<&Value>,
@@ -125,6 +133,8 @@ fn diff_array_element(
     }
 }
 
+/// Summarizes a leaf or container-type mismatch at the current path.
+/// For example, `true` versus `false` yields a `changed` entry.
 fn diff_scalar_or_type_mismatch(
     expected: &Value,
     observed: &Value,
@@ -141,6 +151,8 @@ fn diff_scalar_or_type_mismatch(
     changes.push(format!("changed: {display_path}: {exp_str} -> {obs_str}"));
 }
 
+/// Extends a diagnostic path with dot notation or an adjacent array index.
+/// For example, `items` plus `[0]` becomes `items[0]`.
 fn format_path(prefix: &str, segment: &str) -> String {
     if prefix.is_empty() {
         segment.to_owned()
@@ -153,6 +165,8 @@ fn format_path(prefix: &str, segment: &str) -> String {
     }
 }
 
+/// Bounds diagnostic detail for containers while preserving scalar values.
+/// For example, an array becomes `[...]` while a string retains JSON quoting.
 fn compact_value_string(value: &Value) -> String {
     match value {
         Value::String(s) => {

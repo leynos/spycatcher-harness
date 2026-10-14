@@ -4,6 +4,7 @@ use serde_json::{Number, Value};
 
 use super::super::hex::{HexCase, push_hex_u32};
 
+/// Appends compact JSON; serializing `null` adds the text `null` to the output.
 pub(super) fn write_json_canonical(output: &mut String, value: &Value) {
     match value {
         Value::Null => output.push_str("null"),
@@ -15,6 +16,7 @@ pub(super) fn write_json_canonical(output: &mut String, value: &Value) {
     }
 }
 
+/// Writes an array without spaces; `[1, 2]` becomes `[1,2]`.
 fn write_json_array(output: &mut String, items: &[Value]) {
     output.push('[');
     let mut iter = items.iter();
@@ -28,6 +30,7 @@ fn write_json_array(output: &mut String, items: &[Value]) {
     output.push(']');
 }
 
+/// Writes object keys and values without spaces; `{"a": 1}` becomes `{"a":1}`.
 fn write_json_object(output: &mut String, object: &serde_json::Map<String, Value>) {
     output.push('{');
     let mut iter = object.iter();
@@ -45,10 +48,12 @@ fn write_json_object(output: &mut String, object: &serde_json::Map<String, Value
     output.push('}');
 }
 
+/// Appends `serde_json`'s numeric representation; `1.25` remains `1.25`.
 fn write_json_number(output: &mut String, number: &Number) {
     output.push_str(&number.to_string());
 }
 
+/// Quotes and escapes a JSON string; a newline is written as `\n`.
 fn write_json_string(output: &mut String, text: &str) {
     output.push('"');
     for current_char in text.chars() {

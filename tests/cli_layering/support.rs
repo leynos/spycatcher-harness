@@ -43,7 +43,9 @@ pub(super) fn load_with_jail(
         .ok_or_else(|| eyre!("configuration load did not execute"))
 }
 
+/// Replay cassette-name file fixture for checking overrides of `from_file`.
 pub(super) const REPLAY_FILE_CONFIG: &str = "[cmds.replay]\ncassette_name = \"from_file\"\n";
+/// Replay locale file fixture with `en-GB` primary and `en-US` fallback values.
 pub(super) const REPLAY_LOCALIZATION_FILE_CONFIG: &str = concat!(
     "[cmds.replay.localization]\n",
     "locale = \"en-GB\"\n",
@@ -96,6 +98,9 @@ pub(super) fn valid_locale_text() -> impl Strategy<Value = String> {
         })
 }
 
+/// Builds a strategy for absent or valid locale text in layering scenarios.
+/// For example, `optional_locale_text()` can generate `None` or
+/// `Some("en-GB".to_owned())`; it returns a strategy, not a selected locale.
 pub(super) fn optional_locale_text() -> impl Strategy<Value = Option<String>> {
     proptest::option::of(valid_locale_text())
 }

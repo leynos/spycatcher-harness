@@ -53,22 +53,37 @@ impl Clock for SystemClock {
 /// Metadata factory backed by the current UTC clock and session start time.
 #[derive(Debug, Clone)]
 pub(crate) struct SessionMetadata {
+    /// Instant used as the origin for every interaction's relative offset.
     session_start: Instant,
+    /// Provider whose protocol-specific identifier is stored in each payload.
     upstream_kind: UpstreamKind,
+    /// Clock used to produce the wall-clock timestamp in each payload.
     clock: Arc<dyn Clock>,
 }
 
 impl SessionMetadata {
+    /// Creates metadata with system UTC time and the current offset origin.
+    /// For example, `SessionMetadata::new(UpstreamKind::OpenRouter)` starts measuring offsets
+    /// at construction.
     #[must_use]
     pub(crate) fn new(upstream_kind: UpstreamKind) -> Self {
         Self::with_clock(upstream_kind, Arc::new(SystemClock))
     }
 
+    /// Creates metadata with an injected clock and the current offset origin.
+    ///
+    /// For example, given a clock returning `Ok("2026-10-14T00:00:00Z".to_owned())`,
+    /// construct `factory = SessionMetadata::with_clock(upstream_kind, clock)`.
+    /// Then `factory.create()?.recorded_at` is `"2026-10-14T00:00:00Z"`.
+    /// The relative offset still measures elapsed monotonic time since construction;
+    /// the injected clock fixes the timestamp, not that offset.
     #[must_use]
     pub(crate) fn with_clock(upstream_kind: UpstreamKind, clock: Arc<dyn Clock>) -> Self {
         Self::with_clock_and_start(upstream_kind, clock, Instant::now())
     }
 
+    /// Creates metadata with an injected clock and explicit offset origin.
+    /// For example, a captured `Instant` keeps offsets anchored to the earlier session start.
     #[must_use]
     pub(crate) fn with_clock_and_start(
         upstream_kind: UpstreamKind,
@@ -97,6 +112,13 @@ impl MetadataFactory for SessionMetadata {
 }
 
 impl SessionMetadata {
+    /// Builds interaction metadata from a session-relative offset and current timestamp.
+    /// For example, `Duration::from_millis(250)` becomes a stored offset of `250`.
+    ///
+    /// # Errors
+    ///
+    /// Returns a harness error if the clock cannot format its timestamp or if the offset
+    /// exceeds the stored `u64` millisecond range.
     fn create_with_offset(&self, offset: Duration) -> HarnessResult<InteractionMetadata> {
         let recorded_at = self.clock.now_rfc3339()?;
         let elapsed = offset.as_millis();

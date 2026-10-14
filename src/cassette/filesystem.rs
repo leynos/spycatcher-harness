@@ -12,8 +12,11 @@ use crate::{HarnessError, HarnessResult};
 /// Filesystem-backed cassette store used by record and replay startup paths.
 #[derive(Debug)]
 pub(crate) struct FilesystemCassetteStore {
+    /// Directory capability used for all cassette and temporary-file operations.
     parent_dir: Dir,
+    /// File name relative to `parent_dir`.
     file_name: String,
+    /// In-memory state mirrored to disk after each append.
     cassette: Cassette,
 }
 
@@ -75,6 +78,8 @@ impl FilesystemCassetteStore {
         Ok(store)
     }
 
+    /// Loads an existing cassette and maps a missing path to a domain error.
+    /// For example, a missing file yields `CassetteNotFound` with its file name.
     fn open_existing(cassette_path: &Utf8Path) -> HarnessResult<Self> {
         let (parent_dir, file_name) = match open_rooted_parent(cassette_path, false) {
             Ok(result) => result,
@@ -117,6 +122,8 @@ impl FilesystemCassetteStore {
         }
         Ok(())
     }
+    /// Writes through a sibling temporary file and atomically replaces the cassette.
+    /// For example, appending one interaction persists the updated cassette.
     fn flush(&mut self) -> HarnessResult<()> {
         let temp_name = format!("{}.tmp", self.file_name);
         let permissions = self
@@ -185,6 +192,8 @@ fn is_trivial_parent(path: &Utf8Path) -> bool {
     path.as_str().is_empty() || path == Utf8Path::new(".")
 }
 
+/// Opens the cassette's parent through a directory capability, creating it for record mode.
+/// For example, `cassettes/demo.json` opens `cassettes` and returns `demo.json`.
 #[expect(
     clippy::collapsible_if,
     reason = "the nested structure keeps the trivial-parent rule explicit per review request"
@@ -214,6 +223,8 @@ fn open_rooted_parent(
     Ok((parent_dir, file_name))
 }
 
+/// Extracts a nonempty cassette file name for rooted access and diagnostics.
+/// For example, `cassettes/demo.json` yields `demo.json`.
 fn cassette_name(cassette_path: &Utf8Path) -> HarnessResult<String> {
     cassette_path
         .file_name()

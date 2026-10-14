@@ -177,6 +177,8 @@ pub fn canonicalize(
     })
 }
 
+/// Rejects configured paths before any request body is changed.
+/// For example, a path without the leading slash yields `InvalidPointerPath`.
 fn validate_ignore_paths(ignore_config: &IgnorePathConfig) -> Result<(), CanonicalError> {
     for path in &ignore_config.ignored_body_paths {
         if !is_valid_ignore_path(path) {
@@ -187,6 +189,8 @@ fn validate_ignore_paths(ignore_config: &IgnorePathConfig) -> Result<(), Canonic
     Ok(())
 }
 
+/// Accepts nonempty JSON Pointers to a child, excluding the root pointer.
+/// For example, `/metadata/id` is valid while an empty path is not.
 fn is_valid_ignore_path(path: &str) -> bool {
     !path.is_empty() && path.starts_with('/') && json::is_valid_json_pointer(path)
 }

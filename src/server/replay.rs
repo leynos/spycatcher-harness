@@ -14,6 +14,7 @@ use log::info;
 /// Shared replay-mode application state for the inbound server.
 #[derive(Debug, Clone)]
 pub(crate) struct ReplayAppState {
+    /// Service that matches inbound requests against recorded interactions.
     pub(crate) service: ReplayService,
 }
 
