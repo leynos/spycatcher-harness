@@ -1,5 +1,8 @@
 //! Stream-specific replay BDD step definitions.
 
+#[path = "stream_threshold_steps.rs"]
+mod threshold_steps;
+
 use std::error::Error;
 
 use camino::Utf8Path;

@@ -12,6 +12,9 @@ use rstest::rstest;
 use super::*;
 use crate::protocol::{CHAT_COMPLETIONS_PATH, CHAT_COMPLETIONS_PROTOCOL_ID};
 
+#[path = "replay_stream_properties.rs"]
+mod properties;
+
 #[rstest]
 #[tokio::test]
 async fn parsed_event_replay_emits_data_frames() {
@@ -116,6 +119,68 @@ async fn oversized_stream_body_records_streamed_delivery_metric() {
     );
 }
 
+/// Buffered events, the threshold-crossing event, and trailing events keep order.
+#[rstest]
+#[tokio::test]
+async fn threshold_crossing_preserves_buffered_and_remaining_events() {
+    let recorder = StreamMetricRecorder::default();
+    let _recorder_guard = metrics::set_default_local_recorder(&recorder);
+    let first = "a".repeat(32 * 1024);
+    let processing = "b".repeat(16 * 1024);
+    let crossing = "c".repeat(24 * 1024);
+    let prefix = format!("data: {first}\n\n: {processing}\n\n");
+    let through_crossing = format!("{prefix}data: {crossing}\n\n");
+    assert!(
+        prefix.len() < 64 * 1024,
+        "the first two events must fit inside the eager limit",
+    );
+    assert!(
+        through_crossing.len() > 64 * 1024,
+        "the third event must cross the eager limit",
+    );
+    let expected = format!("{through_crossing}data: [DONE]\n\n");
+    let body = build_stream_body(
+        vec![
+            data(&first),
+            comment(&processing),
+            data(&crossing),
+            data("[DONE]"),
+        ],
+        &labels(),
+    );
+
+    let bytes = to_bytes(body, 80 * 1024)
+        .await
+        .expect("body crossing the eager limit should remain readable");
+
+    assert_eq!(
+        bytes.as_ref(),
+        expected.as_bytes(),
+        "buffered, crossing and trailing events must retain their exact bytes",
+    );
+    assert!(
+        recorder.has_counter_with_label(
+            "spycatcher.replay.stream.delivery.total",
+            "delivery",
+            StreamDeliveryMode::Streamed.as_str(),
+        ),
+        "crossing the limit after buffered events should select streamed delivery",
+    );
+    for metric_name in [
+        "spycatcher.replay.stream.responses.total",
+        "spycatcher.replay.stream.delivery.total",
+    ] {
+        assert_eq!(
+            recorder.increment_summary(
+                metric_name,
+                &[("delivery", "streamed"), ("outcome", "replayed")],
+            ),
+            (1, 1),
+            "a crossing body must increment {metric_name} exactly once by one",
+        );
+    }
+}
+
 proptest! {
     #[test]
     fn serialized_stream_event_lines_keep_sse_prefix(
@@ -169,7 +234,7 @@ fn labels() -> ReplayMetricLabels {
 
 #[derive(Default)]
 struct StreamMetricRecorder {
-    counters: Arc<Mutex<Vec<Key>>>,
+    counters: Arc<Mutex<Vec<(Key, u64)>>>,
 }
 
 impl StreamMetricRecorder {
@@ -179,16 +244,35 @@ impl StreamMetricRecorder {
         label_key: &str,
         label_value: &str,
     ) -> bool {
+        self.increment_summary(metric_name, &[(label_key, label_value)])
+            .0
+            > 0
+    }
+
+    /// Counts matching increments and sums their values under all requested labels.
+    /// For example, two increments of one return `(2, 2)`; one increment of two
+    /// returns `(1, 2)`, so either accounting error fails an expected `(1, 1)`.
+    fn increment_summary(
+        &self,
+        metric_name: &str,
+        expected_labels: &[(&str, &str)],
+    ) -> (usize, u64) {
         let counters = match self.counters.lock() {
             Ok(counters) => counters,
             Err(poisoned) => poisoned.into_inner(),
         };
-        counters.iter().any(|key| {
-            key.name() == metric_name
-                && key
-                    .labels()
-                    .any(|label| label.key() == label_key && label.value() == label_value)
-        })
+        counters
+            .iter()
+            .filter(|(key, _)| {
+                key.name() == metric_name
+                    && expected_labels.iter().all(|(name, value)| {
+                        key.labels()
+                            .any(|label| label.key() == *name && label.value() == *value)
+                    })
+            })
+            .fold((0, 0), |(count, total), (_, value)| {
+                (count + 1, total + *value)
+            })
     }
 }
 
@@ -217,14 +301,14 @@ impl Recorder for StreamMetricRecorder {
 
 struct StreamMetricCounter {
     key: Key,
-    counters: Arc<Mutex<Vec<Key>>>,
+    counters: Arc<Mutex<Vec<(Key, u64)>>>,
 }
 
 impl CounterFn for StreamMetricCounter {
-    fn increment(&self, _value: u64) {
+    fn increment(&self, value: u64) {
         match self.counters.lock() {
-            Ok(mut counters) => counters.push(self.key.clone()),
-            Err(poisoned) => poisoned.into_inner().push(self.key.clone()),
+            Ok(mut counters) => counters.push((self.key.clone(), value)),
+            Err(poisoned) => poisoned.into_inner().push((self.key.clone(), value)),
         }
     }
 

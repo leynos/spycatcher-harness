@@ -66,3 +66,10 @@ Feature: Chat completions replay
     Then the replay client receives a malformed JSON response
     And the replay harness is stopped
     And the replay stub upstream is stopped
+
+  Scenario: Replay preserves recorded stream frames across the eager limit
+    Given a replay-mode harness is configured from a threshold-crossing stream cassette
+    When the replay harness is started
+    And the matching streaming request is sent to the replay harness
+    Then the replay client receives the threshold-crossing recorded stream unchanged
+    And the replay harness is stopped

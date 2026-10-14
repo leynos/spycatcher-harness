@@ -58,13 +58,27 @@ pub(crate) async fn replay_chat_completions_handler(
     }
 }
 
+/// Logs replay-mode request events using only the URI path.
+/// For example, `/chat?key=secret` contributes `/chat` to both events.
 fn log_replay_request(method: &Method, uri: &Uri) {
+    log_replay_request_debug(method, uri);
+    log_replay_request_info(method, uri);
+}
+
+/// Emits the debug event for a received replay-mode request.
+/// For example, `POST /chat` logs the method and `/chat` path at debug level.
+fn log_replay_request_debug(method: &Method, uri: &Uri) {
     debug!(
         target: "spycatcher.harness.replay",
         method = %method,
         path = uri.path(),
         "replay-mode request received",
     );
+}
+
+/// Emits the info event for a received replay-mode chat completions request.
+/// For example, `POST /chat` logs the method and `/chat` path at info level.
+fn log_replay_request_info(method: &Method, uri: &Uri) {
     info!(
         method = %method,
         path = uri.path(),
@@ -73,6 +87,8 @@ fn log_replay_request(method: &Method, uri: &Uri) {
     );
 }
 
+/// Builds an HTTP response from a matched replay response.
+/// For example, event bodies receive the event-stream content type when none is supplied.
 fn build_replay_response(
     response: ReplayResponse,
     labels: &crate::replay_observability::ReplayMetricLabels,
@@ -100,6 +116,8 @@ fn build_replay_response(
     built
 }
 
+/// Appends a valid replay header and records whether it supplies the content type.
+/// For example, a supplied content type lets the caller avoid adding a default value.
 fn add_replay_header(
     built: &mut Response<axum::body::Body>,
     has_content_type: &mut bool,
@@ -124,6 +142,8 @@ fn add_replay_header(
     }
 }
 
+/// Converts a recorded status number, falling back to 502 when it is invalid.
+/// For example, status 999 maps to `BAD_GATEWAY`.
 fn replay_status_code(status: u16) -> StatusCode {
     if (100..=599).contains(&status) {
         StatusCode::from_u16(status).unwrap_or(StatusCode::BAD_GATEWAY)
@@ -132,6 +152,8 @@ fn replay_status_code(status: u16) -> StatusCode {
     }
 }
 
+/// Converts a replay error into its status and JSON HTTP response.
+/// For example, a mismatch returns 409 Conflict with the diagnostic details.
 fn build_replay_error_response(error: &ReplayError) -> Response<axum::body::Body> {
     let (status, body) = match error {
         ReplayError::Mismatch(diagnostic) => (
@@ -175,6 +197,8 @@ fn build_replay_error_response(error: &ReplayError) -> Response<axum::body::Body
     response
 }
 
+/// Serializes an error kind and message into the replay error JSON shape.
+/// For example, `internal` identifies a failed replay request in the body.
 fn json_error_body(kind: &str, message: &str) -> String {
     json!({
         "error": {
@@ -185,6 +209,8 @@ fn json_error_body(kind: &str, message: &str) -> String {
     .to_string()
 }
 
+/// Serializes a mismatch diagnostic with its position, hashes, and diff summary.
+/// For example, an expected interaction retains its cassette position in the body.
 fn mismatch_error_body(diagnostic: &MismatchDiagnostic) -> String {
     json!({
         "error": {
@@ -199,6 +225,8 @@ fn mismatch_error_body(diagnostic: &MismatchDiagnostic) -> String {
     .to_string()
 }
 
+/// Encodes an interaction position as a tagged JSON value.
+/// For example, `Expected(3)` becomes `{"kind":"expected","index":3}`.
 fn interaction_position_json(position: InteractionPosition) -> serde_json::Value {
     match position {
         InteractionPosition::Expected(index) => json!({
