@@ -5,7 +5,7 @@ This ExecPlan is a living document. Keep `Constraints`, `Tolerances`, `Risks`,
 `Outcomes & retrospective`, `Conformance basis`, and `Verification plan`
 current.
 
-Status: IN PROGRESS
+Status: COMPLETE
 
 ## Purpose / big picture
 
@@ -310,7 +310,10 @@ observable.
   Markdown lint, Mermaid validation, workflow contracts, `make test-make-all`,
   and the locked Rust 1.89.0 all-targets/all-features check. All passed;
   `make test` reported 449 nextest cases and 27 doctests passed, with 4
-  ignored. Hosted validation for the newly pushed head remains pending.
+  ignored. Hosted CI run
+  [38501854910](https://github.com/leynos/spycatcher-harness/actions/runs/38501854910)
+  passed on exact head `731fa0fc2294f18050cf4ca081aa4717a18b5590`, including
+  the Rust 1.89 check, lint, tests, and coverage ratchet.
 
 ## Surprises & discoveries
 
@@ -859,3 +862,12 @@ check is not a completed check.
   main's lockfile during replay; regenerate `typos.toml` with the new gate and
   omit the superseded generated-only commit. Complete the merged lockfile,
   deterministic gates, and CodeRabbit review before committing or publishing.
+
+- (2026-10-14) Complete the acceptance-evidence follow-up on `731fa0f`. The
+  focused binary, localization, layering, and BDD suites passed (20, 40, 26,
+  and 9 cases). All local gates passed, including 449 nextest cases, 27
+  doctests, and the locked Rust 1.89.0 check. Hosted CI run 38501854910 passed
+  on the exact pushed SHA, including `Test and Measure Coverage`. CodeScene
+  Code Health passed; CodeScene Code Coverage remains outside the pull-request
+  workflow by design. Draft PR 147 remains open with the required issue and
+  terminal References fields.
