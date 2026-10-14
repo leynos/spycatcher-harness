@@ -300,9 +300,10 @@ needs:
 #### Implementation details (task 1.1.1)
 
 The matching engine is implemented as a domain type `ReplayMatchEngine` in
-`src/cassette/matching.rs`. The engine takes ownership of a loaded `Cassette`
-and a `MatchMode` at construction, extracting interaction data for efficient
-matching.
+`src/cassette/matching/mod.rs`. Candidate selection and sequential/keyed state
+updates live in `src/cassette/matching/selection.rs`. The engine takes
+ownership of a loaded `Cassette` and a `MatchMode` at construction, extracting
+interaction data for efficient matching.
 
 **Construction.** `ReplayMatchEngine::new(cassette, mode)` returns
 `HarnessResult<Self>`. It validates that every interaction in the cassette has
@@ -530,6 +531,7 @@ A practical compromise:
 - `spycatcher_harness` (library, `src/lib.rs`)
   - `error`: typed error enum (`HarnessError`) and result alias
   - `config`: configuration structs and OrthoConfig integration
+  - `cli` (`src/cli/mod.rs`): parsing and layered configuration loading
   - `i18n`: embedded Fluent Translation List (FTL) resources and message IDs
   - `protocol`: protocol adapter traits and implementations
   - `cassette`: cassette schema, canonicalization, hashing, store trait
@@ -537,11 +539,26 @@ A practical compromise:
   - `upstream`: OpenRouter/OpenAI/Anthropic/DeepSeek clients
   - `replay`: native replay engine; optional VidaiMock backend driver
 - `spycatcher-harness` (binary, `src/bin/spycatcher_harness.rs`)
-  - CLI definitions (Clap)
-  - Delegates to library
+  - Startup localization and process orchestration
+  - Delegates parsing and semantic work to the library
 
 Path fields use `camino::Utf8PathBuf` rather than `std::path::PathBuf`; see
 [Implementation decisions](#implementation-decisions) for rationale.
+
+Private implementation children refine these boundaries. Canonical JSON writing
+lives in `src/cassette/canonical/json/serialize.rs`.
+`src/cassette/matching/mod.rs` delegates candidate selection and state updates
+to `src/cassette/matching/selection.rs`. The CLI's `src/cli/config_build.rs`
+child applies overrides and constructs `HarnessConfig`; `src/replay_request.rs`
+prepares canonical replay requests. Record streaming is orchestrated in
+`src/server/record_stream/mod.rs`, with chunk and completion state in its
+private `state.rs` child.
+
+The binary's private `src/bin/spycatcher_harness/process_output.rs` child owns
+stdout/stderr writes and flushing. All these child modules use `pub(super)`
+only where the declaring parent needs access; none adds a public library API.
+The [developer guide](developers-guide.md#private-implementation-boundaries)
+records exact paths and test-module wiring.
 
 ### Localization architecture
 
@@ -1193,6 +1210,24 @@ filesystem adapter keeps the full cassette model in memory and rewrites the
 single JSON document after each append. This is sufficient for the roadmap
 slice because the requirement is deterministic append-only behaviour, not a
 journaled `O_APPEND` file format.
+
+### Structural module split (Rust baseline)
+
+Split implementation and test modules to keep Rust source files within the
+400-line repository limit while retaining the existing domain and adapter
+boundaries. Directory roots now use `mod.rs`; focused private children own JSON
+writing, match selection, CLI configuration construction, replay request
+preparation, record-stream state, and process output. Parent access is limited
+to `pub(super)` helpers, with function bodies and public APIs preserved.
+
+Extract HTTP and replay-stream tests into private test-only siblings, retain
+replay tests under `src/replay_tests/mod.rs`, and keep CLI test support nested
+under `tests/cli_layering/`. The integration tests retain their original target
+and case names, and the binary output child remains below the existing binary's
+subdirectory. Configuration precedence, cursor/consumption semantics, cassette
+bytes, stream append boundaries, and output flushing remain unchanged. This
+structural decision does not mark further Rust baseline enforcement or roadmap
+work complete; earlier implementation decisions retain their historical paths.
 
 ## Source references
 

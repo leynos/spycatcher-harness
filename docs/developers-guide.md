@@ -89,7 +89,7 @@ do not enter request logs.
 `reqwest::Response::chunk()` polling into an Axum-compatible `TryStream`. The
 crate was already present transitively; depending on it directly avoids
 enabling reqwest's broader `stream` feature while keeping the response body
-adapter explicit in `src/server/record_stream.rs`.
+adapter explicit in `src/server/record_stream/mod.rs`.
 
 ## Coverage publication
 
@@ -212,23 +212,27 @@ The crate root re-exports the public entry point `start_harness`, the
 `HarnessResult`. Shutdown is exposed as the `RunningHarness::shutdown` method,
 not as a standalone crate-root function.
 
-The `cli` module is split into small private support modules to keep
-`src/cli.rs` focused on adapter flow: parse the command line, call
-`OrthoConfig`, validate localization, and translate the result into
-`HarnessConfig`. Keep new CLI-only serialization shapes, help text, and
-localization selection policy in these support modules rather than growing
-`src/cli.rs`.
+The `cli` module is split into small support modules to keep `src/cli/mod.rs`
+focused on parsing commands, merging OrthoConfig layers, and exposing
+configuration-loading entry points. Its private `config_build` child translates
+merged arguments into `HarnessConfig` and validates locale overrides. Keep new
+CLI-only serialization shapes, help text, and localization selection policy in
+their support modules rather than growing `src/cli/mod.rs`.
 
-| Internal CLI module       | Purpose                                                                |
-| ------------------------- | ---------------------------------------------------------------------- |
-| `src/cli.rs`              | Public CLI localization parsing entry points and configuration helpers |
-| `src/cli_args.rs`         | `LocalizationArgs` and `RecordUpstreamArgs` serializable merge shapes  |
-| `src/cli_help.rs`         | Stock long-form merge help used when CLI localization is disabled      |
-| `src/cli/localization.rs` | Localization override selection and validation                         |
-| `src/cli/localize_cmd.rs` | Project-owned `LocalizeCmd` trait and localized `clap` parsing helper  |
-| `src/cli/localizer.rs`    | Early locale selection and Fluent-backed CLI localizer construction    |
+| Internal CLI module       | Purpose                                                                          |
+| ------------------------- | -------------------------------------------------------------------------------- |
+| `src/cli/mod.rs`          | Public loader entry points and parse/merge orchestration                         |
+| `src/cli/config_build.rs` | Private override application, locale validation and `HarnessConfig` construction |
+| `src/cli_args.rs`         | `LocalizationArgs` and `RecordUpstreamArgs` serializable merge shapes            |
+| `src/cli_help.rs`         | Stock long-form merge help used when CLI localization is disabled                |
+| `src/cli/localization.rs` | Localization override selection and validation                                   |
+| `src/cli/localize_cmd.rs` | Project-owned `LocalizeCmd` trait and localized `clap` parsing helper            |
+| `src/cli/localizer.rs`    | Early locale selection and Fluent-backed CLI localizer construction              |
 
-_Table 2: Private CLI support modules._
+_Table 2: CLI adapter and support modules._
+
+CLI argument/help modules remain at `src/cli_args.rs` and `src/cli_help.rs`,
+reached through `../` paths from `src/cli/mod.rs`.
 
 The `i18n` module owns the library Fluent assets at
 `i18n/en-US/spycatcher-harness.ftl`, exposes `HarnessLocalizations` for
@@ -261,6 +265,39 @@ The `cassette` module contains several submodules:
 | `stream_canonical` | Comment-aware stream-event canonicalization helpers |
 
 _Table 3: Cassette submodules._
+
+### Private implementation boundaries
+
+Directory-module roots keep their existing API boundaries. Their extracted
+children are private `mod` declarations; helpers needed by the parent use
+`pub(super)`, while child-only helpers remain private. The split keeps each
+Rust source file within 400 lines without changing configuration precedence,
+matching semantics, stream persistence, or process output.
+
+| Private child module                           | Responsibility                                                                                          |
+| ---------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| `src/cassette/canonical/json/serialize.rs`     | Canonical JSON writing, escaping and ordering for `json/mod.rs`                                         |
+| `src/cassette/matching/selection.rs`           | Candidate selection and sequential/keyed cursor or consumption updates for `matching/mod.rs`            |
+| `src/replay_request.rs`                        | Observed-request canonicalization and matching-field access for `src/replay.rs`                         |
+| `src/server/record_stream/state.rs`            | Stream accumulation, chunk parsing, finalization and completed-record append for `record_stream/mod.rs` |
+| `src/bin/spycatcher_harness/process_output.rs` | Locked stdout/stderr writes and flushing for the sole binary entry point                                |
+
+_Table 4: Private implementation children._
+
+The CLI configuration builder described in Table 2 follows the same private
+child boundary. Binary output helpers stay below `src/bin/spycatcher_harness/`
+so Cargo does not discover a second binary.
+
+Test-module paths follow the source file that declares them:
+
+- `src/http_exchange_tests.rs` and `src/server/replay_stream_tests.rs` contain
+  the extracted private `#[cfg(test)]` suites, wired by their parent modules.
+- `src/replay_tests/mod.rs` retains replay tests and its `concurrent_stream`
+  child.
+- `tests/cli_layering_unit.rs` retains every property and parameterized test.
+  Its nested `tests/cli_layering/support.rs` contains the Jail loader, fixture
+  constants and locale strategies, with only parent-used items exposed through
+  `pub(super)`. This helper is not a separate Cargo integration-test crate.
 
 The binary crate (`src/bin/spycatcher_harness.rs`) delegates semantic behaviour
 to the library entry points. It owns two localization phases. Before CLI
@@ -354,14 +391,15 @@ payloads, preserves `[DONE]` as a raw data event, and reports invalid UTF-8 or
 incomplete final events as typed parser errors. It does not know about Axum,
 reqwest, cassette files, or process state.
 
-`src/server/record_stream.rs` owns record-mode streaming orchestration. It
+`src/server/record_stream/mod.rs` owns record-mode streaming orchestration. It
 resolves the API key through the same `EnvProvider` path as non-stream
 recording, forwards the request through `ChatCompletionsUpstream`, streams
-upstream byte chunks to the downstream client, feeds those bytes to
-`SseParser`, and appends a `RecordedResponse::Stream` only after the upstream
-stream finishes cleanly. Do not hold the cassette-store mutex across `.await`;
-use the existing `append_interaction` boundary so filesystem writes stay inside
-`spawn_blocking`.
+upstream byte chunks to the downstream client, and delegates chunk processing
+to its private `src/server/record_stream/state.rs` child. That child owns
+stream accumulation, `SseParser` finalization, and completed-record append. It
+appends `RecordedResponse::Stream` only after the upstream stream finishes
+cleanly. Do not hold the cassette-store mutex across `.await`; use the existing
+`append_interaction` boundary so filesystem writes stay inside `spawn_blocking`.
 
 Future streaming protocol work should keep this split: parser state and
 protocol event classification stay outside HTTP adapters, while Axum response

@@ -1,8 +1,8 @@
 //! Private CLI argument support types.
 //!
-//! The public CLI adapter lives in `src/cli.rs`; this module contains nested
-//! serializable helper structures used by `OrthoConfig` while keeping the adapter
-//! module small enough to satisfy repository health rules.
+//! The public CLI adapter lives in `src/cli/mod.rs`; this module contains
+//! nested serializable helper structures used by `OrthoConfig` while keeping
+//! the adapter module small enough to satisfy repository health rules.
 
 use std::collections::BTreeMap;
 
