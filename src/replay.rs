@@ -12,8 +12,7 @@ use std::sync::{
 use tracing::{debug, error, info, warn};
 
 use crate::cassette::{
-    IgnorePathConfig, MatchOutcome, MismatchDiagnostic, RecordedRequest, RecordedResponse,
-    ReplayMatchEngine, StreamEvent,
+    MatchOutcome, MismatchDiagnostic, RecordedResponse, ReplayMatchEngine, StreamEvent,
 };
 use crate::http_exchange::ObservedRequest;
 use crate::protocol::{
@@ -23,6 +22,11 @@ use crate::replay_observability::{
     ReplayMetricLabels, record_replay_commit_failure, record_replay_mismatch,
     record_replay_rejection, record_replay_request,
 };
+
+#[path = "replay_request.rs"]
+mod replay_request;
+
+use replay_request::{canonicalize_observed_request, recorded_canonical_request, recorded_hash};
 
 /// Thread-safe replay orchestration boundary.
 #[derive(Debug, Clone)]
@@ -239,36 +243,6 @@ impl ReplayService {
     }
 }
 
-fn canonicalize_observed_request(request: ObservedRequest) -> Result<RecordedRequest, ReplayError> {
-    let mut recorded_request = observed_to_recorded_request(request);
-    recorded_request
-        .populate_canonical_fields(&IgnorePathConfig::default())
-        .map_err(|error| {
-            error!(
-                target: "spycatcher.harness.replay",
-                "failed to canonicalize replay request: {error}"
-            );
-            ReplayError::Internal
-        })?;
-    Ok(recorded_request)
-}
-
-fn recorded_hash(recorded_request: &RecordedRequest) -> Result<&str, ReplayError> {
-    recorded_request
-        .stable_hash
-        .as_deref()
-        .ok_or(ReplayError::Internal)
-}
-
-fn recorded_canonical_request(
-    recorded_request: &RecordedRequest,
-) -> Result<&serde_json::Value, ReplayError> {
-    recorded_request
-        .canonical_request
-        .as_ref()
-        .ok_or(ReplayError::Internal)
-}
-
 /// Contextual fields shared by replay-mode observability events.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ReplayContext {
@@ -304,19 +278,6 @@ impl InteractionPositionMetrics for crate::cassette::InteractionPosition {
         match *self {
             Self::Expected(index) | Self::Exhausted(index) | Self::KeyedMiss(index) => index,
         }
-    }
-}
-
-fn observed_to_recorded_request(request: ObservedRequest) -> RecordedRequest {
-    RecordedRequest {
-        method: request.method,
-        path: request.path,
-        query: request.query,
-        headers: request.headers,
-        body: request.body,
-        parsed_json: request.parsed_json,
-        canonical_request: None,
-        stable_hash: None,
     }
 }
 
@@ -362,5 +323,5 @@ pub(crate) enum ReplayError {
 }
 
 #[cfg(test)]
-#[path = "replay_tests.rs"]
+#[path = "replay_tests/mod.rs"]
 mod tests;

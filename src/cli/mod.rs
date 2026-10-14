@@ -5,7 +5,6 @@
 //! apply precedence `CLI > env > config files > defaults` within each
 //! subcommand namespace (`cmds.record`, `cmds.replay`, `cmds.verify`).
 
-use camino::Utf8PathBuf;
 use clap::{CommandFactory, Parser, Subcommand};
 use ortho_config::load_and_merge_subcommand;
 use ortho_config::subcommand::Prefix;
@@ -13,22 +12,23 @@ use ortho_config::{Localizer, NoOpLocalizer};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-use crate::{HarnessConfig, config};
+use crate::HarnessConfig;
 
-#[path = "cli_args.rs"]
+#[path = "../cli_args.rs"]
 mod cli_args;
-#[path = "cli_help.rs"]
+#[path = "../cli_help.rs"]
 mod cli_help;
-#[path = "cli/localization.rs"]
+mod config_build;
+#[path = "localization.rs"]
 pub mod localization;
-#[path = "cli/localize_cmd.rs"]
+#[path = "localize_cmd.rs"]
 mod localize_cmd;
-#[path = "cli/localizer.rs"]
+#[path = "localizer.rs"]
 pub mod localizer;
 
 use cli_args::{LocalizationArgs, RecordUpstreamArgs};
 use cli_help::CLI_MERGE_HELP;
-use localization::{CommonOverrides, validate_language_identifier};
+use config_build::{to_record_config, to_replay_config, to_verify_config};
 use localize_cmd::try_parse_localized_from_iter;
 
 /// Errors returned while loading merged command configuration.
@@ -283,7 +283,6 @@ struct ReplayArgs {
     #[arg(skip)]
     localization: LocalizationArgs,
 }
-
 #[derive(Debug, Clone, Parser, Serialize, Deserialize, Default, PartialEq)]
 #[command(name = "verify")]
 struct VerifyArgs {
@@ -305,93 +304,4 @@ struct VerifyArgs {
     #[serde(default)]
     #[arg(skip)]
     localization: LocalizationArgs,
-}
-
-/// Builds [`HarnessConfig`] from common overrides, `mode`, and optional upstream.
-fn build_config(
-    overrides: CommonOverrides<'_>,
-    mode: config::Mode,
-    upstream: Option<config::UpstreamConfig>,
-) -> Result<HarnessConfig, CliConfigError> {
-    let mut config = HarnessConfig::default();
-    apply_overrides(&mut config, overrides)?;
-    config.mode = mode;
-    config.upstream = upstream;
-    tracing::debug!(
-        mode = ?config.mode,
-        locale = config.localization.locale.as_deref(),
-        fallback_locale = config.localization.fallback_locale.as_str(),
-        "built harness configuration from layered CLI input"
-    );
-    Ok(config)
-}
-
-/// Converts record CLI and merged arguments into record-mode [`HarnessConfig`].
-fn to_record_config(
-    cli_args: &RecordArgs,
-    merged_args: &RecordArgs,
-) -> Result<HarnessConfig, CliConfigError> {
-    build_config(
-        (cli_args, merged_args).into(),
-        config::Mode::Record,
-        merged_args.upstream.clone().map(Into::into),
-    )
-}
-
-/// Converts replay CLI and merged arguments into replay-mode [`HarnessConfig`].
-fn to_replay_config(
-    cli_args: &ReplayArgs,
-    merged_args: &ReplayArgs,
-) -> Result<HarnessConfig, CliConfigError> {
-    build_config((cli_args, merged_args).into(), config::Mode::Replay, None)
-}
-
-/// Converts verify CLI and merged arguments into verify-mode [`HarnessConfig`].
-fn to_verify_config(
-    cli_args: &VerifyArgs,
-    merged_args: &VerifyArgs,
-) -> Result<HarnessConfig, CliConfigError> {
-    build_config((cli_args, merged_args).into(), config::Mode::Verify, None)
-}
-
-/// Applies `overrides` to `config`, validating locale values before mutation.
-fn apply_overrides(
-    config: &mut HarnessConfig,
-    overrides: CommonOverrides<'_>,
-) -> Result<(), CliConfigError> {
-    if let Some(listen_override) = overrides.listen {
-        config.listen = listen_override.into();
-    }
-    if let Some(cassette_dir_override) = overrides.cassette_dir {
-        config.cassette_dir = Utf8PathBuf::from(cassette_dir_override);
-    }
-    if let Some(cassette_name_override) = overrides.cassette_name {
-        cassette_name_override.clone_into(&mut config.cassette_name);
-    }
-    if let Some(locale_override) = overrides.locale {
-        tracing::debug!(
-            field = "locale",
-            value = locale_override,
-            "applying locale override"
-        );
-        validate_language_identifier("locale", locale_override)?;
-        config.localization.locale = Some(locale_override.to_owned());
-    }
-    if let Some(fallback_locale_override) = overrides.fallback_locale {
-        tracing::debug!(
-            field = "fallback_locale",
-            value = fallback_locale_override,
-            "applying locale override"
-        );
-        validate_language_identifier("fallback_locale", fallback_locale_override)?;
-        fallback_locale_override.clone_into(&mut config.localization.fallback_locale);
-    } else {
-        tracing::debug!(
-            field = "fallback_locale",
-            value = config.localization.fallback_locale.as_str(),
-            "using default fallback locale"
-        );
-    }
-    validate_language_identifier("fallback_locale", &config.localization.fallback_locale)?;
-    Ok(())
 }

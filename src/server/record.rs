@@ -29,7 +29,7 @@ use crate::{HarnessError, HarnessResult};
 
 type SharedCassetteStore = Arc<Mutex<FilesystemCassetteStore>>;
 
-#[path = "record_stream.rs"]
+#[path = "record_stream/mod.rs"]
 mod record_stream;
 
 /// Shared record-mode application state for the inbound server.

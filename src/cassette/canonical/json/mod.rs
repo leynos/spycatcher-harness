@@ -2,11 +2,13 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use serde_json::{Map, Number, Value, json};
+use serde_json::{Map, Value, json};
 
 use super::CanonicalError;
 use super::CanonicalRequest;
-use super::hex::{HexCase, push_hex_u32};
+
+mod serialize;
+use self::serialize::write_json_canonical;
 
 pub(super) fn canonicalize_body(
     body: Value,
@@ -307,70 +309,4 @@ fn remove_array_entry(items: &mut Vec<Value>, index: usize) {
     if index < items.len() {
         items.remove(index);
     }
-}
-
-fn write_json_canonical(output: &mut String, value: &Value) {
-    match value {
-        Value::Null => output.push_str("null"),
-        Value::Bool(flag) => output.push_str(if *flag { "true" } else { "false" }),
-        Value::Number(number) => write_json_number(output, number),
-        Value::String(text) => write_json_string(output, text),
-        Value::Array(items) => write_json_array(output, items),
-        Value::Object(object) => write_json_object(output, object),
-    }
-}
-
-fn write_json_array(output: &mut String, items: &[Value]) {
-    output.push('[');
-    let mut iter = items.iter();
-    if let Some(first) = iter.next() {
-        write_json_canonical(output, first);
-        for item in iter {
-            output.push(',');
-            write_json_canonical(output, item);
-        }
-    }
-    output.push(']');
-}
-
-fn write_json_object(output: &mut String, object: &serde_json::Map<String, Value>) {
-    output.push('{');
-    let mut iter = object.iter();
-    if let Some((first_key, first_val)) = iter.next() {
-        write_json_string(output, first_key);
-        output.push(':');
-        write_json_canonical(output, first_val);
-        for (key, entry_value) in iter {
-            output.push(',');
-            write_json_string(output, key);
-            output.push(':');
-            write_json_canonical(output, entry_value);
-        }
-    }
-    output.push('}');
-}
-
-fn write_json_number(output: &mut String, number: &Number) {
-    output.push_str(&number.to_string());
-}
-
-fn write_json_string(output: &mut String, text: &str) {
-    output.push('"');
-    for current_char in text.chars() {
-        match current_char {
-            '"' => output.push_str("\\\""),
-            '\\' => output.push_str("\\\\"),
-            '\u{08}' => output.push_str("\\b"),
-            '\u{0C}' => output.push_str("\\f"),
-            '\n' => output.push_str("\\n"),
-            '\r' => output.push_str("\\r"),
-            '\t' => output.push_str("\\t"),
-            control_char if control_char <= '\u{1F}' => {
-                output.push_str("\\u");
-                push_hex_u32(output, u32::from(control_char), HexCase::Lower);
-            }
-            other => output.push(other),
-        }
-    }
-    output.push('"');
 }
