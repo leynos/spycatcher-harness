@@ -166,28 +166,54 @@ fn merge_subcommand_config<T>(
 where
     T: serde::de::DeserializeOwned + Serialize + Default + CommandFactory,
 {
-    tracing::debug!(subcommand, "merging layered subcommand configuration");
-    let merged_args = load_and_merge_subcommand(prefix, args).map_err(|error| {
-        tracing::warn!(subcommand, %error, "failed to merge layered subcommand configuration");
-        CliConfigError::Merge {
-            subcommand,
-            message: error.to_string(),
-        }
-    })?;
-    tracing::debug!(subcommand, "merged layered subcommand configuration");
+    trace_subcommand_merge_start(subcommand);
+    let merged_args = load_and_merge_subcommand(prefix, args)
+        .map_err(|error| merge_subcommand_failure(subcommand, error))?;
+    trace_subcommand_merge_success(subcommand);
     Ok(merged_args)
 }
 
+/// Records the start of layered merging for one subcommand.
+/// For example, passing `"replay"` emits a merge-start debug event with a
+/// `subcommand="replay"` label.
+fn trace_subcommand_merge_start(subcommand: &'static str) {
+    tracing::debug!(subcommand, "merging layered subcommand configuration");
+}
+
+/// Records successful completion of layered merging.
+/// For example, passing `"replay"` emits a merge-complete debug event with a
+/// `subcommand="replay"` label.
+fn trace_subcommand_merge_success(subcommand: &'static str) {
+    tracing::debug!(subcommand, "merged layered subcommand configuration");
+}
+
+/// Retains the subcommand name and the original merge failure text.
+/// For example, `merge_subcommand_failure("record", "invalid value")` returns
+/// `CliConfigError::Merge` with subcommand `"record"` and message `"invalid value"`.
+fn merge_subcommand_failure(
+    subcommand: &'static str,
+    error: impl std::fmt::Display,
+) -> CliConfigError {
+    tracing::warn!(subcommand, %error, "failed to merge layered subcommand configuration");
+    CliConfigError::Merge {
+        subcommand,
+        message: error.to_string(),
+    }
+}
+
+/// Root command parsed before loading its selected subcommand's configuration.
 #[derive(Debug, Parser)]
 #[command(name = "spycatcher-harness")]
 #[command(version)]
 #[command(about = "Deterministic record/replay harness for LLM API testing")]
 #[command(after_long_help = CLI_MERGE_HELP)]
 struct Cli {
+    /// Subcommand selected by the caller.
     #[command(subcommand)]
     command: Commands,
 }
 
+/// Supported commands with their command-line arguments.
 #[derive(Debug, Subcommand)]
 enum Commands {
     /// Proxy to upstream and record interactions.
@@ -199,6 +225,9 @@ enum Commands {
 }
 
 impl Commands {
+    /// Loads the layered configuration for this command.
+    /// For example, selecting `Replay` loads replay settings through the supplied
+    /// prefix and returns the validated replay-mode `HarnessConfig`.
     fn load_config(self, prefix: &Prefix) -> Result<HarnessConfig, CliConfigError> {
         load_command_config(prefix, &self)
     }
@@ -235,6 +264,7 @@ fn load_verify_config(prefix: &Prefix, args: &VerifyArgs) -> Result<HarnessConfi
     to_verify_config(args, &merged_args)
 }
 
+/// Record-mode arguments merged from the command line and configuration.
 #[derive(Debug, Clone, Parser, Serialize, Deserialize, Default, PartialEq)]
 #[command(name = "record")]
 struct RecordArgs {
@@ -253,14 +283,17 @@ struct RecordArgs {
     /// Fallback locale for localized application messages.
     #[arg(long)]
     fallback_locale: Option<String>,
+    /// Localization fields supplied by layered configuration.
     #[serde(default)]
     #[arg(skip)]
     localization: LocalizationArgs,
+    /// Upstream settings supplied by layered configuration.
     #[serde(default)]
     #[arg(skip)]
     upstream: Option<RecordUpstreamArgs>,
 }
 
+/// Replay-mode arguments merged from the command line and configuration.
 #[derive(Debug, Clone, Parser, Serialize, Deserialize, Default, PartialEq)]
 #[command(name = "replay")]
 struct ReplayArgs {
@@ -279,10 +312,12 @@ struct ReplayArgs {
     /// Fallback locale for localized application messages.
     #[arg(long)]
     fallback_locale: Option<String>,
+    /// Localization fields supplied by layered configuration.
     #[serde(default)]
     #[arg(skip)]
     localization: LocalizationArgs,
 }
+/// Verify-mode arguments merged from the command line and configuration.
 #[derive(Debug, Clone, Parser, Serialize, Deserialize, Default, PartialEq)]
 #[command(name = "verify")]
 struct VerifyArgs {
@@ -301,6 +336,7 @@ struct VerifyArgs {
     /// Fallback locale for localized application messages.
     #[arg(long)]
     fallback_locale: Option<String>,
+    /// Localization fields supplied by layered configuration.
     #[serde(default)]
     #[arg(skip)]
     localization: LocalizationArgs,

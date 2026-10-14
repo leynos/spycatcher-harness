@@ -58,6 +58,15 @@ fn apply_overrides(
     config: &mut HarnessConfig,
     overrides: CommonOverrides<'_>,
 ) -> Result<(), CliConfigError> {
+    apply_shared_overrides(config, overrides);
+    apply_locale_override(config, overrides.locale)?;
+    apply_fallback_locale_override(config, overrides.fallback_locale)
+}
+
+/// Applies fields shared by all command modes.
+/// For example, a cassette-name override of `Some("sample")` replaces the name
+/// with `"sample"`; an absent listen override leaves the address unchanged.
+fn apply_shared_overrides(config: &mut HarnessConfig, overrides: CommonOverrides<'_>) {
     if let Some(listen_override) = overrides.listen {
         config.listen = listen_override.into();
     }
@@ -67,23 +76,44 @@ fn apply_overrides(
     if let Some(cassette_name_override) = overrides.cassette_name {
         cassette_name_override.clone_into(&mut config.cassette_name);
     }
-    if let Some(locale_override) = overrides.locale {
+}
+
+/// Applies and validates a requested locale before mutating the configuration.
+/// For example, `apply_locale_override(config, Some("en-GB"))` sets the locale
+/// to `Some("en-GB")` and returns `Ok(())`; invalid text returns `InvalidLocale`
+/// without replacing the existing locale.
+fn apply_locale_override(
+    config: &mut HarnessConfig,
+    locale_override: Option<&str>,
+) -> Result<(), CliConfigError> {
+    if let Some(locale_value) = locale_override {
         tracing::debug!(
             field = "locale",
-            value = locale_override,
+            value = locale_value,
             "applying locale override"
         );
-        validate_language_identifier("locale", locale_override)?;
-        config.localization.locale = Some(locale_override.to_owned());
+        validate_language_identifier("locale", locale_value)?;
+        config.localization.locale = Some(locale_value.to_owned());
     }
-    if let Some(fallback_locale_override) = overrides.fallback_locale {
+    Ok(())
+}
+
+/// Applies the fallback locale or retains the default, then validates it.
+/// For example, with a valid configuration, an override of `Some("en-GB")` sets
+/// the fallback to `"en-GB"` and returns `Ok(())`; `None` validates and retains
+/// the existing fallback.
+fn apply_fallback_locale_override(
+    config: &mut HarnessConfig,
+    fallback_locale_override: Option<&str>,
+) -> Result<(), CliConfigError> {
+    if let Some(fallback_locale_value) = fallback_locale_override {
         tracing::debug!(
             field = "fallback_locale",
-            value = fallback_locale_override,
+            value = fallback_locale_value,
             "applying locale override"
         );
-        validate_language_identifier("fallback_locale", fallback_locale_override)?;
-        fallback_locale_override.clone_into(&mut config.localization.fallback_locale);
+        validate_language_identifier("fallback_locale", fallback_locale_value)?;
+        fallback_locale_value.clone_into(&mut config.localization.fallback_locale);
     } else {
         tracing::debug!(
             field = "fallback_locale",

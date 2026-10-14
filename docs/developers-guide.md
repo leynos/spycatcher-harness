@@ -231,6 +231,18 @@ their support modules rather than growing `src/cli/mod.rs`.
 
 _Table 2: CLI adapter and support modules._
 
+Early command-line localization uses the private `LocaleEnvSetting` values in
+`src/cli/localizer.rs` to pair each environment variable with its invalid-value
+warning. `early_locale_plan` tries `SPYCATCHER_HARNESS_LOCALE` first and reads
+`SPYCATCHER_HARNESS_FALLBACK_LOCALE` only if the primary is absent,
+non-Unicode, or fails to parse as a `LanguageIdentifier`. A valid primary is
+selected without consulting the fallback; if neither setting yields a supported
+identifier, the default is `en-US`. Parse failures warn: an invalid primary
+reports “trying fallback locale”, while an invalid fallback reports “using
+en-US”. Absent or non-Unicode values produce no candidate and no parse warning.
+`try_locale_from_env` is private and accepts a `LocaleEnvSetting`, so the
+setting's variable name and warning stay paired.
+
 CLI argument/help modules remain at `src/cli_args.rs` and `src/cli_help.rs`,
 reached through `../` paths from `src/cli/mod.rs`.
 

@@ -10,6 +10,7 @@
 //! Keep this module free of logic; its sole responsibility is to hold
 //! user-facing documentation strings.
 
+/// Help text describing configuration precedence and subcommand-specific keys.
 pub(super) const CLI_MERGE_HELP: &str = concat!(
     "Configuration precedence: CLI > env > config files > defaults.\n",
     "Subcommand defaults merge from the `cmds` namespace.\n\n",

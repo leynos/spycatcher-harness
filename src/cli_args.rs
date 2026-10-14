@@ -11,23 +11,29 @@ use url::Url;
 
 use crate::config;
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
 /// Serializable locale and fallback-locale fields threaded through `OrthoConfig`
 /// subcommand merging.
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
 pub(super) struct LocalizationArgs {
+    /// Optional requested locale override applied to the merged configuration.
     pub(super) locale: Option<String>,
+    /// Optional fallback locale override applied to the merged configuration.
     pub(super) fallback_locale: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 /// Serializable upstream configuration fields for the `record` subcommand.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub(super) struct RecordUpstreamArgs {
+    /// Upstream provider used by the `record` command.
     #[serde(default)]
     kind: RecordUpstreamKind,
+    /// Base URL for the upstream API.
     #[serde(default = "default_record_base_url")]
     base_url: Url,
+    /// Name of the environment variable that supplies the upstream API key.
     #[serde(default = "default_record_api_key_env")]
     api_key_env: String,
+    /// Additional HTTP headers sent with upstream requests.
     #[serde(default)]
     extra_headers: BTreeMap<String, String>,
 }
@@ -43,9 +49,11 @@ impl Default for RecordUpstreamArgs {
     }
 }
 
+/// Upstream provider configured for recording.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq)]
 #[serde(rename_all = "snake_case")]
 enum RecordUpstreamKind {
+    /// `OpenRouter`'s chat-completions API.
     #[serde(alias = "openrouter")]
     #[default]
     OpenRouter,

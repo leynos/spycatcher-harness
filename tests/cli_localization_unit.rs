@@ -311,16 +311,23 @@ fn parse_early_locale_is_deterministic(#[case] candidate: Option<&str>, #[case] 
 }
 
 #[rstest]
-fn early_locale_plan_uses_fallback_when_primary_env_is_invalid() {
+#[case::invalid_primary_uses_fallback("not_a_locale", "en-GB", "en-GB")]
+#[case::valid_primary_takes_precedence("en-GB", "fr-FR", "en-GB")]
+#[case::invalid_fallback_uses_default("not_a_locale", "not_a_locale", "en-US")]
+fn early_locale_plan_respects_environment_precedence(
+    #[case] primary: &str,
+    #[case] fallback: &str,
+    #[case] expected: &str,
+) {
     #[expect(
         clippy::result_large_err,
         reason = "figment::Jail callback requires figment::error::Result"
     )]
     figment::Jail::expect_with(|jail| {
-        jail.set_env("SPYCATCHER_HARNESS_LOCALE", "not_a_locale");
-        jail.set_env("SPYCATCHER_HARNESS_FALLBACK_LOCALE", "en-GB");
+        jail.set_env("SPYCATCHER_HARNESS_LOCALE", primary);
+        jail.set_env("SPYCATCHER_HARNESS_FALLBACK_LOCALE", fallback);
 
-        assert_eq!(early_locale_plan().to_string(), "en-GB");
+        assert_eq!(early_locale_plan().to_string(), expected);
         Ok(())
     });
 }
