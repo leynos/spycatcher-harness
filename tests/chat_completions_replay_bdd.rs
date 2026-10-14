@@ -61,3 +61,11 @@ fn canonical_stream_matching_ignores_comment_only_drift(replay_world: ReplayWorl
 fn replay_rejects_malformed_json_requests_before_matching(replay_world: ReplayWorld) {
     let _ = replay_world;
 }
+
+#[scenario(
+    path = "tests/features/chat_completions_replay.feature",
+    name = "Replay preserves recorded stream frames across the eager limit"
+)]
+fn replay_preserves_recorded_stream_frames_across_the_eager_limit(replay_world: ReplayWorld) {
+    let _ = replay_world;
+}
