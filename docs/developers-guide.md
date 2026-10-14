@@ -168,6 +168,16 @@ path; its `TempDir` owns the fixture directory's lifetime. The replay and proxy
 BDD cassette readers return boxed errors instead; propagate those with `?` as
 well.
 
+For build-standard reader tests, use `create_fake_program(label, script)?` from
+`tests/build_standard/fake_program.rs`; it returns
+`std::io::Result<FakeProgram>` and creates an executable in an owned, unique
+scratch directory. Pass `program.path()` to `Command::new` and retain
+`FakeProgram` until the child finishes, for example through
+`wait_with_output()`; dropping it removes the directory. The helper writes the
+script in a child and waits for successful writer completion before returning,
+so the parent does not hold the writer's writable descriptor while it later
+launches the stand-in.
+
 Matching-test helpers such as `nth_response` and `extract_response_id` return
 `Option` when the interaction, response kind, or response ID may be absent.
 Check the option explicitly. For a non-stream response, for example, assert
