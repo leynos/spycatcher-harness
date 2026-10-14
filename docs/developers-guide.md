@@ -311,6 +311,12 @@ Test-module paths follow the source file that declares them:
   constants and locale strategies, with only parent-used items exposed through
   `pub(super)`. This helper is not a separate Cargo integration-test crate.
 
+The binary installs one fallible tracing subscriber before early CLI parsing.
+It writes warnings and errors to stderr without ANSI escape sequences, using a
+fixed warning threshold rather than reading `RUST_LOG`. Keep subscriber
+initialization in the executable: library callers retain ownership of their
+process-wide diagnostics. Help and version text remain on stdout.
+
 The binary crate (`src/bin/spycatcher_harness.rs`) delegates semantic behaviour
 to the library entry points. It owns two localization phases. Before CLI
 parsing, it builds a best-effort `ortho_config::FluentLocalizer` for help,

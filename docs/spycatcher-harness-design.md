@@ -560,6 +560,14 @@ only where the declaring parent needs access; none adds a public library API.
 The [developer guide](developers-guide.md#private-implementation-boundaries)
 records exact paths and test-module wiring.
 
+Before parsing CLI arguments, the executable installs a fallible process-wide
+tracing subscriber at WARN level. It sends diagnostics to stderr without ANSI
+escapes; help and version output remains on stdout. The library does not
+install a subscriber, leaving process-wide subscriber ownership to embedding
+applications. See the
+[developer guide](developers-guide.md#private-implementation-boundaries) for
+the diagnostics boundary.
+
 ### Localization architecture
 
 The harness should follow the localization pattern described in
