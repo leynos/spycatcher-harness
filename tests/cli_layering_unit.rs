@@ -309,6 +309,31 @@ fn invalid_cli_locale_fails_loading() {
     );
 }
 
+/// Rejects an invalid explicit fallback with its field, value, and parser error.
+#[rstest]
+fn invalid_cli_fallback_locale_fails_loading() {
+    let error = load_with_jail(
+        &[
+            "spycatcher-harness",
+            "replay",
+            "--fallback-locale",
+            "not_a_locale",
+        ],
+        None,
+        &[],
+    )
+    .expect_err("invalid fallback locale should fail loading");
+
+    assert_eq!(
+        error.to_string(),
+        concat!(
+            "invalid localization field `fallback_locale` value `not_a_locale`: ",
+            "Parser error: Invalid subtag"
+        ),
+        "expected the fallback field, rejected value, and established error format",
+    );
+}
+
 #[rstest]
 fn record_supports_cmds_namespace_for_nested_upstream_values() {
     let config = concat!(

@@ -555,9 +555,12 @@ prepares canonical replay requests. Record streaming is orchestrated in
 private `state.rs` child.
 
 The binary's private `src/bin/spycatcher_harness/process_output.rs` child owns
-stdout/stderr writes and flushing. All these child modules use `pub(super)`
-only where the declaring parent needs access; none adds a public library API.
-The [developer guide](developers-guide.md#private-implementation-boundaries)
+stdout/stderr writes and flushing. Its `cli_startup.rs` sibling owns localizer
+selection, the parse span, and configuration-result exits. Its
+`startup_localization.rs` sibling owns configured locale planning and embedded
+catalogue loading. All these child modules use `pub(super)` only where the
+declaring parent needs access; none adds a public library API. The
+[developer guide](developers-guide.md#private-implementation-boundaries)
 records exact paths and test-module wiring.
 
 Before parsing CLI arguments, the executable installs a fallible process-wide

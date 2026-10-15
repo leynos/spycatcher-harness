@@ -7,43 +7,24 @@
 
 use eyre::{WrapErr, eyre};
 use i18n_embed::fluent::FluentLanguageLoader;
-use i18n_embed::unic_langid::LanguageIdentifier;
-use ortho_config::{Localizer, NoOpLocalizer};
-use spycatcher_harness::cli::localizer::{
-    build_cli_localizer, early_locale_plan, is_cli_localization_disabled,
-};
-use spycatcher_harness::cli::{CliConfigError, load_subcommand_config_with_localizer};
-use spycatcher_harness::config::LocalizationConfig;
-use spycatcher_harness::i18n::{HarnessLocalizations, localize_harness_error};
+use spycatcher_harness::i18n::localize_harness_error;
 use spycatcher_harness::start_harness;
-use std::sync::Arc;
-use thiserror::Error;
 
+#[path = "spycatcher_harness/cli_startup.rs"]
+mod cli_startup;
 #[path = "spycatcher_harness/process_output.rs"]
 mod process_output;
+#[path = "spycatcher_harness/startup_localization.rs"]
+mod startup_localization;
 
-use process_output::{initialize_tracing, write_display_output, write_error_output};
+use cli_startup::load_config_or_display_output;
+use process_output::initialize_tracing;
+use startup_localization::build_language_loader;
 
-/// Errors returned while preparing startup localization.
-#[derive(Debug, Error)]
-enum StartupLocalizationError {
-    /// A configured locale could not be parsed.
-    #[error("invalid localization field `{field}` value `{value}`: {source}")]
-    InvalidLocale {
-        /// Field containing the invalid value.
-        field: &'static str,
-        /// Invalid language identifier text.
-        value: String,
-        /// Parser failure from `unic-langid`.
-        source: i18n_embed::unic_langid::LanguageIdentifierError,
-    },
-    /// Embedded localization assets could not be loaded.
-    #[error("failed to load embedded localization assets: {0}")]
-    Load(#[from] i18n_embed::I18nEmbedError),
-    /// Locale planning returned no fallback language.
-    #[error("locale selection plan did not contain a fallback locale")]
-    EmptyLocalePlan,
-}
+#[cfg(test)]
+use spycatcher_harness::config::LocalizationConfig;
+#[cfg(test)]
+use startup_localization::plan_locale_selection;
 
 /// Application entry point.
 fn main() -> eyre::Result<()> {
@@ -56,127 +37,6 @@ fn main() -> eyre::Result<()> {
         .build()
         .wrap_err("failed to build tokio runtime")?;
     rt.block_on(run_harness(config, &language_loader))
-}
-
-/// Loads merged subcommand configuration, or writes help/version output to
-/// stdout and exits cleanly if clap requests it.
-fn load_config_or_display_output() -> eyre::Result<spycatcher_harness::HarnessConfig> {
-    let (localizer_kind, localizer) = select_cli_localizer();
-    tracing::debug!(localizer_kind, "selected CLI localizer");
-    let span = tracing::debug_span!("parse_cli", localizer_kind);
-    let _guard = span.enter();
-    handle_cli_config_result(
-        load_subcommand_config_with_localizer(localizer.as_ref()),
-        localizer_kind,
-    )
-}
-
-fn handle_cli_config_result(
-    result: Result<spycatcher_harness::HarnessConfig, CliConfigError>,
-    localizer_kind: &str,
-) -> eyre::Result<spycatcher_harness::HarnessConfig> {
-    match result {
-        Ok(config) => {
-            tracing::debug!(localizer_kind, "parsed CLI configuration");
-            Ok(config)
-        }
-        Err(CliConfigError::DisplayRequested { output }) => {
-            tracing::debug!(localizer_kind, "parsed CLI display request");
-            write_display_output(&output).wrap_err("failed to write CLI output")?;
-            std::process::exit(0);
-        }
-        Err(CliConfigError::CliParse(error)) => {
-            tracing::debug!(localizer_kind, error_kind = ?error.kind(), "parsed CLI error");
-            write_error_output(&error.to_string()).wrap_err("failed to write CLI error output")?;
-            std::process::exit(2);
-        }
-        Err(error) => Err(error).wrap_err("failed to load merged command config"),
-    }
-}
-
-fn select_cli_localizer() -> (&'static str, Arc<dyn Localizer>) {
-    if is_cli_localization_disabled() {
-        ("noop", Arc::new(NoOpLocalizer::new()))
-    } else {
-        ("fluent", build_cli_localizer(early_locale_plan()))
-    }
-}
-
-/// Constructs a [`FluentLanguageLoader`] from layered localization
-/// configuration.
-///
-/// Computes a locale plan (requested locale then fallback, or fallback-only
-/// when `locale` is unset), selects embedded harness localizations via
-/// [`i18n_embed::select`], and uses the last entry in the plan as the Fluent
-/// fallback locale.
-///
-/// # Errors
-///
-/// Returns [`StartupLocalizationError`] if any locale value fails BCP 47
-/// parsing or if the embedded catalogue cannot be loaded.
-fn build_language_loader(
-    localization: &LocalizationConfig,
-) -> Result<FluentLanguageLoader, StartupLocalizationError> {
-    tracing::debug!(
-        locale = localization.locale.as_deref(),
-        fallback_locale = %localization.fallback_locale,
-        "planning startup locale selection"
-    );
-    let locale_plan = plan_locale_selection(localization)?;
-    tracing::debug!(?locale_plan, "selected startup locale plan");
-    let fallback_locale = locale_plan
-        .last()
-        .cloned()
-        .ok_or(StartupLocalizationError::EmptyLocalePlan)?;
-    let loader = FluentLanguageLoader::new("spycatcher-harness", fallback_locale);
-    i18n_embed::select(&loader, &HarnessLocalizations, &locale_plan)?;
-    tracing::info!("constructed startup language loader");
-    Ok(loader)
-}
-
-/// Produces an ordered list of [`LanguageIdentifier`]s to attempt during
-/// locale selection.
-///
-/// When `localization.locale` is set the plan is
-/// `[requested_locale, fallback_locale]`; otherwise it is `[fallback_locale]`.
-///
-/// # Errors
-///
-/// Returns [`StartupLocalizationError::InvalidLocale`] if either identifier
-/// fails BCP 47 parsing.
-fn plan_locale_selection(
-    localization: &LocalizationConfig,
-) -> Result<Vec<LanguageIdentifier>, StartupLocalizationError> {
-    let fallback_locale =
-        parse_language_identifier("fallback_locale", &localization.fallback_locale)?;
-    let Some(locale) = localization.locale.as_deref() else {
-        return Ok(vec![fallback_locale]);
-    };
-    let requested_locale = parse_language_identifier("locale", locale)?;
-    Ok(vec![requested_locale, fallback_locale])
-}
-
-/// Parses `value` as a BCP 47 [`LanguageIdentifier`].
-///
-/// Emits a `tracing::warn!` and returns
-/// [`StartupLocalizationError::InvalidLocale`] if parsing fails, including
-/// `field` and `value` in both the log event and the error.
-///
-/// # Errors
-///
-/// Returns [`StartupLocalizationError::InvalidLocale`] on parse failure.
-fn parse_language_identifier(
-    field: &'static str,
-    value: &str,
-) -> Result<LanguageIdentifier, StartupLocalizationError> {
-    value.parse().map_err(|source| {
-        tracing::warn!(field, value, %source, "invalid startup locale value");
-        StartupLocalizationError::InvalidLocale {
-            field,
-            value: value.to_owned(),
-            source,
-        }
-    })
 }
 
 /// Starts the harness with `config`, awaits shutdown, and renders any
