@@ -552,14 +552,21 @@ to `src/cassette/matching/selection.rs`. The CLI's `src/cli/config_build.rs`
 child applies overrides and constructs `HarnessConfig`; `src/replay_request.rs`
 prepares canonical replay requests. Record streaming is orchestrated in
 `src/server/record_stream/mod.rs`, with chunk and completion state in its
-private `state.rs` child.
+private `state.rs` child. The adapter-neutral replay context, response, body
+and error contracts live in `src/replay_types.rs`; they retain crate-visible
+access and are re-exported through `src/replay.rs`. Record-mode application
+state construction from validated configuration lives in the private
+`src/server/record_state.rs` child. The existing `RecordAppState::from_config`
+API and its initialization behaviour are preserved.
 
 The binary's private `src/bin/spycatcher_harness/process_output.rs` child owns
 stdout/stderr writes and flushing. Its `cli_startup.rs` sibling owns localizer
 selection, the parse span, and configuration-result exits. Its
 `startup_localization.rs` sibling owns configured locale planning and embedded
-catalogue loading. All these child modules use `pub(super)` only where the
-declaring parent needs access; none adds a public library API. The
+catalogue loading. These binary child modules use `pub(super)` where their
+declaring parent needs access; none adds a public library API. The library
+replay contracts and record-state constructor retain their existing
+crate-visible interfaces. The
 [developer guide](developers-guide.md#private-implementation-boundaries)
 records exact paths and test-module wiring.
 
@@ -1242,8 +1249,10 @@ Split implementation and test modules to keep Rust source files within the
 400-line repository limit while retaining the existing domain and adapter
 boundaries. Directory roots now use `mod.rs`; focused private children own JSON
 writing, match selection, CLI configuration construction, replay request
-preparation, record-stream state, and process output. Parent access is limited
-to `pub(super)` helpers, with function bodies and public APIs preserved.
+preparation, record-stream state, and process output. Existing visibility is
+retained, including `pub(super)` helpers and the crate-visible replay contracts
+and `RecordAppState::from_config` constructor; function bodies and existing
+APIs are preserved.
 
 Extract HTTP and replay-stream tests into private test-only siblings, retain
 replay tests under `src/replay_tests/mod.rs`, and keep CLI test support nested
@@ -1261,6 +1270,15 @@ chat and stream steps through `steps.rs`. The replay-matching target keeps its
 `pub(super)` response-ID slot assertion in the private
 `tests/replay_matching_modes/helpers.rs` module. These boundaries preserve the
 existing integration-test targets and scenario names.
+
+2026-10-15 addendum: The structural split also places adapter-neutral replay
+context, response, body and error contracts in `src/replay_types.rs`, while
+re-exporting them through `src/replay.rs` with their existing `pub(crate)`
+visibility. Construction of record-mode application state from validated
+configuration moves to the private `src/server/record_state.rs` child; the
+existing `RecordAppState::from_config` API and initialization behaviour remain
+unchanged. These focused children support the line limit while preserving
+parent re-exports and constructor access. Field visibility remains unchanged.
 
 ## Source references
 

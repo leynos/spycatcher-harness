@@ -27,6 +27,8 @@ impl ReplayContext {
 }
 
 impl Default for ReplayContext {
+    /// Creates context for an unknown cassette using the chat-completions protocol.
+    /// For example, `ReplayContext::default().cassette` is `"unknown"`.
     fn default() -> Self {
         Self::new("unknown".to_owned())
     }
