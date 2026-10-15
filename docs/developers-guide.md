@@ -338,9 +338,11 @@ node builder assigns `option-{raw}` to each option and names children
 Keep every generated child in the tree. Normalize at node construction rather
 than rejecting or filtering collisions, so Proptest shrinking retains the input
 material that exposed them. The independent expected-shape oracle and fixed
-cases check raw-derived names; the saved seed in
-`tests/cli_localization_property.proptest-regressions` replays the minimized
-duplicate-sibling collision.
+cases check raw-derived names. The saved Proptest seed in
+`tests/cli_localization_property.proptest-regressions` records a minimized
+pre-normalization input with duplicate raw sibling names. Separately, fixed
+regression cases pass raw duplicate identities through `command_spec_node` and
+assert that both children survive with distinct normalized names.
 
 If the normalization boundary changes, update this subsection and the
 raw-derived expected-shape checks. Keep the collision case covered by fixed
