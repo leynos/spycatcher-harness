@@ -221,9 +221,12 @@ fn cli_locale_alias_wins_over_env_nested_locale() {
 fn localization_overrides_work_for_each_subcommand(#[case] subcommand: Subcommand) {
     let name = subcommand.as_str();
     let config = format!(
-        "[cmds.{name}.localization]\n\
-         locale = \"en-GB\"\n\
-         fallback_locale = \"en-US\"\n"
+        concat!(
+            "[cmds.{name}.localization]\n",
+            "locale = \"en-GB\"\n",
+            "fallback_locale = \"en-US\"\n",
+        ),
+        name = name,
     );
     let argv = ["spycatcher-harness", name];
     let env_locale = format!(

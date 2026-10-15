@@ -71,12 +71,16 @@ where
                 self.failure_count.fetch_add(1, Ordering::Relaxed);
                 error!(
                     target: "spycatcher.harness.record",
-                    "upstream stream request failed interaction_id={interaction_id} \
-                     mode=record protocol={protocol} upstream_latency_ms={upstream_latency} \
-                     outcome=failed cassette={cassette} error={err}",
+                    concat!(
+                        "upstream stream request failed interaction_id={interaction_id} ",
+                        "mode=record protocol={protocol} upstream_latency_ms={upstream_latency} ",
+                        "outcome=failed cassette={cassette} error={err}",
+                    ),
                     protocol = CHAT_COMPLETIONS_PROTOCOL_ID,
                     upstream_latency = upstream_start.elapsed().as_millis(),
                     cassette = upstream_id(self.upstream.kind),
+                    interaction_id = interaction_id,
+                    err = err,
                 );
                 RecordError::Internal
             })?;
@@ -208,10 +212,13 @@ async fn persist_interaction<U, E, M>(
             service.recorded_count.fetch_add(1, Ordering::Relaxed);
             info!(
                 target: "spycatcher.harness.record",
-                "stream interaction recorded interaction_id={interaction_id} mode=record \
-                 protocol={} outcome=recorded cassette={}",
+                concat!(
+                    "stream interaction recorded interaction_id={interaction_id} mode=record ",
+                    "protocol={} outcome=recorded cassette={}",
+                ),
                 CHAT_COMPLETIONS_PROTOCOL_ID,
                 upstream_id(service.upstream.kind),
+                interaction_id = interaction_id,
             );
         }
         Err(error) => log_stream_write_failure(service, interaction_id, &error),
@@ -228,10 +235,14 @@ fn log_stream_write_failure<U, E, M>(
     service.failure_count.fetch_add(1, Ordering::Relaxed);
     error!(
         target: "spycatcher.harness.record",
-        "stream cassette write failed interaction_id={interaction_id} mode=record \
-         protocol={} outcome=write_failed cassette={} error={error:?}",
+        concat!(
+            "stream cassette write failed interaction_id={interaction_id} mode=record ",
+            "protocol={} outcome=write_failed cassette={} error={error:?}",
+        ),
         CHAT_COMPLETIONS_PROTOCOL_ID,
         upstream_id(service.upstream.kind),
+        interaction_id = interaction_id,
+        error = error,
     );
 }
 
@@ -245,10 +256,14 @@ fn log_stream_build_failure<U, E, M>(
     service.failure_count.fetch_add(1, Ordering::Relaxed);
     error!(
         target: "spycatcher.harness.record",
-        "stream cassette build failed interaction_id={interaction_id} mode=record \
-         protocol={} outcome=build_failed cassette={} error={error:?}",
+        concat!(
+            "stream cassette build failed interaction_id={interaction_id} mode=record ",
+            "protocol={} outcome=build_failed cassette={} error={error:?}",
+        ),
         CHAT_COMPLETIONS_PROTOCOL_ID,
         upstream_id(service.upstream.kind),
+        interaction_id = interaction_id,
+        error = error,
     );
 }
 

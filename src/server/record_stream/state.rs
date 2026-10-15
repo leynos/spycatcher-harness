@@ -90,11 +90,14 @@ where
         state.service.failure_count.fetch_add(1, Ordering::Relaxed);
         error!(
             target: "spycatcher.harness.record",
-            "upstream stream chunk failed interaction_id={} mode=record \
-             protocol={} outcome=stream_failed cassette={} error={error}",
+            concat!(
+                "upstream stream chunk failed interaction_id={} mode=record ",
+                "protocol={} outcome=stream_failed cassette={} error={error}",
+            ),
             state.interaction_id,
             CHAT_COMPLETIONS_PROTOCOL_ID,
             upstream_id(state.service.upstream.kind),
+            error = error,
         );
     })?;
     state.observe_chunk(&chunk);
@@ -126,11 +129,14 @@ where
                 let error = stream_parse_failure(parse_error);
                 error!(
                     target: "spycatcher.harness.record",
-                    "upstream stream parse failed interaction_id={} mode=record \
-                     protocol={} outcome=parse_failed cassette={} error={error}",
+                    concat!(
+                        "upstream stream parse failed interaction_id={} mode=record ",
+                        "protocol={} outcome=parse_failed cassette={} error={error}",
+                    ),
                     self.interaction_id,
                     CHAT_COMPLETIONS_PROTOCOL_ID,
                     upstream_id(self.service.upstream.kind),
+                    error = error,
                 );
                 return;
             }
@@ -162,11 +168,14 @@ where
                 let error = stream_parse_failure(parse_error);
                 error!(
                     target: "spycatcher.harness.record",
-                    "upstream stream parse failed interaction_id={} mode=record \
-                     protocol={} outcome=parse_failed cassette={} error={error}",
+                    concat!(
+                        "upstream stream parse failed interaction_id={} mode=record ",
+                        "protocol={} outcome=parse_failed cassette={} error={error}",
+                    ),
                     self.interaction_id,
                     CHAT_COMPLETIONS_PROTOCOL_ID,
                     upstream_id(self.service.upstream.kind),
+                    error = error,
                 );
             }
         }
@@ -182,8 +191,10 @@ where
             self.service.failure_count.fetch_add(1, Ordering::Relaxed);
             error!(
                 target: "spycatcher.harness.record",
-                "stream cassette build failed interaction_id={} mode=record \
-                 protocol={} outcome=request_missing cassette={} error=request already taken",
+                concat!(
+                    "stream cassette build failed interaction_id={} mode=record ",
+                    "protocol={} outcome=request_missing cassette={} error=request already taken",
+                ),
                 self.interaction_id,
                 CHAT_COMPLETIONS_PROTOCOL_ID,
                 upstream_id(self.service.upstream.kind),
