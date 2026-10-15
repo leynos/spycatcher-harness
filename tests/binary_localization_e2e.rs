@@ -191,7 +191,7 @@ fn assert_truthy_diagnostic_help(output: &DiagnosticHelpOutput, control: &Diagno
     assert_plain_bypass_warning(output);
 }
 
-/// Checks successful stock help and keeps diagnostics out of its stdout stream.
+/// A stock-help control avoids pinning the full upstream help text.
 #[track_caller]
 fn assert_truthy_help_stdout(output: &DiagnosticHelpOutput, control: &DiagnosticHelpOutput) {
     assert_eq!(
@@ -226,7 +226,7 @@ fn assert_truthy_help_stdout(output: &DiagnosticHelpOutput, control: &Diagnostic
     );
 }
 
-/// Checks that stderr retains the bypass warning and switch name without ANSI escapes.
+/// A visible, uncoloured warning makes the diagnostic bypass observable in captured output.
 #[track_caller]
 fn assert_plain_bypass_warning(output: &DiagnosticHelpOutput) {
     assert!(
