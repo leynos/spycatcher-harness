@@ -135,3 +135,61 @@ pub(super) fn check_mode_order(
         }
     }
 }
+
+/// Checks a named response-ID slot against its expected value.
+/// For example, a slot containing `"resp_a"` compared with `"resp_a"` returns
+/// `Ok(())`; an unset slot or different value returns a diagnostic error.
+pub(super) fn assert_slot_string_eq(
+    slot: &rstest_bdd::Slot<String>,
+    slot_name: &str,
+    expected: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let value = slot
+        .with_ref(String::clone)
+        .ok_or_else(|| format!("{slot_name} must be set"))?;
+    if value != expected {
+        return Err(format!("{slot_name} should equal {expected:?}, got {value:?}").into());
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    //! Verify response-ID slot success and exact local failure diagnostics.
+
+    use rstest::rstest;
+    use rstest_bdd::Slot;
+
+    use super::assert_slot_string_eq;
+
+    /// Distinguishes equal, unset, and unequal slots without changing slot state.
+    #[rstest]
+    #[case::equal(Some("resp_a"), None)]
+    #[case::unset(None, Some("response_id must be set"))]
+    #[case::unequal(
+        Some("resp_b"),
+        Some("response_id should equal \"resp_a\", got \"resp_b\"")
+    )]
+    fn checks_response_id_slot_diagnostics(
+        #[case] value: Option<&str>,
+        #[case] expected_error: Option<&str>,
+    ) {
+        let slot = Slot::new();
+        if let Some(stored_value) = value {
+            slot.set(stored_value.to_owned());
+        }
+        let actual_error = assert_slot_string_eq(&slot, "response_id", "resp_a")
+            .err()
+            .map(|error| error.to_string());
+        assert_eq!(
+            actual_error.as_deref(),
+            expected_error,
+            "slot outcome and diagnostic should remain exact"
+        );
+        assert_eq!(
+            slot.with_ref(String::clone).as_deref(),
+            value,
+            "checking a slot should retain its value"
+        );
+    }
+}
