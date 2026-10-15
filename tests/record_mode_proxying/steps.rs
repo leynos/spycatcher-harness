@@ -374,7 +374,7 @@ pub(crate) fn first_upstream_request(
     Ok(request.clone())
 }
 
-/// Checks the proxy response status against the scenario expectation.
+/// A missing client response must remain distinguishable from the expected gateway error.
 #[expect(
     clippy::panic_in_result_fn,
     reason = "BDD assertion helper preserves step assertion behaviour"

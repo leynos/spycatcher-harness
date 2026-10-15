@@ -84,7 +84,7 @@ fn the_cassette_contains_one_recorded_stream_interaction(
     Ok(())
 }
 
-/// Checks that the recorded stream advertises an event-stream content type.
+/// A parsable event body alone cannot establish the recorded response's SSE content type.
 fn assert_stream_headers(headers: &[(String, String)]) {
     assert!(
         has_event_stream_content_type(headers),
@@ -98,7 +98,7 @@ fn has_event_stream_content_type(headers: &[(String, String)]) -> bool {
     })
 }
 
-/// Checks recorded stream boundaries, parsed usage, and timing metadata.
+/// An opening marker alone cannot establish stream completion, parsed usage, or timing.
 fn assert_stream_events(events: &[StreamEvent], has_timing: bool) {
     assert!(has_timing, "expected stream timing metadata");
     assert!(
