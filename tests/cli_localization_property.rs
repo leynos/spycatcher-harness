@@ -204,6 +204,14 @@ fn shrunk_duplicate_siblings_remain_valid() {
         vec!["option-a0", "option-aa"],
         "the siblings' different arguments must survive"
     );
+    assert_eq!(
+        spec.subcommands
+            .iter()
+            .map(|child| child.name.as_str())
+            .collect::<Vec<_>>(),
+        vec!["child-0-b-", "child-1-b-"],
+        "the shrunk siblings' raw command names must survive"
+    );
     command_from_spec(&spec).version("0.1.0").debug_assert();
 }
 
@@ -212,6 +220,7 @@ fn shrunk_duplicate_siblings_remain_valid() {
 #[case::auto_help(CommandIdentity { command_name: "help".to_owned(), option_name: "help".to_owned() })]
 #[case::auto_version(CommandIdentity { command_name: "version".to_owned(), option_name: "version".to_owned() })]
 fn duplicate_names_remain_valid_in_nested_trees(#[case] identity: CommandIdentity) {
+    let expected_shape = expected_duplicate_tree_shape(&identity);
     let spec = duplicate_sibling_tree(identity);
 
     assert_eq!(
@@ -229,9 +238,37 @@ fn duplicate_names_remain_valid_in_nested_trees(#[case] identity: CommandIdentit
         has_unique_sibling_names(&spec),
         "siblings must have unique names at every level"
     );
+    assert_eq!(
+        shape(&command_from_spec(&spec)),
+        expected_shape,
+        "raw names and options must survive at every level"
+    );
     command_from_spec(&spec).version("0.1.0").debug_assert();
 }
 
+/// Describe all seven expected nodes directly from their unnormalized identity.
+///
+/// A `help`/`help` identity expects root plus ordinal `child-0-help` and
+/// `child-1-help` names at both levels, with `option-help` on every node.
+fn expected_duplicate_tree_shape(identity: &CommandIdentity) -> Vec<(String, Vec<String>)> {
+    let names = [
+        "root".to_owned(),
+        format!("child-0-{}", identity.command_name),
+        format!("child-0-{}", identity.command_name),
+        format!("child-1-{}", identity.command_name),
+        format!("child-1-{}", identity.command_name),
+        format!("child-0-{}", identity.command_name),
+        format!("child-1-{}", identity.command_name),
+    ];
+    names
+        .into_iter()
+        .map(|name| (name, vec![format!("option-{}", identity.option_name)]))
+        .collect()
+}
+
+/// Build a Clap command with the specification's complete ordered subtree.
+///
+/// A node named `child-0-help` with `option-help` retains both names in Clap.
 fn command_from_spec(spec: &CommandSpec) -> Command {
     spec.subcommands.iter().fold(
         Command::new(spec.name.clone()).arg(Arg::new(spec.arg.clone()).long(spec.arg.clone())),
@@ -239,6 +276,9 @@ fn command_from_spec(spec: &CommandSpec) -> Command {
     )
 }
 
+/// Capture command names and argument IDs in depth-first order for comparison.
+///
+/// A root with one child yields root and child entries in that order.
 fn shape(command: &Command) -> Vec<(String, Vec<String>)> {
     let mut entries = vec![(
         command.get_name().to_owned(),
@@ -253,6 +293,9 @@ fn shape(command: &Command) -> Vec<(String, Vec<String>)> {
     entries
 }
 
+/// Render long help as UTF-8, preserving I/O or decoding failures as test errors.
+///
+/// Rendering two equivalent localized commands yields comparable help strings.
 fn command_render(command: &mut Command) -> Result<String, TestCaseError> {
     let mut rendered = Vec::new();
     command
@@ -272,14 +315,18 @@ proptest! {
     /// Keep equal random sibling names valid at two deliberately populated levels.
     #[test]
     fn equal_random_names_preserve_nested_siblings(name in identifier(), arg in identifier()) {
-        let spec = duplicate_sibling_tree(CommandIdentity { command_name: name, option_name: arg });
+        let identity = CommandIdentity { command_name: name, option_name: arg };
+        let expected_shape = expected_duplicate_tree_shape(&identity);
+        let spec = duplicate_sibling_tree(identity);
 
         prop_assert_eq!(spec.subcommands.len(), 2);
         prop_assert!(spec.subcommands.iter().all(|child| child.subcommands.len() == 2));
         prop_assert!(has_unique_sibling_names(&spec));
+        prop_assert_eq!(shape(&command_from_spec(&spec)), expected_shape);
         command_from_spec(&spec).version("0.1.0").debug_assert();
     }
 
+    /// Retain generated command and argument identities through localization.
     #[test]
     fn localize_preserves_generated_command_structure(spec in command_spec()) {
         let command = command_from_spec(&spec);
@@ -291,6 +338,7 @@ proptest! {
         prop_assert_eq!(shape(&localized), expected_shape);
     }
 
+    /// Keep bundled help text unchanged when localization is applied twice.
     #[test]
     fn localize_is_idempotent_for_bundled_cli_copy(spec in command_spec()) {
         let command = command_from_spec(&spec).version("0.1.0");
@@ -301,6 +349,7 @@ proptest! {
         prop_assert_eq!(command_render(&mut once)?, command_render(&mut twice)?);
     }
 
+    /// Preserve the complete offending option in localized unknown-argument errors.
     #[test]
     fn localized_unknown_argument_preserves_argument_text(
         unknown in identifier().prop_map(|raw| unknown_argument_name(&raw)),
