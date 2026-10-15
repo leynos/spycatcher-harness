@@ -15,7 +15,7 @@ use crate::cassette::{
     CassetteAppender, IgnorePathConfig, Interaction, RecordedRequest, RecordedResponse,
     filesystem::FilesystemCassetteStore,
 };
-use crate::config::{HarnessConfig, RedactionConfig, UpstreamConfig};
+use crate::config::{RedactionConfig, UpstreamConfig};
 use crate::http_exchange::{ObservedRequest, ProxyBody, ProxyResponse, redact_headers};
 use crate::protocol::{
     CHAT_COMPLETIONS_PROTOCOL_ID, is_streaming_chat_completions_request, upstream_id,
@@ -25,6 +25,7 @@ use crate::upstream::{
     ChatCompletionsRequest, ChatCompletionsUpstream, EnvProvider, ProcessEnvProvider,
     ReqwestUpstreamClient,
 };
+#[cfg(test)]
 use crate::{HarnessError, HarnessResult};
 
 /// Shared, lock-protected cassette store used by cloned record services.
@@ -33,45 +34,14 @@ type SharedCassetteStore = Arc<Mutex<FilesystemCassetteStore>>;
 #[path = "record_stream/mod.rs"]
 mod record_stream;
 
+#[path = "record_state.rs"]
+mod record_state;
+
 /// Shared record-mode application state for the inbound server.
 #[derive(Debug, Clone)]
 pub(crate) struct RecordAppState {
     /// Service that forwards requests and persists completed interactions.
     pub(crate) service: RecordService<ReqwestUpstreamClient, ProcessEnvProvider, SessionMetadata>,
-}
-
-impl RecordAppState {
-    /// Builds record-mode state from validated harness configuration.
-    ///
-    /// # Errors
-    ///
-    /// Returns a harness error when the cassette or upstream client cannot be
-    /// opened.
-    pub(crate) fn from_config(
-        cfg: &HarnessConfig,
-        store: FilesystemCassetteStore,
-    ) -> HarnessResult<Self> {
-        let upstream = cfg
-            .upstream
-            .clone()
-            .ok_or_else(|| HarnessError::InvalidConfig {
-                message: "upstream configuration is required for record mode".to_owned(),
-            })?;
-
-        Ok(Self {
-            service: RecordService {
-                cassette_store: Arc::new(Mutex::new(store)),
-                upstream_client: ReqwestUpstreamClient::new()?,
-                env_provider: ProcessEnvProvider,
-                metadata: SessionMetadata::new(upstream.kind),
-                upstream,
-                redaction: cfg.redaction.clone(),
-                recorded_count: Arc::new(AtomicU64::new(0)),
-                failure_count: Arc::new(AtomicU64::new(0)),
-                interaction_seq: Arc::new(AtomicU64::new(0)),
-            },
-        })
-    }
 }
 
 /// Small orchestration boundary for one record-mode exchange.
