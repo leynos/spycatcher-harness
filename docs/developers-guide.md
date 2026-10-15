@@ -328,6 +328,27 @@ loads `HarnessLocalizations` into it for library error rendering. Library
 modules must continue to accept injected loaders for localized rendering rather
 than constructing their own loaders or reading process locale state.
 
+### CLI property-test command trees
+
+`tests/cli_localization_property.rs` keeps raw command and option strings
+paired in `CommandIdentity` until `command_spec_node` constructs each node. The
+node builder assigns `option-{raw}` to each option and names children
+`child-{index}-{raw}`, with each index local to that parent's sibling list.
+
+Keep every generated child in the tree. Normalize at node construction rather
+than rejecting or filtering collisions, so Proptest shrinking retains the input
+material that exposed them. The independent expected-shape oracle and fixed
+cases check raw-derived names. The saved Proptest seed in
+`tests/cli_localization_property.proptest-regressions` records a minimized
+pre-normalization input with duplicate raw sibling names. Separately, fixed
+regression cases pass raw duplicate identities through `command_spec_node` and
+assert that both children survive with distinct normalized names.
+
+If the normalization boundary changes, update this subsection and the
+raw-derived expected-shape checks. Keep the collision case covered by fixed
+tests and retain its saved regression seed. This subsection records naming
+conventions for the private property-test fixtures.
+
 ## Internal abstractions
 
 The record-mode server is built around several narrow traits and helpers that
