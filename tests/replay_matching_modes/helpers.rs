@@ -85,8 +85,13 @@ fn assert_ids_order(
 ) -> Result<(), Box<dyn std::error::Error>> {
     if response_ids != expected {
         return Err(format!(
-            "{mode_name} mode should return IDs in recorded order, \
-             expected {expected:?}, got {response_ids:?}"
+            concat!(
+                "{mode_name} mode should return IDs in recorded order, ",
+                "expected {expected:?}, got {response_ids:?}",
+            ),
+            mode_name = mode_name,
+            expected = expected,
+            response_ids = response_ids,
         )
         .into());
     }

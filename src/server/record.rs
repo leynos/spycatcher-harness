@@ -184,11 +184,16 @@ where
             self.failure_count.fetch_add(1, Ordering::Relaxed);
             error!(
                 target: "spycatcher.harness.record",
-                "upstream request failed interaction_id={interaction_id} \
-                 mode=record protocol={protocol} upstream_latency_ms={upstream_latency} \
-                 outcome=failed cassette={cassette} error={err}",
+                concat!(
+                    "upstream request failed interaction_id={interaction_id} ",
+                    "mode=record protocol={protocol} upstream_latency_ms={upstream_latency} ",
+                    "outcome=failed cassette={cassette} error={err}",
+                ),
                 protocol = CHAT_COMPLETIONS_PROTOCOL_ID,
                 cassette = upstream_id(self.upstream.kind),
+                interaction_id = interaction_id,
+                upstream_latency = upstream_latency,
+                err = err,
             );
             RecordError::Internal
         })?;
@@ -205,14 +210,7 @@ where
             .await;
 
         if let Err(error) = record_result {
-            self.failure_count.fetch_add(1, Ordering::Relaxed);
-            error!(
-                target: "spycatcher.harness.record",
-                "recording failed interaction_id={interaction_id} mode=record \
-                 protocol={protocol} outcome=record_failed cassette={cassette} error={error:?}",
-                protocol = CHAT_COMPLETIONS_PROTOCOL_ID,
-                cassette = upstream_id(self.upstream.kind),
-            );
+            self.log_recording_failure(&interaction_id, &error);
         }
 
         Ok(ProxyResponse {
@@ -220,6 +218,23 @@ where
             headers: upstream_response.proxy_headers,
             body: ProxyBody::Buffered(upstream_response.body),
         })
+    }
+
+    /// Keeps recording failures from replacing a successful upstream response.
+    /// For example, a metadata error is counted and logged while the upstream 200 is returned.
+    fn log_recording_failure(&self, interaction_id: &str, error: &RecordError) {
+        self.failure_count.fetch_add(1, Ordering::Relaxed);
+        error!(
+            target: "spycatcher.harness.record",
+            concat!(
+                "recording failed interaction_id={interaction_id} mode=record ",
+                "protocol={protocol} outcome=record_failed cassette={cassette} error={error:?}",
+            ),
+            protocol = CHAT_COMPLETIONS_PROTOCOL_ID,
+            cassette = upstream_id(self.upstream.kind),
+            interaction_id = interaction_id,
+            error = error,
+        );
     }
 
     /// Builds and persists a non-stream response, logging the outcome.
@@ -235,12 +250,16 @@ where
                 self.append_interaction(interaction).await.map_err(|e| {
                     error!(
                         target: "spycatcher.harness.record",
-                        "cassette write failed interaction_id={interaction_id} \
-                         mode=record protocol={protocol} upstream_latency_ms={upstream_latency} \
-                         outcome=write_failed cassette={cassette} error={e:?}",
+                        concat!(
+                            "cassette write failed interaction_id={interaction_id} ",
+                            "mode=record protocol={protocol} upstream_latency_ms={upstream_latency} ",
+                            "outcome=write_failed cassette={cassette} error={e:?}",
+                        ),
                         protocol = CHAT_COMPLETIONS_PROTOCOL_ID,
                         upstream_latency = timing.upstream_latency_ms,
                         cassette = upstream_id(self.upstream.kind),
+                        interaction_id = interaction_id,
+                        e = e,
                     );
                     e
                 })?;
@@ -248,25 +267,34 @@ where
                 let (recorded_count, failure_count) = self.counters();
                 info!(
                     target: "spycatcher.harness.record",
-                    "interaction recorded interaction_id={interaction_id} \
-                     mode=record protocol={protocol} upstream_latency_ms={upstream_latency} \
-                     outcome=recorded cassette={cassette} recorded_count={recorded_count} \
-                     failure_count={failure_count}",
+                    concat!(
+                        "interaction recorded interaction_id={interaction_id} ",
+                        "mode=record protocol={protocol} upstream_latency_ms={upstream_latency} ",
+                        "outcome=recorded cassette={cassette} recorded_count={recorded_count} ",
+                        "failure_count={failure_count}",
+                    ),
                     protocol = CHAT_COMPLETIONS_PROTOCOL_ID,
                     upstream_latency = timing.upstream_latency_ms,
                     cassette = upstream_id(self.upstream.kind),
+                    interaction_id = interaction_id,
+                    recorded_count = recorded_count,
+                    failure_count = failure_count,
                 );
                 Ok(())
             }
             Err(e) => {
                 error!(
                     target: "spycatcher.harness.record",
-                    "cassette build failed interaction_id={interaction_id} \
-                     mode=record protocol={protocol} upstream_latency_ms={upstream_latency} \
-                     outcome=build_failed cassette={cassette} error={e:?}",
+                    concat!(
+                        "cassette build failed interaction_id={interaction_id} ",
+                        "mode=record protocol={protocol} upstream_latency_ms={upstream_latency} ",
+                        "outcome=build_failed cassette={cassette} error={e:?}",
+                    ),
                     protocol = CHAT_COMPLETIONS_PROTOCOL_ID,
                     upstream_latency = timing.upstream_latency_ms,
                     cassette = upstream_id(self.upstream.kind),
+                    interaction_id = interaction_id,
+                    e = e,
                 );
                 Err(e)
             }
