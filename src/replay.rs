@@ -110,10 +110,14 @@ impl ReplayService {
         record_replay_rejection(&labels, outcome);
         warn!(
             target: "spycatcher.harness.replay",
-            "replay request rejected mode=replay protocol={protocol} outcome={outcome} \
-             cassette={cassette} path={path}",
+            concat!(
+                "replay request rejected mode=replay protocol={protocol} outcome={outcome} ",
+                "cassette={cassette} path={path}",
+            ),
             protocol = self.context.protocol,
             cassette = self.context.cassette,
+            outcome = outcome,
+            path = path,
         );
     }
 
@@ -176,12 +180,18 @@ impl ReplayService {
         let mismatch_count = self.mismatch_count.load(Ordering::Relaxed);
         info!(
             target: "spycatcher.harness.replay",
-            "interaction replayed interaction_id={interaction_id} mode=replay \
-             protocol={protocol} outcome=matched cassette={cassette} \
-             observed_hash={observed_hash} matched_count={matched_count} \
-             mismatch_count={mismatch_count}",
+            concat!(
+                "interaction replayed interaction_id={interaction_id} mode=replay ",
+                "protocol={protocol} outcome=matched cassette={cassette} ",
+                "observed_hash={observed_hash} matched_count={matched_count} ",
+                "mismatch_count={mismatch_count}",
+            ),
             protocol = self.context.protocol,
             cassette = self.context.cassette,
+            interaction_id = interaction_id,
+            observed_hash = observed_hash,
+            matched_count = matched_count,
+            mismatch_count = mismatch_count,
         );
     }
 
@@ -196,16 +206,20 @@ impl ReplayService {
         let matched_count = self.matched_count.load(Ordering::Relaxed);
         warn!(
             target: "spycatcher.harness.replay",
-            "replay request mismatched interaction_id={interaction_id} mode=replay \
-             protocol={protocol} outcome=mismatch cassette={cassette} \
-             expected_hash={expected_hash} observed_hash={observed_hash} \
-             matched_count={matched_count} mismatch_count={mismatch_count} reason={reason}",
+            concat!(
+                "replay request mismatched interaction_id={interaction_id} mode=replay ",
+                "protocol={protocol} outcome=mismatch cassette={cassette} ",
+                "expected_hash={expected_hash} observed_hash={observed_hash} ",
+                "matched_count={matched_count} mismatch_count={mismatch_count} reason={reason}",
+            ),
             interaction_id = diagnostic.position.metric_id(),
             protocol = self.context.protocol,
             cassette = self.context.cassette,
             expected_hash = diagnostic.expected_hash,
             observed_hash = diagnostic.observed_hash,
             reason = diagnostic.reason_code(),
+            matched_count = matched_count,
+            mismatch_count = mismatch_count,
         );
     }
 
@@ -238,10 +252,13 @@ impl ReplayService {
             } => {
                 debug!(
                     target: "spycatcher.harness.replay",
-                    "building replay response from recorded interaction \
-                     is_stream_request={is_stream_request} response_kind=stream \
-                     event_count={}",
+                    concat!(
+                        "building replay response from recorded interaction ",
+                        "is_stream_request={is_stream_request} response_kind=stream ",
+                        "event_count={}",
+                    ),
                     events.len(),
+                    is_stream_request = is_stream_request,
                 );
                 Ok(ReplayResponse {
                     status: *status,
@@ -270,8 +287,11 @@ impl ReplayService {
 
         debug!(
             target: "spycatcher.harness.replay",
-            "building replay response from recorded interaction \
-             is_stream_request={is_stream_request} response_kind=non_stream",
+            concat!(
+                "building replay response from recorded interaction ",
+                "is_stream_request={is_stream_request} response_kind=non_stream",
+            ),
+            is_stream_request = is_stream_request,
         );
         Ok(ReplayResponse {
             status: parts.status,

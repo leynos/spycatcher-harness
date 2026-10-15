@@ -364,9 +364,13 @@ pub(crate) fn assert_upstream_bearer_token(
         .map(|(name, _)| name.as_str())
         .collect::<Vec<_>>();
     Err(std::io::Error::other(format!(
-        "expected upstream Authorization Bearer token to match configured API key; \
-         authorization_present={has_authorization} header_count={} header_names={header_names:?}",
-        request.headers.len()
+        concat!(
+            "expected upstream Authorization Bearer token to match configured API key; ",
+            "authorization_present={has_authorization} header_count={} header_names={header_names:?}",
+        ),
+        request.headers.len(),
+        has_authorization = has_authorization,
+        header_names = header_names,
     ))
     .into())
 }

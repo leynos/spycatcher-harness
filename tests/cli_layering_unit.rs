@@ -272,9 +272,12 @@ fn localization_overrides_work_for_each_subcommand(
     #[case] expected_mode: config::Mode,
 ) {
     let config = format!(
-        "[cmds.{subcommand}.localization]\n\
-         locale = \"en-GB\"\n\
-         fallback_locale = \"en-US\"\n"
+        concat!(
+            "[cmds.{subcommand}.localization]\n",
+            "locale = \"en-GB\"\n",
+            "fallback_locale = \"en-US\"\n",
+        ),
+        subcommand = subcommand,
     );
     let argv = ["spycatcher-harness", subcommand];
     let env_locale = format!(
