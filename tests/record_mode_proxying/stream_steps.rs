@@ -84,8 +84,12 @@ fn the_cassette_contains_one_recorded_stream_interaction(
     Ok(())
 }
 
+/// A parsable event body alone cannot establish the recorded response's SSE content type.
 fn assert_stream_headers(headers: &[(String, String)]) {
-    assert!(has_event_stream_content_type(headers));
+    assert!(
+        has_event_stream_content_type(headers),
+        "recorded stream must advertise event-stream content"
+    );
 }
 
 fn has_event_stream_content_type(headers: &[(String, String)]) -> bool {
@@ -94,16 +98,23 @@ fn has_event_stream_content_type(headers: &[(String, String)]) -> bool {
     })
 }
 
+/// An opening marker alone cannot establish stream completion, parsed usage, or timing.
 fn assert_stream_events(events: &[StreamEvent], has_timing: bool) {
     assert!(has_timing, "expected stream timing metadata");
-    assert!(matches!(
-        events.first(),
-        Some(StreamEvent::Comment { text }) if text == "OPENROUTER PROCESSING"
-    ));
-    assert!(matches!(
-        events.last(),
-        Some(StreamEvent::Data { raw, parsed_json: None }) if raw == "[DONE]"
-    ));
+    assert!(
+        matches!(
+            events.first(),
+            Some(StreamEvent::Comment { text }) if text == "OPENROUTER PROCESSING"
+        ),
+        "first recorded event must retain the processing comment"
+    );
+    assert!(
+        matches!(
+            events.last(),
+            Some(StreamEvent::Data { raw, parsed_json: None }) if raw == "[DONE]"
+        ),
+        "final recorded event must retain [DONE]"
+    );
     assert!(
         events.iter().any(|event| matches!(
             event,

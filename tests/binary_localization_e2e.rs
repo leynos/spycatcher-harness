@@ -187,6 +187,13 @@ fn binary_diagnostic_invalid_both_warns_and_preserves_default_help() -> eyre::Re
 /// Checks stock help and visible bypass diagnostics after successful subprocess setup.
 #[track_caller]
 fn assert_truthy_diagnostic_help(output: &DiagnosticHelpOutput, control: &DiagnosticHelpOutput) {
+    assert_truthy_help_stdout(output, control);
+    assert_plain_bypass_warning(output);
+}
+
+/// A stock-help control avoids pinning the full upstream help text.
+#[track_caller]
+fn assert_truthy_help_stdout(output: &DiagnosticHelpOutput, control: &DiagnosticHelpOutput) {
     assert_eq!(
         output.status.code(),
         Some(0),
@@ -217,6 +224,11 @@ fn assert_truthy_diagnostic_help(output: &DiagnosticHelpOutput, control: &Diagno
         !output.stdout.contains("CLI localization disabled"),
         "warnings must not contaminate help stdout",
     );
+}
+
+/// A visible, uncoloured warning makes the diagnostic bypass observable in captured output.
+#[track_caller]
+fn assert_plain_bypass_warning(output: &DiagnosticHelpOutput) {
     assert!(
         output
             .stderr
