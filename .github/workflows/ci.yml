@@ -30,7 +30,7 @@ jobs:
         if: steps.cache-merman-cli.outputs.cache-hit != 'true'
         run: cargo +1.95.0 install merman-cli --version "=${MERMAN_CLI_VERSION}" --locked
       - name: Setup Rust
-        uses: leynos/shared-actions/.github/actions/setup-rust@81374b6f183e59f0570ad36217ded90d3240fda6
+        uses: leynos/shared-actions/.github/actions/setup-rust@5ac271baf94615e9a876ce1b77a4b266dd81f201
       - name: Setup uv
         uses: astral-sh/setup-uv@c97f06e356bcca1b426f396ef93ec35ce149ce7b
         with:
@@ -42,7 +42,7 @@ jobs:
       - name: Install mdtablefix
         # `make check-fmt` runs `mdtablefix --check --git`; 0.6.0 is the
         # first release with `--check` and `--git`.
-        uses: leynos/shared-actions/.github/actions/install-mdtablefix@81374b6f183e59f0570ad36217ded90d3240fda6
+        uses: leynos/shared-actions/.github/actions/install-mdtablefix@5ac271baf94615e9a876ce1b77a4b266dd81f201
         with:
           version: "0.6.1"
 
@@ -61,7 +61,7 @@ jobs:
       - name: Validate Mermaid diagrams
         run: make nixie
       - name: Install Whitaker
-        uses: leynos/shared-actions/.github/actions/install-whitaker@81374b6f183e59f0570ad36217ded90d3240fda6
+        uses: leynos/shared-actions/.github/actions/install-whitaker@5ac271baf94615e9a876ce1b77a4b266dd81f201
       - name: Install mold linker
         # The Makefile restates the build standard's `mold` flag for its
         # gate targets, so the linker must be present before they build.
@@ -71,7 +71,7 @@ jobs:
       - name: Lint
         run: make lint
       - name: Test and Measure Coverage
-        uses: leynos/shared-actions/.github/actions/generate-coverage@81374b6f183e59f0570ad36217ded90d3240fda6
+        uses: leynos/shared-actions/.github/actions/generate-coverage@5ac271baf94615e9a876ce1b77a4b266dd81f201
         with:
           output-path: lcov.info
           format: lcov
