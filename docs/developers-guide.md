@@ -258,8 +258,8 @@ reached through `../` paths from `src/cli/mod.rs`.
 `try_parse_localized_from_iter` signatures. It delegates command metadata to
 OrthoConfig 0.9's `LocalizeCmd::with_base(...).localize_self` and sends parsing
 through `parse_localized_command`, which also localizes `FromArgMatches`
-failures. A small `Localizer` adapter preserves the established `cli-*` IDs,
-the `long-about` and `merge-help` suffixes, and the `binary` and `version`
+failures. A small `Localizer` adapter preserves the established `cli-*` IDs, the
+`long-about` and `merge-help` suffixes, and the `binary` and `version`
 placeholders. This compatibility logic belongs to the CLI adapter; the merged
 Clap/Serde DTOs are still translated into harness-domain configuration only at
 the existing boundary.
