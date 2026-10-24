@@ -14,6 +14,11 @@
 # is therefore repeated in each source, and the Makefile restates them where it
 # assigns `RUSTFLAGS` for its development targets.
 
+
+[profile.dev]
+incremental = false
+debug = 0
+
 [build]
 rustflags = ["-Zthreads=8"]
 
