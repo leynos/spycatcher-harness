@@ -5,7 +5,7 @@ This ExecPlan is a living document. Keep `Constraints`, `Tolerances`, `Risks`,
 `Outcomes & retrospective`, `Conformance basis`, and `Verification plan`
 current.
 
-Status: COMPLETE
+Status: IN PROGRESS
 
 ## Purpose / big picture
 
@@ -283,10 +283,11 @@ observable.
   commit. The exact test passed in 20 sequential local runs using the CI
   coverage target directory. CI attempt 2 passed, including the coverage
   ratchet at 89.04% against the 89.0% baseline; CodeScene Code Health passed.
-  CodeScene Code Coverage remains pending because the pull-request coverage
-  action explicitly neither publishes coverage nor contacts CodeScene; `main`
-  owns that check. Preserve this as an out-of-scope status, not a failed
-  migration gate.
+  At this observation, CodeScene Code Coverage had not reported because the
+  pull-request coverage action neither publishes coverage nor contacts
+  CodeScene; `main` owns that check. The status later became `TIMED_OUT`, which
+  is out of scope for the migration but is not a pass or a failed migration
+  gate.
 - [x] (2026-10-14) Close the follow-up acceptance-evidence gaps: exercise help
   and parse outcomes through the binary, prove startup failures leave record
   resources untouched (including unreadable discovery before a valid later
@@ -314,6 +315,23 @@ observable.
   [38501854910](https://github.com/leynos/spycatcher-harness/actions/runs/38501854910)
   passed on exact head `731fa0fc2294f18050cf4ca081aa4717a18b5590`, including
   the Rust 1.89 check, lint, tests, and coverage ratchet.
+- [ ] (2026-10-24) Rebase the acceptance follow-up onto protected `main` at
+  `e1c15ed48f11d6e04190bdb89ab1f0bb0a34b180`. The published PR head remains
+  `bd775493674149b42713a8747066f26da6bdfd97`; its hosted CI and CodeRabbit
+  acceptance response are evidence for that earlier base/head only. On the
+  rebased local candidate, `make check-fmt` passed after formatting, but
+  `make lint` and `make test` could not complete because the build-limits
+  supervisor refused compiler launches (`launch-failed`). An earlier lint
+  attempt also hit missing target artefacts (`ENOENT`). `build-limits-status`
+  later reported healthy admission with four slots held and a large host-wide
+  queue; a preceding status query timed out. No admission bypass was used. On
+  candidate `57867b2`, `make spelling`, `make markdownlint`, `make nixie`,
+  `make typecheck`, and the locked Rust 1.89.0 all-targets/all-features check
+  passed. `make test-workflow-contracts` and `make test-make-all` also passed
+  sequentially. The lint and test attempts were not repeated after their
+  infrastructure refusals. Local coverage remains unrun; hosted validation,
+  current-head review, and merge are still outstanding. Keep this plan in
+  progress until the published head reaches review equilibrium and is merged.
 
 ## Surprises & discoveries
 
@@ -445,11 +463,12 @@ observable.
   `origin/main`; 20 sequential local runs of the exact test passed; hosted CI
   attempt 2 passed the full coverage job. Impact: record the runner transient
   without broadening this migration into an unrelated fixture rewrite.
-- Observation: CodeScene Code Coverage remains pending on the pull request.
-  Evidence: `.github/workflows/ci.yml` says the PR coverage action neither
-  publishes coverage nor contacts CodeScene; `main` owns that check. Impact:
-  report the hosted ratchet result independently and do not describe the
-  pending CodeScene status as a pass.
+- Observation (2026-10-14): CodeScene Code Coverage had not reported on the
+  pull request. The latest status recorded on 2026-10-23 was `TIMED_OUT` for
+  published head `bd77549`. Evidence: `.github/workflows/ci.yml` says the PR
+  coverage action neither publishes coverage nor contacts CodeScene; `main`
+  owns that check. Impact: report the hosted ratchet result independently and
+  do not describe the timed-out CodeScene status as a pass.
 
 ## Decision log
 
@@ -495,11 +514,12 @@ observable.
 
 ## Outcomes & retrospective
 
-The migration implementation, validation, and draft PR publication are
-complete. The branch is rebased onto `origin/main` at `d5fc21f`, with seven
-issue commits retained and the generated-only spelling commit superseded by
-main's generator. The merged lockfile, deterministic gates, review disposition,
-force-push, and PR description are recorded below.
+The migration implementation and earlier draft PR publication are complete;
+final delivery is in progress after `main` advanced. The original publication
+was rebased onto `origin/main` at `d5fc21f`, with seven issue commits retained
+and the generated-only spelling commit superseded by main's generator. The
+merged lockfile, earlier deterministic gates, review disposition, force-push,
+and PR description are recorded below.
 
 The OrthoConfig 0.9.0 dependency and Rust 1.89.0 floor are in place, and the
 localized parser delegates to the tagged `LocalizeCmd` and
@@ -518,11 +538,21 @@ against the remote head. Draft pull request 147 remains open against `main`,
 with `(#123)` in its title, `Closes #123` in its description, and the Lody
 session in the terminal References section. Hosted CI attempt 2 passed on
 `0d6da52`, including the coverage ratchet at 89.04% against the 89.0% baseline;
-CodeScene Code Health passed. CodeScene Code Coverage remains pending by design
-because the pull-request workflow does not publish the report or contact
-CodeScene; the main-branch workflow owns that check. The first hosted attempt's
+CodeScene Code Health passed. CodeScene Code Coverage later reported
+`TIMED_OUT` on the PR. The pull-request workflow does not publish the report or
+contact CodeScene, so the timeout is neither a pass nor evidence of a migration
+failure; the main-branch workflow owns that check. The first hosted attempt's
 `ETXTBSY` in an unchanged main-owned test was not reproduced in 20 local runs,
 and the hosted retry passed.
+
+The current local candidate is rebased onto protected `main` at `e1c15ed`. On
+`57867b2`, formatting, spelling, Markdown, Mermaid, typecheck, workflow
+contract, Make sequencing, and the locked Rust 1.89.0 check passed. The latter
+two Rust checks completed after waiting in the healthy shared compiler queue.
+Local lint and test attempts could not launch compiler jobs, and no retry was
+made after those infrastructure failures. The candidate remains unpublished;
+current-head hosted CI, CodeScene, and formal CodeRabbit results are not yet
+available. Merge only after those checks and the review disposition converge.
 
 The test-isolation slice is implemented. Initial full gates exposed Clippy,
 plan-spelling, and ambient filesystem-write issues; each was corrected. A
@@ -868,6 +898,6 @@ check is not a completed check.
   and 9 cases). All local gates passed, including 449 nextest cases, 27
   doctests, and the locked Rust 1.89.0 check. Hosted CI run 38501854910 passed
   on the exact pushed SHA, including `Test and Measure Coverage`. CodeScene
-  Code Health passed; CodeScene Code Coverage remains outside the pull-request
-  workflow by design. Draft PR 147 remains open with the required issue and
-  terminal References fields.
+  Code Health passed; CodeScene Code Coverage reported `TIMED_OUT` on published
+  head `bd77549`. The pull-request workflow does not publish that report. Draft
+  PR 147 remains open with the required issue and terminal References fields.
