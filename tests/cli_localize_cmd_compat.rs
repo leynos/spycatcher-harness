@@ -15,6 +15,7 @@ fn command_adapter_preserves_catalogue_ids_and_formatting_arguments() {
             "cli-about = About { $binary } { $version }\n",
             "cli-long-about = Long { $binary } { $version }\n",
             "cli-version = Version { $binary } { $version }\n",
+            "cli-usage = Localized usage { $binary } <COMMAND>\n",
             "cli-merge-help = Merge { $binary } { $version }\n",
             "cli-replay-about = Replay { $binary }\n",
         )])
@@ -51,6 +52,13 @@ fn command_adapter_preserves_catalogue_ids_and_formatting_arguments() {
             "Merge \u{2068}spycatcher-harness\u{2069} \u{2068}0.1.0\u{2069}"
         ))
     );
+    let usage = localized.clone().render_usage().to_string();
+    assert!(
+        usage.contains("Localized usage")
+            && usage.contains("spycatcher-harness")
+            && usage.contains("<COMMAND>"),
+        "localized usage should be rendered by the adapter: {usage}"
+    );
     let replay = localized
         .get_subcommands()
         .find(|subcommand| subcommand.get_name() == "replay")
@@ -59,6 +67,24 @@ fn command_adapter_preserves_catalogue_ids_and_formatting_arguments() {
         replay.get_about().map(ToString::to_string),
         Some(String::from("Replay \u{2068}replay\u{2069}"))
     );
+}
+
+#[rstest]
+fn compatibility_localizer_forwards_binary_without_missing_version() {
+    let localizer = MissingVersionArgumentProbe::default();
+    let localized = Command::new("spycatcher-harness")
+        .about("Stock about")
+        .localize(&localizer);
+
+    assert_eq!(
+        localized.get_about().map(ToString::to_string),
+        Some(String::from("Localized about"))
+    );
+    let about_arguments = *localizer
+        .about_arguments
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    assert_eq!(about_arguments, Some((true, false)));
 }
 
 #[rstest]
@@ -104,6 +130,27 @@ enum ConversionCommand {
 #[derive(Default)]
 struct ParseErrorProbe {
     lookups: Mutex<Vec<String>>,
+}
+
+#[derive(Default)]
+struct MissingVersionArgumentProbe {
+    about_arguments: Mutex<Option<(bool, bool)>>,
+}
+
+impl Localizer for MissingVersionArgumentProbe {
+    fn lookup(&self, id: &str, args: Option<&LocalizationArgs<'_>>) -> Option<String> {
+        if id != "cli-about" {
+            return None;
+        }
+
+        let has_binary = args.is_some_and(|arguments| arguments.contains_key("binary"));
+        let has_version = args.is_some_and(|arguments| arguments.contains_key("version"));
+        *self
+            .about_arguments
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = Some((has_binary, has_version));
+        Some(String::from("Localized about"))
+    }
 }
 
 impl Localizer for ParseErrorProbe {

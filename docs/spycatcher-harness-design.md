@@ -1018,6 +1018,9 @@ segments, for example `SPYCATCHER_HARNESS_CMDS_REPLAY_LOCALIZATION__LOCALE` and
   - Full record→replay cycle with a stub upstream server (no real OpenRouter
     calls).
   - Mismatch diagnostics content and exit codes.
+  - CLI configuration and locale probes run in child processes with controlled
+    files and environment values, and return serialized snapshots without
+    changing the parent test process environment.
 - Contract tests:
   - Ensure response shapes remain OpenAI-compatible for Chat Completions.
     [^4]
@@ -1243,13 +1246,15 @@ preparation, record-stream state, and process output. Parent access is limited
 to `pub(super)` helpers, with function bodies and public APIs preserved.
 
 Extract HTTP and replay-stream tests into private test-only siblings, retain
-replay tests under `src/replay_tests/mod.rs`, and keep CLI test support nested
-under `tests/cli_layering/`. The integration tests retain their original target
-and case names, and the binary output child remains below the existing binary's
-subdirectory. Configuration precedence, cursor/consumption semantics, cassette
-bytes, stream append boundaries, and output flushing remain unchanged. This
-structural decision does not mark further Rust baseline enforcement or roadmap
-work complete; earlier implementation decisions retain their historical paths.
+replay tests under `src/replay_tests/mod.rs`, and keep focused CLI-layering
+cases under `tests/cli_layering_unit/`. The shared child-process and snapshot
+adapters live under `tests/support/`. The integration tests retain their
+original target and case names, and the binary output child remains below the
+existing binary's subdirectory. Configuration precedence, cursor/consumption
+semantics, cassette bytes, stream append boundaries, and output flushing remain
+unchanged. This structural decision does not mark further Rust baseline
+enforcement or roadmap work complete; earlier implementation decisions retain
+their historical paths.
 
 2026-10-14 addendum: The chat-completions replay integration-test target keeps
 its `pub(super)` record/replay builders and cassette-path decomposition in the

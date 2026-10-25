@@ -25,6 +25,10 @@ fn binary_uses_locale_flags_for_startup_error_rendering() {
     let temp_dir = tempfile::tempdir().expect("temporary directory should be created");
     let output = Command::new(env!("CARGO_BIN_EXE_spycatcher-harness"))
         .env_remove(DISABLE_LOCALIZATION_ENV)
+        .env_remove("SPYCATCHER_HARNESS_CMDS_RECORD_UPSTREAM__BASE_URL")
+        .env("HOME", temp_dir.path())
+        .env("XDG_CONFIG_HOME", temp_dir.path())
+        .env("XDG_CONFIG_DIRS", temp_dir.path())
         .current_dir(temp_dir.path())
         .args(["record", "--locale", "en-GB", "--fallback-locale", "en-US"])
         .output()

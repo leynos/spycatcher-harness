@@ -85,14 +85,44 @@ fn binary_startup_failures_leave_record_resources_untouched(
 
 #[cfg(unix)]
 #[test]
+#[tracing_test::traced_test]
 fn binary_unreadable_discovered_file_aborts_before_valid_xdg_candidate() -> TestResult<()> {
-    assert_record_startup_failure(&StartupFailureScenario {
+    let temp_dir = tempfile::tempdir()?;
+    let scenario = StartupFailureScenario {
         config: Some("[cmds.record]\ncassette_name = \"unreadable\"\n"),
         extra_args: &[],
         error_fragment: "Permission denied",
         has_valid_xdg_candidate: true,
         unreadable_config: true,
-    })
+    };
+    write_startup_config_candidates(&temp_dir, &scenario)?;
+    if primary_candidate_remains_readable(&temp_dir)? {
+        tracing::warn!(
+            test = "binary_unreadable_discovered_file_aborts_before_valid_xdg_candidate",
+            reason = "the test process can read a mode-000 file",
+            "skipping unreadable-config assertion"
+        );
+        if !logs_contain("skipping unreadable-config assertion") {
+            return Err(std::io::Error::other(
+                "the privileged-runner skip should be observable",
+            ));
+        }
+        return Ok(());
+    }
+
+    let resources = RecordStartupResources::new()?;
+    let output = run_record_startup(&temp_dir, &scenario, &resources)?;
+    assert_startup_failure(&output, &temp_dir, &scenario, &resources)
+}
+
+#[cfg(unix)]
+fn primary_candidate_remains_readable(temp_dir: &TempDir) -> TestResult<bool> {
+    let directory = Dir::open_ambient_dir(temp_dir.path(), ambient_authority())?;
+    match directory.open(".spycatcher_harness.toml") {
+        Ok(_) => Ok(true),
+        Err(error) if error.kind() == std::io::ErrorKind::PermissionDenied => Ok(false),
+        Err(error) => Err(error),
+    }
 }
 
 fn assert_record_startup_failure(scenario: &StartupFailureScenario) -> TestResult<()> {

@@ -12,10 +12,13 @@ fn environment_overrides_file_scalars_without_cli_flags(
     #[case] expected_mode: ModeSnapshot,
 ) {
     let config = format!(
-        "[cmds.{subcommand}]\n\
-         listen = \"127.0.0.1:8787\"\n\
-         cassette_dir = \"from_file\"\n\
-         cassette_name = \"from_file\"\n"
+        concat!(
+            "[cmds.{}]\n",
+            "listen = \"127.0.0.1:8787\"\n",
+            "cassette_dir = \"from_file\"\n",
+            "cassette_name = \"from_file\"\n",
+        ),
+        subcommand,
     );
     let env_prefix = format!("SPYCATCHER_HARNESS_CMDS_{}", subcommand.to_uppercase());
     let listen_env = format!("{env_prefix}_LISTEN");

@@ -326,10 +326,20 @@ Test-module paths follow the source file that declares them:
   the extracted private `#[cfg(test)]` suites, wired by their parent modules.
 - `src/replay_tests/mod.rs` retains replay tests and its `concurrent_stream`
   child.
-- `tests/cli_layering_unit.rs` retains every property and parameterized test.
-  Its nested `tests/cli_layering/support.rs` contains the Jail loader, fixture
-  constants and locale strategies, with only parent-used items exposed through
-  `pub(super)`. This helper is not a separate Cargo integration-test crate.
+- `tests/cli_layering_unit.rs` is the Cargo integration-test target; its
+  focused cases live in `tests/cli_layering_unit/scalar_layering.rs` and
+  `tests/cli_layering_unit/configuration_shape.rs`.
+- Environment-backed configuration and locale tests use
+  `tests/support/cli_config_snapshot.rs` and
+  `tests/support/isolated_cli_process.rs`. The probe clears inherited
+  environment values, supplies controlled configuration files and variables in
+  a temporary directory, and returns a serialized snapshot. It redacts supplied
+  secret values and bounds child stderr, so tests do not mutate the parent test
+  process's environment.
+- `tests/cli_locale_properties.rs` generates locale and precedence inputs.
+  `tests/cli_localization_unit/locale_scenarios.rs` covers generated Fluent
+  resource cases, while `tests/cli_localization_property.rs` retains
+  command-tree properties.
 - `tests/chat_completions_replay/harness_config.rs` is a private test-support
   module. Its `pub(super)` record/replay configuration builders are re-exported
   by `steps.rs` for chat replay and `stream_steps.rs`. The private

@@ -73,3 +73,5 @@ contract.
 
 Record-mode proxying introduced pre-1.0 cassette and header-contract changes.
 See [MIGRATION-0.1.0.md](MIGRATION-0.1.0.md) before updating tests or fixtures.
+See [MIGRATION-0.2.0.md](MIGRATION-0.2.0.md) before upgrading the compiler or
+relying on configuration-candidate fallback.

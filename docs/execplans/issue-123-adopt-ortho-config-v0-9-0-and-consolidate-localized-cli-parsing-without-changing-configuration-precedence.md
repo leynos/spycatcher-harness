@@ -401,6 +401,25 @@ weakening the explicit acceptance coverage.
   confirms the original plan-conformance gaps are resolved and requests this
   publication status synchronization. See
   [the follow-up](https://github.com/leynos/spycatcher-harness/pull/147#issuecomment-6391954144).
+- [ ] Resolve the current formal review on published head `8d7deba`. CodeRabbit
+  review `5640997849` requests one error and four warnings; four inline threads
+  remain open. The working tree adds the adapter usage and missing-version
+  compatibility checks, corrects stale test-architecture documentation, and
+  adds the 0.2.0 migration guide. It addresses the scalar-fixture formatting
+  request and isolates the binary diagnostic environment. The mode-000 test now
+  probes the actual file and reports a privileged-runner skip through tracing.
+  It retains the `const` qualifier required by the denied
+  `missing_const_for_fn` lint. Fresh validation, candidate publication, review
+  reconciliation, approval, and merge remain.
+- [x] (2026-10-25) Run all ten deterministic gates on the reviewed working
+  tree: format, lint, typecheck, 490 nextest tests, 27 doctests (4 ignored),
+  spelling, Markdown, Mermaid, workflow contracts, Make sequencing, and the
+  locked Rust 1.89.0 workspace check all passed. Focused CodeScene reviews
+  scored 10.0 for 16 of 17 changed Rust files. The BDD test file scored 9.38
+  for duplication across five existing step functions that have no changed
+  lines versus `origin/main`; the PR changes the loader step and test isolation
+  there. No unrelated refactor was made. The completed candidate passed the
+  full sequential gate run before this plan update.
 - [ ] Mark the PR ready, observe formal review, reconcile all findings, secure
   approval, and guarded-squash merge at equilibrium.
 
@@ -427,6 +446,45 @@ weakening the explicit acceptance coverage.
   environment provider, then overlays sanitized CLI values. Impact: retain this
   API and test its observed contracts; do not invent an environment injection
   parameter.
+- Observation (2026-10-25): the current CodeRabbit review on `8d7deba`
+  identified missing rendered-usage and no-version adapter coverage, a `const`
+  qualifier, missing migration/developer documentation, and two binary-test
+  isolation concerns. Evidence: formal review `5640997849` and its four
+  unresolved inline threads. The generic 80% docstring warning counts private
+  and test functions as well as public APIs; the two changed public
+  localization APIs already have Rustdoc. Removing the qualifier fails the
+  required lint because `Cargo.toml` denies `missing_const_for_fn`; the current
+  lint log shows the diagnostic. Impact: retain and document this lint-required
+  qualifier, keep the test repairs, document the migration and child-process
+  architecture, and present denominator and public-API evidence for reviewer
+  reconciliation instead of adding filler comments to private helpers.
+- Observation (2026-10-25): the lint run on the dirty remediation tree failed
+  Clippy on `eprintln!` in the privileged mode-000 skip path. The source now
+  emits a captured tracing warning and returns an error if the skip is not
+  observable. Evidence: the candidate's third lint log reports
+  `clippy::print_stderr` at the skip. Impact: rerun the full gate sequence on
+  the completed candidate; the interrupted typecheck and test attempts are not
+  passes.
+- Observation (2026-10-25): with the lint-required `const` retained, the next
+  Clippy run reached the changed test targets and found an assertion inside a
+  `TestResult` function (`panic_in_result_fn`) and a closure parameter that
+  shadowed `lookup`'s `args` parameter (`shadow_reuse`). Evidence: the
+  candidate's fifth lint log. Impact: return a test error for missing captured
+  skip output, use a distinct closure binding, and rerun the full sequence on
+  the resulting candidate.
+- Observation (2026-10-25): the next candidate passed formatting, lint,
+  typecheck, and all 490 tests plus 27 doctests (4 ignored). The spelling gate
+  then rejected `serialised` in the developer and design guides; the generated
+  `typos.toml` remained unchanged. Evidence: the candidate's spelling log.
+  Impact: use the spelling gate's required `serialized` form and rerun the full
+  gate sequence on the corrected candidate.
+- Observation (2026-10-25): local CodeScene review scored
+  `tests/harness_cli_layering_bdd.rs` 9.38 for five duplicated replay-locale
+  step functions. Evidence: the published-base diff changes the module's
+  isolation setup and loader step but has no hunks in those five function
+  bodies; the same definitions are present on `origin/main`. Impact: treat this
+  whole-file review signal as inherited and keep the acceptance change scoped;
+  the exact-head hosted CodeScene check remains pending.
 - Observation: `LocalizedParse` derives its default identifier root from
   `bin_name` or command name. The tagged `message_id_for` joins command path
   segments with hyphens. `LocalizeCmd::with_base` therefore supports the
