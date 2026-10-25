@@ -401,16 +401,25 @@ weakening the explicit acceptance coverage.
   confirms the original plan-conformance gaps are resolved and requests this
   publication status synchronization. See
   [the follow-up](https://github.com/leynos/spycatcher-harness/pull/147#issuecomment-6391954144).
-- [ ] Resolve the current formal review on published head `8d7deba`. CodeRabbit
-  review `5640997849` requests one error and four warnings; four inline threads
-  remain open. The working tree adds the adapter usage and missing-version
-  compatibility checks, corrects stale test-architecture documentation, and
-  adds the 0.2.0 migration guide. It addresses the scalar-fixture formatting
-  request and isolates the binary diagnostic environment. The mode-000 test now
-  probes the actual file and reports a privileged-runner skip through tracing.
-  It retains the `const` qualifier required by the denied
-  `missing_const_for_fn` lint. Fresh validation, candidate publication, review
-  reconciliation, approval, and merge remain.
+- [x] (2026-10-25) Publish the review remediation at head `3d4986b` on base
+  `9b26472`. Reply to all four inline findings; CodeRabbit confirms the fixes
+  in comments at these URLs:
+  <https://github.com/leynos/spycatcher-harness/pull/147#discussion_r4369667673>
+  <https://github.com/leynos/spycatcher-harness/pull/147#discussion_r4369672645>
+  <https://github.com/leynos/spycatcher-harness/pull/147#discussion_r4369672484>
+  <https://github.com/leynos/spycatcher-harness/pull/147#discussion_r4369672802>
+  All four threads are resolved. The row reconciliation at this URL addresses
+  the usage, migration, and developer-doc rows, justifies retaining `const` for
+  Clippy, and withdraws the unsupported 80% docstring threshold:
+  <https://github.com/leynos/spycatcher-harness/pull/147#issuecomment-6393623490>
+  Exact-head Actions run `40162436195` and CodeScene Code Health result
+  `8115137` passed.
+- [ ] Obtain a current-head ExecPlan completeness and correctness assessment;
+  proof assessment is not applicable because this plan introduces no formal
+  proof (see the verification plan). The last formal review, `5640997849`, is on
+  `8d7deba`; CodeRabbit reports the later candidate unreviewed after its
+  automatic pause. After this plan synchronization, request one managed review,
+  reconcile its findings, obtain final approval, and guarded-squash merge.
 - [x] (2026-10-25) Run all ten deterministic gates on the reviewed working
   tree: format, lint, typecheck, 490 nextest tests, 27 doctests (4 ignored),
   spelling, Markdown, Mermaid, workflow contracts, Make sequencing, and the
