@@ -391,9 +391,18 @@ weakening the explicit acceptance coverage.
   scope exception plus stale current-state and source-path references recorded
   above. See
   [the assessment](https://github.com/leynos/spycatcher-harness/pull/147#issuecomment-6391775874).
-- [ ] Publish these plan corrections and obtain a candidate-bound follow-up
-  assessment. Then mark ready, observe formal review, reconcile all findings,
-  secure approval, and guarded-squash merge at equilibrium.
+- [x] Publish the plan corrections at head `cc9bef1` and verify parity against
+  base `9b26472`. The documentation gates passed. Exact-head Actions run
+  [40149761120](https://github.com/leynos/spycatcher-harness/actions/runs/40149761120)
+  and CodeScene Code Health
+  [8113917](https://codescene.io/projects/77452/delta/results/8113917) passed.
+- [x] Receive the candidate-bound follow-up assessment on `cc9bef1`
+  (Assessment-ID `PR147-EXECPLAN-FOLLOWUP-CC9BEF1-20261025T012738Z`). It
+  confirms the original plan-conformance gaps are resolved and requests this
+  publication status synchronization. See
+  [the follow-up](https://github.com/leynos/spycatcher-harness/pull/147#issuecomment-6391954144).
+- [ ] Mark the PR ready, observe formal review, reconcile all findings, secure
+  approval, and guarded-squash merge at equilibrium.
 
 ## Surprises & discoveries
 
@@ -627,7 +636,10 @@ affected local CodeScene reviews to 10.0. After rebasing onto `main` at
 `9b26472`, the repair was published as `341f642`. Local gates and exact-head
 Actions passed, as did CodeScene Code Health. The current ExecPlan assessment
 identified the scope exception and stale path/current-state references recorded
-above; those documentation corrections are the remaining pre-ready work.
+above; a docs-only follow-up at `cc9bef1` corrected them. Actions run
+`40149761120` and CodeScene Code Health `8113917` passed on that head. The
+follow-up assessment confirmed both original gaps are resolved. The PR remains
+a draft pending formal review and its later finding-disposition steps.
 
 The test-isolation slice is implemented. Initial full gates exposed Clippy,
 plan-spelling, and ambient filesystem-write issues; each was corrected. A
