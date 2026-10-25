@@ -429,8 +429,10 @@ weakening the explicit acceptance coverage.
   lines versus `origin/main`; the PR changes the loader step and test isolation
   there. No unrelated refactor was made. The completed candidate passed the
   full sequential gate run before this plan update.
-- [ ] Mark the PR ready, observe formal review, reconcile all findings, secure
-  approval, and guarded-squash merge at equilibrium.
+- [x] (2026-10-25) Verify the PR is ready at published head `acec5ea`. The PR
+  remains ready for this plan-only update.
+- [ ] Observe formal review on the current head, reconcile all findings, secure
+  approval, and guarded-squash merge when all gates reach equilibrium.
 
 ## Surprises & discoveries
 
@@ -685,16 +687,16 @@ corrected and verified. Its remaining guide-example finding is a false positive
 against the tagged API and is recorded above. Commit `94cb2fc` was force-pushed
 with an explicit lease, and local and remote heads matched afterwards. The
 follow-up commit `0d6da52` was also pushed with an explicit lease and verified
-against the remote head. Draft pull request 147 remains open against `main`,
-with `(#123)` in its title, `Closes #123` in its description, and the Lody
-session in the terminal References section. Hosted CI attempt 2 passed on
-`0d6da52`, including the coverage ratchet at 89.04% against the 89.0% baseline;
-CodeScene Code Health passed. CodeScene Code Coverage later reported
-`TIMED_OUT` on the PR. The pull-request workflow does not publish the report or
-contact CodeScene, so the timeout is neither a pass nor evidence of a migration
-failure; the main-branch workflow owns that check. The first hosted attempt's
-`ETXTBSY` in an unchanged main-owned test was not reproduced in 20 local runs,
-and the hosted retry passed.
+against the remote head. At the time of this earlier publication, pull request
+147 remained a draft against `main`, with `(#123)` in its title, `Closes #123`
+in its description, and the Lody session in the terminal References section.
+Hosted CI attempt 2 passed on `0d6da52`, including the coverage ratchet at
+89.04% against the 89.0% baseline; CodeScene Code Health passed. CodeScene Code
+Coverage later reported `TIMED_OUT` on the PR. The pull-request workflow does
+not publish the report or contact CodeScene, so the timeout is neither a pass
+nor evidence of a migration failure; the main-branch workflow owns that check.
+The first hosted attempt's `ETXTBSY` in an unchanged main-owned test was not
+reproduced in 20 local runs, and the hosted retry passed.
 
 The published head `1525380` passed Actions but failed CodeScene Code Health on
 the string-heavy locale test arguments. Grouping each locale test's related
@@ -705,8 +707,10 @@ Actions passed, as did CodeScene Code Health. The current ExecPlan assessment
 identified the scope exception and stale path/current-state references recorded
 above; a docs-only follow-up at `cc9bef1` corrected them. Actions run
 `40149761120` and CodeScene Code Health `8113917` passed on that head. The
-follow-up assessment confirmed both original gaps are resolved. The PR remains
-a draft pending formal review and its later finding-disposition steps.
+follow-up assessment confirmed both original gaps are resolved. At that point,
+the PR remained a draft pending formal review and its later finding-disposition
+steps. The PR was marked ready on 2026-10-25 and verified at published head
+`acec5ea`; formal review and merge remain pending.
 
 The test-isolation slice is implemented. Initial full gates exposed Clippy,
 plan-spelling, and ambient filesystem-write issues; each was corrected. A
@@ -1053,5 +1057,6 @@ check is not a completed check.
   doctests, and the locked Rust 1.89.0 check. Hosted CI run 38501854910 passed
   on the exact pushed SHA, including `Test and Measure Coverage`. CodeScene
   Code Health passed; CodeScene Code Coverage reported `TIMED_OUT` on published
-  head `bd77549`. The pull-request workflow does not publish that report. Draft
-  PR 147 remains open with the required issue and terminal References fields.
+  head `bd77549`. The pull-request workflow does not publish that report. On
+  that published head, PR 147 remained an open draft with the required issue
+  and terminal References fields.
