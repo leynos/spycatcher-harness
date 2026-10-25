@@ -315,11 +315,11 @@ observable.
   [38501854910](https://github.com/leynos/spycatcher-harness/actions/runs/38501854910)
   passed on exact head `731fa0fc2294f18050cf4ca081aa4717a18b5590`, including
   the Rust 1.89 check, lint, tests, and coverage ratchet.
-- [ ] (2026-10-24) Rebase the acceptance follow-up onto protected `main` at
-  `e1c15ed48f11d6e04190bdb89ab1f0bb0a34b180`. The published PR head remains
-  `bd775493674149b42713a8747066f26da6bdfd97`; its hosted CI and CodeRabbit
-  acceptance response are evidence for that earlier base/head only. On the
-  rebased local candidate, `make check-fmt` passed after formatting, but
+- [x] (2026-10-24) Rebase and publish the acceptance follow-up on protected
+  `main` at `e1c15ed48f11d6e04190bdb89ab1f0bb0a34b180`. The published PR head
+  remains `bd775493674149b42713a8747066f26da6bdfd97`; its hosted CI and
+  CodeRabbit acceptance response are evidence for that earlier base/head only.
+  On the rebased local candidate, `make check-fmt` passed after formatting, but
   `make lint` and `make test` could not complete because the build-limits
   supervisor refused compiler launches (`launch-failed`). An earlier lint
   attempt also hit missing target artefacts (`ENOENT`). `build-limits-status`
@@ -329,12 +329,55 @@ observable.
   `make typecheck`, and the locked Rust 1.89.0 all-targets/all-features check
   passed. `make test-workflow-contracts` and `make test-make-all` also passed
   sequentially. The lint and test attempts were not repeated after their
-  infrastructure refusals. Local coverage remains unrun; hosted validation,
-  current-head review, and merge are still outstanding. Keep this plan in
-  progress until the published head reaches review equilibrium and is merged.
+  infrastructure refusals. Local coverage remains unrun. This history was later
+  published at `1525380`; its Actions build passed, but CodeScene Code Health
+  failed on a test-function finding. These results apply only to that
+  then-current base/head.
+- [x] (2026-10-25) CodeScene Code Health failed on published head `1525380`
+  for one advisory `String Heavy Function Arguments` finding in
+  `tests/cli_localization_unit.rs`. The reported health score was 10.00 to
+  9.69; the report did not name a method. Local review attributed the finding
+  to the locale-precedence case's three string parameters. The working-tree fix
+  groups those values in a scenario struct and moves locale cases into a
+  dedicated test module. The candidate-bound worktree delta now reports the
+  finding fixed, and focused reviews of both affected modules score 10.0. The
+  repair has passed the local lint, typecheck, and test gates; hosted checks
+  remain pending.
+
+- [x] (2026-10-24 23:06Z) Rebase the 14-commit feature series from
+  `152538062bbfc8ab8a4af8acd1932140e233cb92` onto live `main` at
+  `9b264721287d454762ac4d43874a8bc1d8bd29db`. `git range-diff` maps every
+  feature commit one-to-one; the only target-side change is
+  `.cargo/config.toml`. The Rust merge attribute came only from the global
+  attributes file, so the unattended rebase used Git's text merge with `zdiff3`
+  and a command-scoped `core.attributesFile=/dev/null`. The CodeScene repair
+  was saved with an untracked-file manifest, restored from a verified stash,
+  and remains a dirty patch on rebased history head
+  `bb8f400fb84e603d77e1be4da56aeba9e79ecc7d`. All evidence tied to `1525380` is
+  historical for this new base/head.
+- [x] (2026-10-25) Run the rebased candidate gates sequentially. Formatting,
+  lint, typecheck, workspace tests, Markdown lint, Mermaid validation, workflow
+  contracts, and Make sequencing passed. Nextest passed 489 tests and doctests
+  passed 27 tests. CodeScene marks the worktree repair fixed, with focused
+  reviews at 10.0. Logs are under `/tmp` with the candidate worktree
+  identifier. The direct local Rust 1.89 check failed before workspace
+  compilation because Cargo passed the stable toolchain the nightly-only
+  `-Zthreads=8` flag from `.cargo/config.toml`. The CI workflow runs
+  `setup-rust` first, which exports `RUSTFLAGS` and displaces that
+  configuration; exact-head Actions must confirm the hosted MSRV check.
+- [ ] Commit and publish the validated repair, then observe fresh Actions and
+  CodeScene checks, renew CodeRabbit assessment and formal review evidence,
+  resolve findings, and guarded-squash merge only at equilibrium.
 
 ## Surprises & discoveries
 
+- Observation: the second `make lint` on the published-base repair tree reached
+  Whitaker Dylint after documentation and Clippy passed, then failed when the
+  compiler supervisor refused two dependency launches with `launch-failed`.
+  Evidence: the lint log ends with refusals for `rustix-linux-procfs` and
+  `rustc_version`, followed by Cargo exit 101; the process then terminated.
+  Impact: classify that run as infrastructure-failed, retain its log, and do
+  not transfer it to the rebased candidate.
 - Observation: the repository has no `docs/contents.md` or
   `docs/repository-layout.md`, despite `AGENTS.md` naming them as orientation
   documents. Evidence: neither path exists in this checkout. Impact: use the
@@ -511,6 +554,12 @@ observable.
   in 20 sequential local runs and the hosted retry passed the full coverage
   job; a fixture rewrite would be unrelated without reproducible evidence.
   Date/Author: 2026-10-10, Codex.
+- Decision: rebase the long-lived PR series onto current `main` and bypass the
+  user-wide Weave attribute for this unattended replay. Rationale: the
+  repository had no tracked merge-attribute opt-in and the task did not request
+  Weave dogfooding; a command-scoped native text merge preserved repository and
+  global configuration. `git range-diff` confirmed all 14 issue commits were
+  retained. Date/Author: 2026-10-24, Codex.
 
 ## Outcomes & retrospective
 
@@ -545,14 +594,13 @@ failure; the main-branch workflow owns that check. The first hosted attempt's
 `ETXTBSY` in an unchanged main-owned test was not reproduced in 20 local runs,
 and the hosted retry passed.
 
-The current local candidate is rebased onto protected `main` at `e1c15ed`. On
-`57867b2`, formatting, spelling, Markdown, Mermaid, typecheck, workflow
-contract, Make sequencing, and the locked Rust 1.89.0 check passed. The latter
-two Rust checks completed after waiting in the healthy shared compiler queue.
-Local lint and test attempts could not launch compiler jobs, and no retry was
-made after those infrastructure failures. The candidate remains unpublished;
-current-head hosted CI, CodeScene, and formal CodeRabbit results are not yet
-available. Merge only after those checks and the review disposition converge.
+The published head `1525380` passed Actions but failed CodeScene Code Health on
+the string-heavy locale test arguments. Grouping each locale test's related
+case values and moving those cases into `locale_scenarios.rs` raises both
+affected local CodeScene reviews to 10.0. Since `main` then advanced to
+`9b26472`, the 14-commit series was rebased again; its new history head is
+`bb8f400`. The source repair is restored as an uncommitted working-tree patch.
+Final candidate gates, commit, publication, hosted review, and merge remain.
 
 The test-isolation slice is implemented. Initial full gates exposed Clippy,
 plan-spelling, and ambient filesystem-write issues; each was corrected. A

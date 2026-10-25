@@ -4,29 +4,22 @@
 //! parsing helper without invoking the compiled binary.
 
 use clap::Command;
-use i18n_embed::unic_langid::{LanguageIdentifier, langid};
+use i18n_embed::unic_langid::langid;
 use ortho_config::{
     FluentLocalizer, LocalizationArgs, Localizer, NoOpLocalizer, localize_clap_error_with_command,
 };
-use proptest::prelude::*;
 use rstest::rstest;
 use spycatcher_harness::cli::load_subcommand_config_from_iter_with_localizer;
 use spycatcher_harness::cli::localization::LocalizeCmd;
-use spycatcher_harness::cli::localizer::{
-    DISABLE_LOCALIZATION_ENV, build_cli_localizer, build_cli_localizer_from_resources,
-    parse_early_locale,
-};
+use spycatcher_harness::cli::localizer::{build_cli_localizer, build_cli_localizer_from_resources};
 
 #[path = "support/isolated_cli_process.rs"]
 mod isolated_cli_process;
 
-use isolated_cli_process::{ProbeEnvelope, ProbeOutcome, ProbeRequest};
+#[path = "cli_localization_unit/locale_scenarios.rs"]
+mod locale_scenarios;
 
 const CLI_FTL: &str = include_str!("../i18n/en-US/spycatcher-harness.ftl");
-
-fn run_probe(request: &ProbeRequest, env_vars: &[(&str, &str)]) -> Result<ProbeEnvelope, String> {
-    isolated_cli_process::run_probe(request, None, env_vars)
-}
 
 #[rstest]
 fn bundled_cli_catalogue_builds() {
@@ -263,130 +256,4 @@ fn broken_consumer_resources_fall_back_to_noop_localizer() {
         .expect("broken resources should preserve stock parse output");
     assert_stock_help_output(localizer.as_ref())
         .expect("broken resources should preserve stock help output");
-}
-
-fn language_subtag() -> impl Strategy<Value = String> {
-    proptest::collection::vec(b'a'..=b'z', 2..=3)
-        .prop_map(|bytes| bytes.into_iter().map(char::from).collect())
-}
-
-fn region_subtag() -> impl Strategy<Value = String> {
-    proptest::collection::vec(b'A'..=b'Z', 2)
-        .prop_map(|bytes| bytes.into_iter().map(char::from).collect())
-}
-
-fn script_subtag() -> impl Strategy<Value = String> {
-    (b'A'..=b'Z', proptest::collection::vec(b'a'..=b'z', 3))
-        .prop_map(|(first, rest)| std::iter::once(first).chain(rest).map(char::from).collect())
-}
-
-fn variant_subtag() -> impl Strategy<Value = String> {
-    prop_oneof![
-        Just(String::from("valencia")),
-        proptest::collection::vec(b'a'..=b'z', 5..=8)
-            .prop_map(|bytes| bytes.into_iter().map(char::from).collect()),
-    ]
-}
-
-fn valid_locale_text() -> impl Strategy<Value = String> {
-    (
-        language_subtag(),
-        proptest::option::of(script_subtag()),
-        proptest::option::of(region_subtag()),
-        proptest::option::of(variant_subtag()),
-    )
-        .prop_map(|(language, script, region, variant)| {
-            let mut locale = language;
-            for subtag in [script, region, variant].into_iter().flatten() {
-                locale.push('-');
-                locale.push_str(&subtag);
-            }
-            locale
-        })
-}
-
-proptest! {
-    #[test]
-    fn parse_early_locale_accepts_generated_language_identifiers(locale in valid_locale_text()) {
-        let parsed = locale
-            .parse::<LanguageIdentifier>()
-            .map_err(|error| TestCaseError::fail(error.to_string()))?;
-
-        prop_assert_eq!(parse_early_locale(Some(locale.as_str())), parsed);
-    }
-
-    #[test]
-    fn generated_language_identifiers_resolve_to_a_cli_localizer(
-        locale in valid_locale_text(),
-        use_broken_resource in any::<bool>(),
-    ) {
-        let parsed = locale
-            .parse::<LanguageIdentifier>()
-            .map_err(|error| TestCaseError::fail(error.to_string()))?;
-        let resources = if use_broken_resource {
-            vec!["cli-about = {"]
-        } else {
-            vec![CLI_FTL]
-        };
-        let localizer = build_cli_localizer_from_resources(parsed, resources);
-        let mut args = LocalizationArgs::new();
-        args.insert("binary", "spycatcher-harness".into());
-        args.insert("version", "0.1.0".into());
-
-        let rendered = localizer.lookup("cli-about", Some(&args));
-
-        prop_assert!(rendered.is_none_or(|text| !text.trim().is_empty()));
-    }
-}
-
-#[rstest]
-#[case(Some("en-GB"), "en-GB")]
-#[case(Some("not_a_locale"), "en-US")]
-#[case(None, "en-US")]
-fn parse_early_locale_is_deterministic(#[case] candidate: Option<&str>, #[case] expected: &str) {
-    assert_eq!(parse_early_locale(candidate).to_string(), expected);
-}
-
-#[rstest]
-#[case::invalid_primary_uses_fallback("not_a_locale", "en-GB", "en-GB")]
-#[case::valid_primary_takes_precedence("en-GB", "fr-FR", "en-GB")]
-#[case::invalid_fallback_uses_default("not_a_locale", "not_a_locale", "en-US")]
-fn early_locale_plan_respects_environment_precedence(
-    #[case] primary: &str,
-    #[case] fallback: &str,
-    #[case] expected: &str,
-) {
-    let probe = run_probe(
-        &ProbeRequest::EarlyLocalePlan,
-        &[
-            ("SPYCATCHER_HARNESS_LOCALE", primary),
-            ("SPYCATCHER_HARNESS_FALLBACK_LOCALE", fallback),
-        ],
-    )
-    .expect("early locale probe should run");
-
-    assert_eq!(
-        probe.outcome,
-        ProbeOutcome::LocalePlan(String::from(expected))
-    );
-}
-
-#[rstest]
-#[case(None, false)]
-#[case(Some(""), false)]
-#[case(Some("0"), false)]
-#[case(Some("false"), false)]
-#[case(Some("1"), true)]
-#[case(Some("true"), true)]
-#[case(Some("yes"), true)]
-#[case(Some("on"), true)]
-fn cli_localization_disable_switch_requires_truthy_value(
-    #[case] env_value: Option<&str>,
-    #[case] expected: bool,
-) {
-    let env_vars = env_value.map_or_else(Vec::new, |value| vec![(DISABLE_LOCALIZATION_ENV, value)]);
-    let probe = run_probe(&ProbeRequest::LocalizationDisabled, &env_vars)
-        .expect("localization-disable probe should run");
-
-    assert_eq!(probe.outcome, ProbeOutcome::LocalizationDisabled(expected));
 }
