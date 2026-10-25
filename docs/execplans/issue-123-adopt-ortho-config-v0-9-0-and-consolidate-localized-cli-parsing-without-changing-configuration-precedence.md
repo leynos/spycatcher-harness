@@ -58,6 +58,15 @@ observable.
   deterministic gate fails. Fix or independently reproduce and document any
   baseline failure first.
 
+Scope exception: on published head `341f642`, the non-documentation,
+non-lockfile diff changes 19 files and adds 2,132 / deletes 775 physical lines,
+for a net 1,357 lines. This exceeds the 900-line trigger by 457 while remaining
+below the 25-file limit. The increase is test-heavy acceptance evidence for
+configuration precedence, locale compatibility, failure diagnostics, and
+startup isolation. The runtime change remains localized to the OrthoConfig
+adapter and its dependency/CI declarations. Retain these tests rather than
+weakening the explicit acceptance coverage.
+
 ## Risks
 
 - Risk: v0.9.0's parser may use a different Fluent identifier shape or omit
@@ -341,8 +350,8 @@ observable.
   groups those values in a scenario struct and moves locale cases into a
   dedicated test module. The candidate-bound worktree delta now reports the
   finding fixed, and focused reviews of both affected modules score 10.0. The
-  repair has passed the local lint, typecheck, and test gates; hosted checks
-  remain pending.
+  repair passed local lint, typecheck, and tests. Actions run `40148418026` and
+  CodeScene Code Health also passed on the published repair head.
 
 - [x] (2026-10-24 23:06Z) Rebase the 14-commit feature series from
   `152538062bbfc8ab8a4af8acd1932140e233cb92` onto live `main` at
@@ -352,9 +361,10 @@ observable.
   attributes file, so the unattended rebase used Git's text merge with `zdiff3`
   and a command-scoped `core.attributesFile=/dev/null`. The CodeScene repair
   was saved with an untracked-file manifest, restored from a verified stash,
-  and remains a dirty patch on rebased history head
-  `bb8f400fb84e603d77e1be4da56aeba9e79ecc7d`. All evidence tied to `1525380` is
-  historical for this new base/head.
+  and committed as `341f642c44742cd53b804b61a4dad9aa1b77c443` on rebased
+  history head `bb8f400fb84e603d77e1be4da56aeba9e79ecc7d`. The published PR
+  head and base are `341f642` and `9b26472`. All evidence tied to `1525380` is
+  historical for this base/head.
 - [x] (2026-10-25) Run the rebased candidate gates sequentially. Formatting,
   lint, typecheck, workspace tests, Markdown lint, Mermaid validation, workflow
   contracts, and Make sequencing passed. Nextest passed 489 tests and doctests
@@ -364,10 +374,26 @@ observable.
   compilation because Cargo passed the stable toolchain the nightly-only
   `-Zthreads=8` flag from `.cargo/config.toml`. The CI workflow runs
   `setup-rust` first, which exports `RUSTFLAGS` and displaces that
-  configuration; exact-head Actions must confirm the hosted MSRV check.
-- [ ] Commit and publish the validated repair, then observe fresh Actions and
-  CodeScene checks, renew CodeRabbit assessment and formal review evidence,
-  resolve findings, and guarded-squash merge only at equilibrium.
+  configuration. Exact-head Actions run `40148418026` passed the Rust 1.89
+  check, lint, tests, coverage, and all remaining workflow steps. CodeScene
+  Code Health passed at
+  [result 8113686](https://codescene.io/projects/77452/delta/results/8113686).
+- [x] Publish the repair on current `main`; verify exact remote parity at head
+  `341f642c44742cd53b804b61a4dad9aa1b77c443` and base
+  `9b264721287d454762ac4d43874a8bc1d8bd29db`.
+- [x] Observe current-head Actions run
+  [40148418026](https://github.com/leynos/spycatcher-harness/actions/runs/40148418026)
+  and CodeScene Code Health; both passed. CodeScene Code Coverage's earlier
+  `TIMED_OUT` status remains historical and is not reported as a pass.
+- [x] Receive CodeRabbit's substantive ExecPlan assessment on head `341f642`
+  (Assessment-ID `PR147-EXECPLAN-341f642-20261025T010740Z`). It accepts the
+  functional implementation, reports no runtime defect, and identifies the
+  scope exception plus stale current-state and source-path references recorded
+  above. See
+  [the assessment](https://github.com/leynos/spycatcher-harness/pull/147#issuecomment-6391775874).
+- [ ] Publish these plan corrections and obtain a candidate-bound follow-up
+  assessment. Then mark ready, observe formal review, reconcile all findings,
+  secure approval, and guarded-squash merge at equilibrium.
 
 ## Surprises & discoveries
 
@@ -596,11 +622,12 @@ and the hosted retry passed.
 
 The published head `1525380` passed Actions but failed CodeScene Code Health on
 the string-heavy locale test arguments. Grouping each locale test's related
-case values and moving those cases into `locale_scenarios.rs` raises both
-affected local CodeScene reviews to 10.0. Since `main` then advanced to
-`9b26472`, the 14-commit series was rebased again; its new history head is
-`bb8f400`. The source repair is restored as an uncommitted working-tree patch.
-Final candidate gates, commit, publication, hosted review, and merge remain.
+case values and moving those cases into `locale_scenarios.rs` raised both
+affected local CodeScene reviews to 10.0. After rebasing onto `main` at
+`9b26472`, the repair was published as `341f642`. Local gates and exact-head
+Actions passed, as did CodeScene Code Health. The current ExecPlan assessment
+identified the scope exception and stale path/current-state references recorded
+above; those documentation corrections are the remaining pre-ready work.
 
 The test-isolation slice is implemented. Initial full gates exposed Clippy,
 plan-spelling, and ambient filesystem-write issues; each was corrected. A
@@ -630,7 +657,7 @@ restored; the intended test milestone is ready to commit.
 
 ## Context and orientation
 
-`src/cli.rs` defines Clap argument DTOs and maps merged values into
+`src/cli/mod.rs` defines Clap argument DTOs and maps merged values into
 `HarnessConfig`; it does not put Clap types into the harness domain. The public
 localization adapter lives in `src/cli/localize_cmd.rs` and is re-exported by
 `src/cli/localization.rs`. `src/cli/localizer.rs` chooses a best-effort early
@@ -745,7 +772,7 @@ The relevant existing architecture contract is
   public type and startup tests. Rationale: this is a dependency-direction
   constraint, not a new business invariant; the change should not require a new
   port or domain dependency. Domain: imports and calls between `src/cli*`,
-  `HarnessConfig`, and startup. Artefact: `src/cli.rs`,
+  `HarnessConfig`, and startup. Artefact: `src/cli/mod.rs`,
   `src/cli/localize_cmd.rs`, and `docs/spycatcher-harness-design.md`. Evidence:
   codegraph dependency context and `cargo check --workspace` confirm the
   existing adapter direction. Non-vacuity: inspect the actual new call graph
