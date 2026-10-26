@@ -4,7 +4,7 @@
 //! Gherkin feature file at `tests/features/harness_cli_layering.feature`. It
 //! verifies user-visible configuration-precedence behaviour end-to-end via the
 //! [`spycatcher_harness::cli::load_subcommand_config_from_iter`] entry point,
-//! using `figment::Jail` to isolate filesystem and environment state.
+//! using explicit file and environment sources.
 //!
 //! Covered scenarios:
 //! - Cassette-name CLI precedence over env and file for `replay`.
@@ -19,20 +19,19 @@
 //! - `tests/cli_layering_unit.rs` — rstest unit coverage for the same surface.
 //! - `src/bin/spycatcher_harness.rs` (inline tests) — binary startup unit tests.
 
-use std::cell::RefCell;
-
-use ortho_config::figment;
 use rstest::fixture;
 use rstest_bdd::Slot;
 use rstest_bdd_macros::{ScenarioState, given, scenario, then, when};
 
-use spycatcher_harness::cli::load_subcommand_config_from_iter;
 use spycatcher_harness::{HarnessConfig, config};
 
 #[path = "harness_cli_layering_bdd/cli_layering_helpers.rs"]
 mod cli_layering_helpers;
+#[path = "cli_layering/source_loader.rs"]
+mod source_loader;
 
 use cli_layering_helpers::*;
+use source_loader::load_with_sources;
 
 #[derive(Default, ScenarioState)]
 struct CliLayeringWorld {
@@ -195,33 +194,14 @@ fn load_layered_config(cli_layering_world: &CliLayeringWorld) {
     let argv = cli_layering_world.argv.take().unwrap_or_default();
     let config_file = cli_layering_world.config_file.take().unwrap_or_default();
     let env_vars = cli_layering_world.env_vars.take().unwrap_or_default();
-
-    let loaded = RefCell::new(None);
-    #[expect(
-        clippy::result_large_err,
-        reason = "figment::Jail callback requires figment::error::Result"
-    )]
-    let jail_result = figment::Jail::try_with(|jail| {
-        if !config_file.is_empty() {
-            jail.create_file(".spycatcher_harness.toml", &config_file)?;
-        }
-
-        for (key, value) in &env_vars {
-            jail.set_env(key, value);
-        }
-
-        let result =
-            load_subcommand_config_from_iter(argv.clone()).map_err(|error| error.to_string());
-        loaded.replace(Some(result));
-        Ok(())
-    });
-
-    let result = match jail_result {
-        Ok(()) => loaded
-            .into_inner()
-            .unwrap_or_else(|| Err(String::from("loader result missing"))),
-        Err(error) => Err(error.to_string()),
-    };
+    let argv_refs = argv.iter().map(String::as_str).collect::<Vec<_>>();
+    let env_refs = env_vars
+        .iter()
+        .map(|(key, value)| (key.as_str(), value.as_str()))
+        .collect::<Vec<_>>();
+    let config_file_source = (!config_file.is_empty()).then_some(config_file.as_str());
+    let result = load_with_sources(&argv_refs, config_file_source, &env_refs)
+        .map_err(|error| error.to_string());
 
     cli_layering_world.result.set(result);
 }

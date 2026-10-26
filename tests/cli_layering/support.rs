@@ -1,47 +1,12 @@
-//! Jail-backed configuration loading and locale strategies for layering tests.
+//! Shared file fixtures and locale strategies for CLI layering tests.
 
-use std::cell::RefCell;
+#[path = "source_loader.rs"]
+mod source_loader;
 
-use eyre::{Result, eyre};
-use ortho_config::figment;
+pub(super) use source_loader::{load_from_base, load_with_sources};
+
 use proptest::prop_oneof;
 use proptest::strategy::{Just, Strategy};
-
-use spycatcher_harness::HarnessConfig;
-use spycatcher_harness::cli::load_subcommand_config_from_iter;
-
-/// Loads a [`HarnessConfig`] under `figment::Jail` using `argv`, optional
-/// `config_file` contents, and `env_vars`, returning the loaded config or
-/// conversion error.
-#[expect(
-    clippy::result_large_err,
-    reason = "figment::Jail callback requires figment::error::Result"
-)]
-pub(super) fn load_with_jail(
-    argv: &[&str],
-    config_file: Option<&str>,
-    env_vars: &[(&str, &str)],
-) -> Result<HarnessConfig> {
-    let loaded = RefCell::new(None);
-
-    figment::Jail::try_with(|jail| {
-        if let Some(content) = config_file {
-            jail.create_file(".spycatcher_harness.toml", content)?;
-        }
-        for (key, value) in env_vars {
-            jail.set_env(key, value);
-        }
-        let cfg = load_subcommand_config_from_iter(argv)
-            .map_err(|error| figment::Error::from(error.to_string()))?;
-        loaded.replace(Some(cfg));
-        Ok(())
-    })
-    .map_err(|error| eyre!(error.to_string()))?;
-
-    loaded
-        .into_inner()
-        .ok_or_else(|| eyre!("configuration load did not execute"))
-}
 
 /// Replay cassette-name file fixture for checking overrides of `from_file`.
 pub(super) const REPLAY_FILE_CONFIG: &str = "[cmds.replay]\ncassette_name = \"from_file\"\n";

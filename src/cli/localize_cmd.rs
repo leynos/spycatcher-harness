@@ -1,17 +1,17 @@
-//! Project-owned `clap` command localization helpers.
+//! Project adapter around `OrthoConfig`'s localized Clap parsing.
 //!
-//! This module applies an `OrthoConfig` [`Localizer`] to the command tree before
-//! parsing so help and version display requests are rendered from the bundled
-//! Fluent catalogue when translations are available.
+//! The upstream API owns generated Fluent identifiers and parse-error
+//! localization. This module keeps the harness's established `cli` catalogue
+//! root and the version interpolation required by its catalogue.
 
 use clap::{Command, CommandFactory, Parser};
-use ortho_config::{LocalizationArgs, Localizer, localize_clap_error_with_command};
+use ortho_config::{
+    LanguageIdentifier, LocalizationArgs, LocalizeCmd as OrthoLocalizeCmd, Localizer,
+    parse_localized_command,
+};
 
 /// Catalogue identifier that anchors lookup keys for the root command.
 const ROOT_COMMAND_ID: &str = "cli";
-
-/// Applies a translated string to a `clap` command and returns the updated command.
-type CommandStringApplicator = fn(Command, String) -> Command;
 
 /// Extension trait that applies localized copy to a [`Command`].
 ///
@@ -34,15 +34,20 @@ pub trait LocalizeCmd {
 }
 
 impl LocalizeCmd for Command {
-    fn localize(mut self, localizer: &dyn Localizer) -> Self {
-        let command_id = command_identifier(&self);
-        self = localize_command_copy(self, &command_id, localizer);
-        self = localize_subcommands(self, localizer);
-        self
+    fn localize(self, localizer: &dyn Localizer) -> Self {
+        let original = self.clone();
+        let command_localizer = CommandCopyLocalizer::new(localizer);
+        let command =
+            OrthoLocalizeCmd::with_base(self, ROOT_COMMAND_ID).localize(&command_localizer);
+        apply_version_compatibility(command, &original, localizer)
     }
 }
 
 /// Parses `iter` with localized command copy and localized parse errors.
+///
+/// The pre-built command path preserves the harness's `cli` catalogue root;
+/// `parse_localized_command` then handles both Clap parsing and conversion
+/// errors with the same localizer.
 ///
 /// # Examples
 ///
@@ -67,7 +72,7 @@ impl LocalizeCmd for Command {
 ///
 /// # Errors
 ///
-/// Returns the localized [`clap::Error`] produced by parsing or by converting
+/// Returns the localized [`clap::Error`] produced by parsing or converting
 /// matches into the target parser type.
 pub fn try_parse_localized_from_iter<C, I, T>(
     iter: I,
@@ -78,20 +83,37 @@ where
     I: IntoIterator<Item = T>,
     T: Into<std::ffi::OsString> + Clone,
 {
-    let mut command = C::command().localize(localizer);
-    let matches = command
-        .try_get_matches_from_mut(iter)
-        .map_err(|error| localize_clap_error_with_command(error, localizer, Some(&command)))?;
+    let command = LocalizeCmd::localize(C::command(), localizer);
+    parse_localized_command::<C, _, _>(command, iter, localizer).map(|(parsed, _matches)| parsed)
+}
 
-    C::from_arg_matches(&matches).map_err(|match_error| {
-        let command_error = match_error.with_cmd(&command);
-        localize_clap_error_with_command(command_error, localizer, Some(&command))
+/// Applies the application-specific version interpolation after upstream localization.
+///
+/// `OrthoConfig` v0.10.0 supplies the `cli` base and underscore-preserving
+/// suffixes such as `long_about` and `after_long_help`. The harness's
+/// `cli-version` message also interpolates `$version`, which upstream does not
+/// provide, so this adapter retains that application-specific value.
+fn apply_version_compatibility(
+    mut command: Command,
+    original: &Command,
+    localizer: &dyn Localizer,
+) -> Command {
+    let command_id = command_identifier(original);
+    let args = command_args(original);
+
+    if let Some(value) = localizer.lookup(&format!("{command_id}-version"), Some(&args)) {
+        command = command.version(value);
+    }
+    command.mut_subcommands(|subcommand| {
+        if let Some(original_subcommand) = original.find_subcommand(subcommand.get_name()) {
+            apply_version_compatibility(subcommand, original_subcommand, localizer)
+        } else {
+            subcommand
+        }
     })
 }
 
-/// Builds the catalogue identifier for a root command or one of its subcommands.
-/// For example, `command_identifier(&Command::new("spycatcher-harness"))`
-/// returns `"cli"`; a command named `"record"` produces `"cli-record"`.
+/// Builds the legacy catalogue identifier for one command.
 fn command_identifier(command: &Command) -> String {
     match command.get_name() {
         "spycatcher-harness" => ROOT_COMMAND_ID.to_owned(),
@@ -99,51 +121,34 @@ fn command_identifier(command: &Command) -> String {
     }
 }
 
-/// Applies available translations to the copy owned by one command.
-/// For example, a `"cli-record-about"` translation of `"Record requests"` replaces
-/// the record command's about text; an absent translation preserves that text.
-fn localize_command_copy(
-    mut command: Command,
-    command_id: &str,
-    localizer: &dyn Localizer,
-) -> Command {
-    let args = command_args(&command);
-    let ctx = LocalizeContext {
-        localizer,
-        args: Some(&args),
-    };
-    let fields: &[(&str, CommandStringApplicator)] = &[
-        ("-about", |cmd, value| cmd.about(value)),
-        ("-long-about", |cmd, value| cmd.long_about(value)),
-        ("-version", apply_localized_version),
-        ("-usage", |cmd, value| cmd.override_usage(value)),
-        ("-merge-help", |cmd, value| cmd.after_long_help(value)),
-    ];
+/// Adapts the legacy version message to the command-tree localization context.
+struct CommandCopyLocalizer<'a> {
+    /// Localizer used for every command-copy field except legacy version text.
+    localizer: &'a dyn Localizer,
+}
 
-    for (suffix, apply) in fields {
-        command = apply_localized_string(command, &format!("{command_id}{suffix}"), &ctx, *apply);
+impl<'a> CommandCopyLocalizer<'a> {
+    /// Wraps the application localizer for the upstream command-tree pass.
+    const fn new(localizer: &'a dyn Localizer) -> Self {
+        Self { localizer }
+    }
+}
+
+impl Localizer for CommandCopyLocalizer<'_> {
+    fn lookup(&self, id: &str, args: Option<&LocalizationArgs<'_>>) -> Option<String> {
+        if id.ends_with("-version") {
+            None
+        } else {
+            self.localizer.lookup(id, args)
+        }
     }
 
-    command
+    fn locale(&self) -> Option<&LanguageIdentifier> {
+        self.localizer.locale()
+    }
 }
 
-/// Recursively applies the localizer to each child command.
-/// For example, a root command with a `record` child receives the child's
-/// translated about text while retaining the root's own copy.
-fn localize_subcommands(command: Command, localizer: &dyn Localizer) -> Command {
-    command.mut_subcommands(|subcommand| subcommand.localize(localizer))
-}
-
-/// Sets the command version to its localized value.
-/// For example, passing `"version 1.0".to_owned()` makes `get_version()` on the
-/// returned command yield `Some("version 1.0")`.
-fn apply_localized_version(command: Command, value: String) -> Command {
-    command.version(value)
-}
-
-/// Builds interpolation arguments from the command name and any declared version.
-/// For example, a command named `"record"` with version `"1.0"` yields `binary`
-/// and `version` arguments containing `"record"` and `"1.0"` respectively.
+/// Provides the interpolation values used by the legacy CLI version message.
 fn command_args(command: &Command) -> LocalizationArgs<'static> {
     let mut args = LocalizationArgs::new();
     args.insert("binary", command.get_name().to_owned().into());
@@ -151,27 +156,4 @@ fn command_args(command: &Command) -> LocalizationArgs<'static> {
         args.insert("version", version.to_owned().into());
     }
     args
-}
-
-/// Holds the lookup dependencies and interpolation arguments for one command.
-struct LocalizeContext<'a> {
-    /// Localizer used to look up translated command copy.
-    localizer: &'a dyn Localizer,
-    /// Optional arguments interpolated into translated command copy.
-    args: Option<&'a LocalizationArgs<'a>>,
-}
-
-/// Looks up `key` and applies its translation, leaving the command unchanged when absent.
-/// For example, a lookup returning `Some("Record requests")` invokes the supplied
-/// applicator with that text; `None` returns the original command unchanged.
-fn apply_localized_string(
-    command: Command,
-    key: &str,
-    ctx: &LocalizeContext<'_>,
-    apply: CommandStringApplicator,
-) -> Command {
-    match ctx.localizer.lookup(key, ctx.args) {
-        Some(value) => apply(command, value),
-        None => command,
-    }
 }

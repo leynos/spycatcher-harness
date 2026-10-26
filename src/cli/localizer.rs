@@ -108,14 +108,13 @@ pub fn parse_early_locale(candidate: Option<&str>) -> LanguageIdentifier {
     })
 }
 
-/// Reads and parses one early locale setting, warning when its value is invalid.
-/// For example, an environment value of `"en-GB"` yields that identifier;
-/// `"not_a_locale"` emits the supplied warning and returns `None`.
-fn try_locale_from_env(setting: &LocaleEnvSetting) -> Option<LanguageIdentifier> {
-    let Ok(locale) = std::env::var(setting.env_var) else {
-        return None;
-    };
-    match parse_locale(&locale) {
+/// Parses one supplied locale value, logging the same warning as environment lookup.
+fn parse_locale_from_value(
+    setting: &LocaleEnvSetting,
+    candidate_value: Option<&str>,
+) -> Option<LanguageIdentifier> {
+    let candidate = candidate_value?;
+    match parse_locale(candidate) {
         Ok(parsed) => Some(trace_selected_early_locale(setting.env_var, parsed)),
         Err(error) => {
             warn_invalid_early_locale(&error, setting.invalid_value_warning);
@@ -149,8 +148,19 @@ fn warn_invalid_early_locale(
 /// environment values are ignored after emitting a warning.
 #[must_use]
 pub fn early_locale_plan() -> LanguageIdentifier {
-    try_locale_from_env(&PRIMARY_LOCALE_SETTING)
-        .or_else(|| try_locale_from_env(&FALLBACK_LOCALE_SETTING))
+    early_locale_plan_with(
+        || std::env::var(LOCALE_ENV).ok(),
+        || std::env::var(FALLBACK_LOCALE_ENV).ok(),
+    )
+}
+
+/// Selects a locale from lazy source values so unit tests need no env mutation.
+fn early_locale_plan_with(
+    primary: impl FnOnce() -> Option<String>,
+    fallback: impl FnOnce() -> Option<String>,
+) -> LanguageIdentifier {
+    parse_locale_from_value(&PRIMARY_LOCALE_SETTING, primary().as_deref())
+        .or_else(|| parse_locale_from_value(&FALLBACK_LOCALE_SETTING, fallback().as_deref()))
         .unwrap_or_else(|| langid!("en-US"))
 }
 
@@ -160,10 +170,8 @@ pub fn early_locale_plan() -> LanguageIdentifier {
 /// diagnostic switch is set to a truthy value.
 #[must_use]
 pub fn is_cli_localization_disabled() -> bool {
-    let Ok(value) = std::env::var(DISABLE_LOCALIZATION_ENV) else {
-        return false;
-    };
-    let is_disabled = is_truthy_localization_switch(&value);
+    let value = std::env::var(DISABLE_LOCALIZATION_ENV).ok();
+    let is_disabled = is_localization_disabled_for_value(value.as_deref());
     if is_disabled {
         warn_localization_disabled();
     }
@@ -178,6 +186,11 @@ fn is_truthy_localization_switch(value: &str) -> bool {
         value.trim().to_ascii_lowercase().as_str(),
         "1" | "true" | "yes" | "on"
     )
+}
+
+/// Interprets the optional diagnostic switch without reading process state.
+fn is_localization_disabled_for_value(value: Option<&str>) -> bool {
+    value.is_some_and(is_truthy_localization_switch)
 }
 
 /// Reports that the diagnostic switch bypassed CLI localization.
@@ -197,4 +210,61 @@ fn parse_locale(
     value: &str,
 ) -> Result<LanguageIdentifier, i18n_embed::unic_langid::LanguageIdentifierError> {
     value.parse()
+}
+
+#[cfg(test)]
+mod tests {
+    //! Isolated tests for early localization environment-value selection.
+
+    use std::cell::Cell;
+
+    use rstest::rstest;
+
+    use super::{early_locale_plan_with, is_localization_disabled_for_value};
+
+    #[rstest]
+    #[case::invalid_primary_uses_fallback("not_a_locale", "en-GB", "en-GB")]
+    #[case::valid_primary_takes_precedence("en-GB", "fr-FR", "en-GB")]
+    #[case::invalid_fallback_uses_default("not_a_locale", "not_a_locale", "en-US")]
+    fn early_locale_plan_respects_value_precedence(
+        #[case] primary: &str,
+        #[case] fallback: &str,
+        #[case] expected: &str,
+    ) {
+        let selected =
+            early_locale_plan_with(|| Some(primary.to_owned()), || Some(fallback.to_owned()));
+
+        assert_eq!(selected.to_string(), expected);
+    }
+
+    #[test]
+    fn valid_primary_does_not_read_fallback_source() {
+        let fallback_read = Cell::new(false);
+        let selected = early_locale_plan_with(
+            || Some(String::from("en-GB")),
+            || {
+                fallback_read.set(true);
+                Some(String::from("fr-FR"))
+            },
+        );
+
+        assert_eq!(selected.to_string(), "en-GB");
+        assert!(!fallback_read.get());
+    }
+
+    #[rstest]
+    #[case(None, false)]
+    #[case(Some(""), false)]
+    #[case(Some("0"), false)]
+    #[case(Some("false"), false)]
+    #[case(Some("1"), true)]
+    #[case(Some("true"), true)]
+    #[case(Some("yes"), true)]
+    #[case(Some("on"), true)]
+    fn localization_switch_requires_truthy_value(
+        #[case] value: Option<&str>,
+        #[case] expected: bool,
+    ) {
+        assert_eq!(is_localization_disabled_for_value(value), expected);
+    }
 }

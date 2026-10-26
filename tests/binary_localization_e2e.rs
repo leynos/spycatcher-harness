@@ -11,7 +11,7 @@ use rstest::rstest;
 
 use spycatcher_harness::cli::localizer::DISABLE_LOCALIZATION_ENV;
 
-/// Executes the binary with CLI localization variables removed from the child.
+/// Executes the binary with an empty child environment.
 /// For example, `localized_cli_output(&["--help"])` captures localized help on
 /// stdout without changing the test process's environment or working directory.
 ///
@@ -19,12 +19,8 @@ use spycatcher_harness::cli::localizer::DISABLE_LOCALIZATION_ENV;
 ///
 /// Propagates an I/O error if launching or collecting the child process fails.
 fn localized_cli_output(args: &[&str]) -> std::io::Result<Output> {
-    Command::new(env!("CARGO_BIN_EXE_spycatcher-harness"))
-        .env_remove(DISABLE_LOCALIZATION_ENV)
-        .env_remove("SPYCATCHER_HARNESS_LOCALE")
-        .env_remove("SPYCATCHER_HARNESS_FALLBACK_LOCALE")
-        .args(args)
-        .output()
+    let mut command = Command::new(env!("CARGO_BIN_EXE_spycatcher-harness"));
+    command.env_clear().args(args).output()
 }
 
 #[test]
@@ -32,6 +28,10 @@ fn binary_emits_localized_help() {
     let output = localized_cli_output(&["--help"]).expect("binary should execute");
 
     assert!(output.status.success(), "help should exit successfully");
+    assert!(
+        output.stderr.is_empty(),
+        "help should not write diagnostics"
+    );
     let stdout = String::from_utf8(output.stdout).expect("stdout should be UTF-8");
     insta::assert_snapshot!(stdout);
 }
@@ -41,6 +41,10 @@ fn binary_emits_localized_version() {
     let output = localized_cli_output(&["--version"]).expect("binary should execute");
 
     assert!(output.status.success(), "version should exit successfully");
+    assert!(
+        output.stderr.is_empty(),
+        "version should not write diagnostics"
+    );
     let stdout = String::from_utf8(output.stdout).expect("stdout should be UTF-8");
     insta::assert_snapshot!(stdout);
 }
@@ -49,17 +53,21 @@ fn binary_emits_localized_version() {
 fn binary_emits_localized_unknown_argument_error() {
     let output = localized_cli_output(&["replay", "--not-a-flag"]).expect("binary should execute");
 
-    assert!(
-        !output.status.success(),
-        "unknown arguments should fail parsing"
+    assert_eq!(
+        output.status.code(),
+        Some(2),
+        "Clap parse errors exit with 2"
     );
+    assert!(output.stdout.is_empty(), "parse errors belong on stderr");
     let stderr = String::from_utf8(output.stderr).expect("stderr should be UTF-8");
     insta::assert_snapshot!(stderr);
 }
 
 #[test]
 fn binary_can_disable_cli_localization_for_diagnostics() {
-    let output = Command::new(env!("CARGO_BIN_EXE_spycatcher-harness"))
+    let mut command = Command::new(env!("CARGO_BIN_EXE_spycatcher-harness"));
+    let output = command
+        .env_clear()
         .env(DISABLE_LOCALIZATION_ENV, "1")
         .arg("--help")
         .output()
@@ -74,17 +82,20 @@ fn binary_can_disable_cli_localization_for_diagnostics() {
 #[test]
 fn binary_uses_locale_flags_for_startup_error_rendering() {
     let temp_dir = tempfile::tempdir().expect("temporary directory should be created");
-    let output = Command::new(env!("CARGO_BIN_EXE_spycatcher-harness"))
-        .env_remove(DISABLE_LOCALIZATION_ENV)
+    let mut command = Command::new(env!("CARGO_BIN_EXE_spycatcher-harness"));
+    let output = command
+        .env_clear()
         .current_dir(temp_dir.path())
         .args(["record", "--locale", "en-GB", "--fallback-locale", "en-US"])
         .output()
         .expect("binary should execute");
 
-    assert!(
-        !output.status.success(),
-        "record mode without upstream should fail startup"
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "record mode without upstream should exit one"
     );
+    assert!(output.stdout.is_empty(), "startup errors belong on stderr");
     let stderr = String::from_utf8(output.stderr).expect("stderr should be UTF-8");
     let error_line = stderr
         .lines()
@@ -116,13 +127,15 @@ fn diagnostic_help(
 ) -> eyre::Result<DiagnosticHelpOutput> {
     let directory = tempfile::tempdir().wrap_err("create isolated help directory")?;
     let mut command = Command::new(env!("CARGO_BIN_EXE_spycatcher-harness"));
-    command.current_dir(directory.path()).arg("--help");
+    command
+        .env_clear()
+        .current_dir(directory.path())
+        .arg("--help");
     for (key, value) in [
         (DISABLE_LOCALIZATION_ENV, disable_localization),
         ("SPYCATCHER_HARNESS_LOCALE", primary_locale),
         ("SPYCATCHER_HARNESS_FALLBACK_LOCALE", fallback_locale),
     ] {
-        command.env_remove(key);
         if let Some(configured_value) = value {
             command.env(key, configured_value);
         }

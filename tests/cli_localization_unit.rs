@@ -6,15 +6,14 @@
 use clap::Command;
 use i18n_embed::unic_langid::{LanguageIdentifier, langid};
 use ortho_config::{
-    FluentLocalizer, LocalizationArgs, NoOpLocalizer, figment, localize_clap_error_with_command,
+    FluentLocalizer, LocalizationArgs, NoOpLocalizer, localize_clap_error_with_command,
 };
 use proptest::prelude::*;
 use rstest::rstest;
 use spycatcher_harness::cli::load_subcommand_config_from_iter_with_localizer;
 use spycatcher_harness::cli::localization::LocalizeCmd;
 use spycatcher_harness::cli::localizer::{
-    DISABLE_LOCALIZATION_ENV, build_cli_localizer, build_cli_localizer_from_resources,
-    early_locale_plan, is_cli_localization_disabled, parse_early_locale,
+    build_cli_localizer, build_cli_localizer_from_resources, parse_early_locale,
 };
 
 const CLI_FTL: &str = include_str!("../i18n/en-US/spycatcher-harness.ftl");
@@ -29,10 +28,10 @@ fn bundled_cli_catalogue_builds() {
 
 #[rstest]
 #[case("cli-about")]
-#[case("cli-long-about")]
+#[case("cli-long_about")]
 #[case("cli-usage")]
 #[case("cli-version")]
-#[case("cli-merge-help")]
+#[case("cli-after_long_help")]
 #[case("cli-record-about")]
 #[case("cli-replay-about")]
 #[case("cli-verify-about")]
@@ -308,55 +307,4 @@ proptest! {
 #[case(None, "en-US")]
 fn parse_early_locale_is_deterministic(#[case] candidate: Option<&str>, #[case] expected: &str) {
     assert_eq!(parse_early_locale(candidate).to_string(), expected);
-}
-
-#[rstest]
-#[case::invalid_primary_uses_fallback("not_a_locale", "en-GB", "en-GB")]
-#[case::valid_primary_takes_precedence("en-GB", "fr-FR", "en-GB")]
-#[case::invalid_fallback_uses_default("not_a_locale", "not_a_locale", "en-US")]
-fn early_locale_plan_respects_environment_precedence(
-    #[case] primary: &str,
-    #[case] fallback: &str,
-    #[case] expected: &str,
-) {
-    #[expect(
-        clippy::result_large_err,
-        reason = "figment::Jail callback requires figment::error::Result"
-    )]
-    figment::Jail::expect_with(|jail| {
-        jail.set_env("SPYCATCHER_HARNESS_LOCALE", primary);
-        jail.set_env("SPYCATCHER_HARNESS_FALLBACK_LOCALE", fallback);
-
-        assert_eq!(early_locale_plan().to_string(), expected);
-        Ok(())
-    });
-}
-
-#[rstest]
-#[case(None, false)]
-#[case(Some(""), false)]
-#[case(Some("0"), false)]
-#[case(Some("false"), false)]
-#[case(Some("1"), true)]
-#[case(Some("true"), true)]
-#[case(Some("yes"), true)]
-#[case(Some("on"), true)]
-fn cli_localization_disable_switch_requires_truthy_value(
-    #[case] env_value: Option<&str>,
-    #[case] expected: bool,
-) {
-    #[expect(
-        clippy::result_large_err,
-        reason = "figment::Jail callback requires figment::error::Result"
-    )]
-    figment::Jail::expect_with(|jail| {
-        if let Some(value) = env_value {
-            jail.set_env(DISABLE_LOCALIZATION_ENV, value);
-        } else {
-            jail.set_env(DISABLE_LOCALIZATION_ENV, "");
-        }
-
-        assert_eq!(is_cli_localization_disabled(), expected);
-        Ok(())
-    });
 }

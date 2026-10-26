@@ -44,7 +44,7 @@ mod tests {
             .try_build()
             .expect("bundled CLI catalogue should build");
         let rendered_help = fluent
-            .lookup("cli-merge-help", None)
+            .lookup("cli-after_long_help", None)
             .expect("localized merge help should render");
 
         for expected in non_empty_lines(CLI_MERGE_HELP) {

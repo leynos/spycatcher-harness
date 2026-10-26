@@ -1,1301 +1,1977 @@
 # OrthoConfig user's guide
 
-`OrthoConfig` is a Rust library that unifies command‑line arguments,
-environment variables and configuration files into a single, strongly typed
-configuration struct. It is inspired by tools such as `esbuild` and is designed
-to minimize boiler‑plate. The library uses `serde` for deserialization and
-`clap` for argument parsing, while `figment` provides layered configuration
-management. This guide covers the functionality currently implemented in the
-repository.
+Configuration should not be the hardest part of writing a command-line
+application. OrthoConfig describes settings as a Rust struct, then loads that
+struct from defaults, a configuration file, environment variables, and
+command-line arguments.
 
-## Core concepts and motivation
+This guide is for application authors using OrthoConfig v0.10.0. It starts with
+a small working CLI and grows it one practical task at a time. Each section
+builds on the ones before it, so reading in order works well, but every section
+also stands on its own. Stop as soon as the application has what it needs.
 
-Rust projects often wire together `clap` for CLI parsing, `serde` for
-de/serialization, and ad‑hoc code for loading `*.toml` files or reading
-environment variables. Mapping between different naming conventions (kebab‑case
-flags, `UPPER_SNAKE_CASE` environment variables, and `snake_case` struct
-fields) can be tedious. `OrthoConfig` addresses these problems by letting
-developers describe their configuration once and then automatically loading
-values from multiple sources. The core features are:
+Every example in this guide is compiled, run, or parsed by the project's test
+suite, so the code shown here is known to work with the release it describes.
 
-- **Layered configuration** – Configuration values can come from application
-  defaults, configuration files, environment variables and command‑line
-  arguments. Later sources override earlier ones. Command‑line arguments have
-  the highest precedence and defaults the lowest.
+## Find the right section
 
-- **Orthographic naming** – A single field in a Rust struct is automatically
-  mapped to a CLI flag (kebab‑case), an environment variable (upper snake case
-  with a prefix), and a file key (snake case). This removes the need for manual
-  aliasing.
+The sections run from first steps to specialist tooling. Use this table to jump
+straight to a task.
 
-- **Type‑safe deserialization** – Values are deserialized into strongly typed
-  Rust structs using `serde`.
+| Stage   | Task                                                   | Section                                                                                                                                                           |
+| ------- | ------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Start   | Add the crate and build a layered CLI                  | [Install OrthoConfig](#install-orthoconfig), [first CLI](#build-the-first-layered-cli)                                                                            |
+| Start   | Read settings from files and environment variables     | [See the configuration surface](#see-the-configuration-surface)                                                                                                   |
+| Start   | Turn a configured boolean off for one run              | [Switch a boolean off](#switch-a-boolean-off-from-the-command-line)                                                                                               |
+| Shape   | Combine lists and maps across sources                  | [Merge lists and maps](#merge-lists-and-maps)                                                                                                                     |
+| Shape   | Choose the flag and filenames used for discovery       | [Make discovery match the application](#make-discovery-match-the-application)                                                                                     |
+| Shape   | Offer `--profile staging` style overlays               | [Switch between named profiles](#switch-between-named-profiles)                                                                                                   |
+| Shape   | Layer system, user, and project files                  | [Control file layers](#control-which-configuration-files-become-layers)                                                                                           |
+| Shape   | Read YAML or JSON5                                     | [Enable another file format](#enable-another-file-format)                                                                                                         |
+| Grow    | Give subcommands their own settings                    | [Subcommands](#give-each-subcommand-its-own-settings)                                                                                                             |
+| Grow    | Ship a `cargo <name>` tool                             | [Cargo external subcommands](#cargo-external-subcommand-entry-points)                                                                                             |
+| Grow    | Report errors and translate help                       | [Errors](#handle-errors-at-the-application-boundary), [localization](#localize-help-and-parse-failures-together)                                                  |
+| Test    | Load configuration without touching the process        | [Test discovery](#test-discovery-without-changing-the-process-environment), [resolve without process state](#resolve-discovery-and-merging-without-process-state) |
+| Operate | Observe discovery and merging in production            | [Add production diagnostics](#add-production-diagnostics)                                                                                                         |
+| Operate | Depend on OrthoConfig under another name               | [Use an aliased dependency](#use-an-aliased-dependency)                                                                                                           |
+| Publish | Generate man pages, PowerShell help, and agent context | [Generate help](#generate-help-from-the-same-metadata)                                                                                                            |
+| Publish | Describe commands safely to automation                 | [Agent contract](#offer-a-compact-contract-to-automation), [behaviour](#declare-behaviour-metadata-for-agents)                                                    |
+| Upgrade | Move from an earlier release                           | [Upgrade from an earlier release](#upgrade-from-an-earlier-release)                                                                                               |
 
-- **Easy adoption** – A procedural macro `#[derive(OrthoConfig)]` adds the
-  necessary code. Developers only need to derive `serde` traits on their
-  configuration struct and call a generated method to load the configuration.
+_Table 1: Tasks covered by this guide and where to find them._
 
-- **Customizable behaviour** – Attributes such as `default`, `cli_long`,
-  `cli_short`, and `merge_strategy` provide fine‑grained control over naming
-  and merging behaviour.
-- **Declarative merge tooling** – Every configuration struct exposes a
-  `merge_from_layers` helper along with `MergeComposer`, making it simple to
-  compose defaults, files, environment captures, and CLI values in unit tests
-  or bespoke loaders without instantiating the CLI parser. Vector fields honour
-  the append strategy by default, so defaults flow through alongside
-  environment and CLI additions.
+## Install OrthoConfig
 
-The workspace bundles an executable Hello World example under
-`examples/hello_world`. It layers defaults, environment variables, and CLI
-flags via the derive macro; see its [README](../examples/hello_world/README.md)
-for a step-by-step walkthrough and the `rstest-bdd` (Behaviour-Driven
-Development) scenarios that validate behaviour end-to-end.
+OrthoConfig needs Serde to turn merged values into the application's
+configuration type. Add `clap` when the application defines its own command or
+subcommand parser:
 
-Run `make test` to execute the example’s coverage. The unit suite uses `rstest`
-fixtures to exercise parsing, validation, and command planning across
-parameterized edge-cases (conflicting delivery modes, blank salutations, and
-custom punctuation). Behavioural coverage comes from the `rstest-bdd`
-integration test under `tests/rstest_bdd`, which spawns the compiled binary
-inside a temporary working directory, layers `.hello_world.toml` defaults via
-`cap-std`, and sets `HELLO_WORLD_*` environment variables per scenario to
-demonstrate precedence: configuration files < environment variables < CLI
-arguments. Scenarios tagged `@requires.yaml` are gated by compile-time tag
-filters, so non-`yaml` builds skip them automatically.
-
-`ConfigDiscovery` exposes the same search order used by the example so
-applications can replace bespoke path juggling with a single call. By default
-the helper honours `HELLO_WORLD_CONFIG_PATH`, then searches
-`$XDG_CONFIG_HOME/hello_world`, each entry in `$XDG_CONFIG_DIRS` (falling back
-to `/etc/xdg` on Unix-like targets), Windows application data directories,
-`$HOME/.config/hello_world`, `$HOME/.hello_world.toml`, and finally the project
-root. Candidates are deduplicated in precedence order (case-insensitively on
-Windows). Call `utf8_candidates()` to receive a `Vec<camino::Utf8PathBuf>`
-without manual conversions:
-
-```rust,no_run
-use ortho_config::ConfigDiscovery;
-
-# fn load() -> ortho_config::OrthoResult<()> {
-let discovery = ConfigDiscovery::builder("hello_world")
-    .env_var("HELLO_WORLD_CONFIG_PATH")
-    .build();
-
-if let Some(figment) = discovery.load_first()? {
-    // Extract your configuration struct from the figment here.
-    println!(
-        "Loaded configuration from {:?}",
-        discovery.candidates().first()
-    );
-} else {
-    // Fall back to defaults when no configuration files exist.
-}
-# Ok(())
-# }
+<!-- tested-example: guide-install -->
+```toml
+[dependencies]
+clap = { version = "4.5", features = ["derive"] }
+ortho_config = "0.10.0"
+serde = { version = "1.0", features = ["derive"] }
 ```
 
-The repository ships `config/overrides.toml`, which extends
-`config/baseline.toml` to set `is_excited = true`, provide a `Layered hello`
-preamble, and swap the greet punctuation for `!!!`. Behavioural tests and demo
-scripts assert the uppercase output to guard this layering.
+The default features support TOML and the JSON-backed merge machinery used by
+the derive. Optional `json5`, `yaml`, and `metrics` features are covered later.
+OrthoConfig re-exports its derive macros, so a separate `ortho_config_macros`
+dependency is not needed.
 
-### Declarative merging
+## Build the first layered CLI
 
-The derive macro now emits helpers for composing configuration layers without
-going through Figment directly. `MergeComposer` collects `MergeLayer` instances
-for defaults, files, environment, and CLI input; once constructed, pass the
-layers to `YourConfig::merge_from_layers` to build the final struct:
+Start with one struct. The `prefix` is used for environment variables and for
+the default file-discovery names. A trailing underscore is conventional and
+keeps names such as `ACME_PORT` easy to read; OrthoConfig adds one when it is
+missing.
 
+<!-- tested-example: guide-first-cli -->
 ```rust
-use ortho_config::{MergeComposer, OrthoConfig};
-use serde::Deserialize;
-use serde_json::json;
-
-#[derive(Debug, Deserialize, OrthoConfig)]
-struct AppConfig {
-    recipient: String,
-    salutations: Vec<String>,
-}
-
-let mut composer = MergeComposer::new();
-composer.push_defaults(json!({"recipient": "Defaults", "salutations": ["Hi"] }));
-composer.push_environment(json!({"salutations": ["Env"] }));
-composer.push_cli(json!({"recipient": "Cli" }));
-
-let merged = AppConfig::merge_from_layers(composer.layers())?;
-assert_eq!(merged.recipient, "Cli");
-assert_eq!(
-    merged.salutations,
-    vec![String::from("Hi"), String::from("Env")]
-);
-```
-
-This API surfaces the same precedence as the generated `load()` method while
-making it trivial to drive unit and behavioural tests with hand-crafted layers.
-`Vec<_>` fields accumulate values from each layer in order, so defaults can
-coexist with environment or CLI extensions. The Hello World example’s
-behavioural suite includes a dedicated scenario that parses JSON descriptors
-into `MergeLayer` values and asserts the merged configuration via these
-helpers. Unit tests can mirror this approach with `rstest` fixtures: define
-fixtures for default payloads, then enumerate cases for file, environment, and
-CLI layers. This validates every precedence permutation without copy-pasting
-setup.
-
-Every derived configuration also exposes `compose_layers()` and
-`compose_layers_from_iter(...)`. These helpers discover configuration files,
-serialize environment variables, and capture CLI input as a `LayerComposition`,
-keeping discovery separate from merging. The returned composition includes both
-the ordered layers and any collected errors, letting callers push additional
-layers or aggregate errors before invoking `merge_from_layers`.
-
-### Post-merge hooks
-
-Some configuration structs require custom adjustments after the standard merge
-pipeline completes. The `PostMergeHook` trait provides an opt-in hook that the
-library invokes automatically when the `#[ortho_config(post_merge_hook)]`
-attribute is present.
-
-```rust
-use ortho_config::{OrthoConfig, OrthoResult, PostMergeContext, PostMergeHook};
+use ortho_config::{OrthoConfig, OrthoResult};
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Default, Deserialize, Serialize, OrthoConfig)]
-#[ortho_config(prefix = "APP_", post_merge_hook)]
-struct GreetArgs {
-    #[ortho_config(default = String::from("!"))]
-    punctuation: String,
-    preamble: Option<String>,
+#[derive(Debug, Deserialize, Serialize, OrthoConfig)]
+#[ortho_config(prefix = "ACME_")]
+struct Config {
+    #[ortho_config(default = String::from("127.0.0.1"))]
+    host: String,
+
+    #[ortho_config(default = 8080, cli_short = 'p')]
+    port: u16,
+
+    #[ortho_config(default = String::from("info"))]
+    log_level: String,
 }
 
-impl PostMergeHook for GreetArgs {
-    fn post_merge(&mut self, _ctx: &PostMergeContext) -> OrthoResult<()> {
-        // Normalize whitespace-only preambles to None
-        if self.preamble.as_ref().is_some_and(|p| p.trim().is_empty()) {
-            self.preamble = None;
+fn main() -> OrthoResult<()> {
+    let config = Config::load()?;
+    println!(
+        "host={} port={} log_level={}",
+        config.host, config.port, config.log_level
+    );
+    Ok(())
+}
+```
+
+That one definition provides three spellings for each field:
+
+| Rust field  | Command line     | Environment      | TOML        |
+| ----------- | ---------------- | ---------------- | ----------- |
+| `host`      | `--host`         | `ACME_HOST`      | `host`      |
+| `port`      | `--port` or `-p` | `ACME_PORT`      | `port`      |
+| `log_level` | `--log-level`    | `ACME_LOG_LEVEL` | `log_level` |
+
+_Table 2: Rust fields and their command-line, environment, and TOML names._
+
+Values are merged from lowest to highest precedence:
+
+1. `#[ortho_config(default = ...)]` values;
+2. configuration files;
+3. environment variables; and
+4. command-line arguments.
+
+This means a checked-in file can provide team defaults, an environment variable
+can adapt them for a deployment, and a one-off CLI option can override both.
+[Named profiles](#switch-between-named-profiles) add one optional tier between
+files and environment variables; nothing else changes this order.
+
+## See the configuration surface
+
+Different sources suit different moments. Start with durable team settings in
+`.acme.toml`, in the directory the application runs from:
+
+<!-- tested-example: guide-file -->
+```toml
+host = "0.0.0.0"
+port = 9000
+log_level = "debug"
+```
+
+At deployment time, an environment variable can change the host without
+rewriting the file. For a one-off run, a CLI option can change the port again:
+
+<!-- tested-example: guide-file-run -->
+```console
+$ ACME_HOST=api.internal cargo run -- --port 3000
+host=api.internal port=3000 log_level=debug
+```
+
+The result shows all three surfaces working together: `log_level` comes from
+TOML, `ACME_HOST` supplies `host`, and `--port` wins for `port`. The command
+uses POSIX shell syntax; in PowerShell, set `$env:ACME_HOST = "api.internal"`
+before running the same Cargo command.
+
+### Where files are found
+
+Discovery tries candidates in this order and uses the first one that loads:
+
+1. a path given with the generated `--config-path` option;
+2. a path named by the `ACME_CONFIG_PATH` environment variable;
+3. the XDG configuration directories (`$XDG_CONFIG_HOME`, then each entry of
+   `$XDG_CONFIG_DIRS`, falling back to `/etc/xdg`), looking for
+   `acme/config.toml` and `.acme.toml`;
+4. `%APPDATA%` on Windows;
+5. the home directory, including `~/.config/acme/config.toml` and
+   `~/.acme.toml`; and
+6. `.acme.toml` in the project directory, which defaults to the current working
+   directory.
+
+Explicitly requested files are required: a missing `--config-path` is an error
+rather than a silent fallback. The `--config-path` option is hidden from
+`--help` by default;
+[make discovery match the application](#make-discovery-match-the-application)
+shows how to rename it and make it visible.
+
+### Share settings between files
+
+Configuration files can contain an `extends` entry naming a parent file.
+Relative paths are resolved from the file that declares them, and parent layers
+are merged before the child, so the child overrides only what it restates.
+OrthoConfig reports a missing parent with its absolute path and the referencing
+file, so the failure is actionable.
+
+## Merge lists and maps
+
+TOML naturally handles lists and nested values. An application can add
+collections to its configuration struct and let each source contribute to them:
+
+<!-- tested-example: guide-collections -->
+```rust
+use ortho_config::{OrthoConfig, OrthoResult};
+use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+struct Worker {
+    name: String,
+    concurrency: u8,
+}
+
+#[derive(Debug, Deserialize, Serialize, OrthoConfig)]
+#[ortho_config(prefix = "ACME_")]
+struct Config {
+    #[ortho_config(skip_cli, default = Vec::new())]
+    workers: Vec<Worker>,
+
+    #[ortho_config(skip_cli, default = BTreeMap::new())]
+    labels: BTreeMap<String, String>,
+}
+
+fn main() -> OrthoResult<()> {
+    let config = Config::load()?;
+    for worker in &config.workers {
+        println!("worker={} concurrency={}", worker.name, worker.concurrency);
+    }
+    for (key, value) in &config.labels {
+        println!("label {key}={value}");
+    }
+    Ok(())
+}
+```
+
+The matching `.acme.toml` uses an array of tables for the workers and an
+ordinary table for the labels:
+
+<!-- tested-example: guide-collection-file -->
+```toml
+[[workers]]
+name = "queue-a"
+concurrency = 4
+
+[[workers]]
+name = "queue-b"
+concurrency = 2
+
+[labels]
+region = "eu-west"
+tier = "worker"
+```
+
+Running the program prints both workers and both labels. `skip_cli` keeps these
+structured fields out of the command line, because `Worker` has no natural flag
+spelling; files and environment variables still supply them.
+
+When more than one source supplies a collection, a field-level `merge_strategy`
+decides how they combine:
+
+| Field type              | Default  | Alternative | Effect of the default                                      |
+| ----------------------- | -------- | ----------- | ---------------------------------------------------------- |
+| `Vec<T>`                | `append` | `replace`   | Higher-precedence items are added after lower-layer items  |
+| Maps such as `BTreeMap` | `keyed`  | `replace`   | Entries merge by key; untouched lower-layer entries remain |
+
+_Table 3: Collection merge strategies._
+
+Write `#[ortho_config(merge_strategy = "replace")]` when a higher-precedence
+source should swap the whole collection rather than add to it. Choose the
+policy deliberately when operators may combine file, environment, and CLI
+values; an unsupported pairing, such as `keyed` on a `Vec`, is a compile-time
+error.
+
+## Switch a boolean off from the command line
+
+A boolean field has three meaningful states: absent, explicitly `true`, and
+explicitly `false`. The last one matters when a file or environment variable
+supplies `true` and the operator wants to override it for a single run.
+
+Generated boolean flags accept an optional value, so the flag does the work
+without a separate negation option:
+
+<!-- tested-example: guide-boolean-override -->
+```rust
+use ortho_config::{OrthoConfig, OrthoResult};
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Deserialize, Serialize, OrthoConfig)]
+#[ortho_config(prefix = "ACME_")]
+struct Config {
+    /// Adds an exclamation mark to the greeting.
+    #[ortho_config(default = false)]
+    excited: bool,
+}
+
+fn main() -> OrthoResult<()> {
+    let config = Config::load()?;
+    println!("excited={}", config.excited);
+    Ok(())
+}
+```
+
+The spellings behave as follows:
+
+| Command line      | File or environment | Result  | Why                                     |
+| ----------------- | ------------------- | ------- | --------------------------------------- |
+| _(omitted)_       | `excited = true`    | `true`  | The lower-precedence source still wins  |
+| `--excited`       | _(none)_            | `true`  | A bare flag means `true`                |
+| `--excited=true`  | _(none)_            | `true`  | The explicit spelling of the same value |
+| `--excited=false` | `excited = true`    | `false` | The command line clears the lower layer |
+
+_Table 4: Boolean flag spellings and the resulting value._
+
+Use `=` when supplying a value. A bare `--excited` never consumes the argument
+that follows it, so another option may follow it without being swallowed. The
+space-separated form, `--excited false`, is rejected instead: without that rule
+the flag would swallow the token after it, so `--excited notes.txt` would try
+to read `notes.txt` as the boolean value rather than as a positional operand.
+
+Omitting the flag is not the same as passing `--excited=false`. An omitted flag
+leaves the value absent, which lets a configuration file or environment
+variable supply it. Passing `--excited=false` always produces `false`, even
+when a lower-precedence file or environment value supplies `true`. Use the
+explicit form when the intent is to override, and omission when the intent is
+to defer.
+
+An explicit value always wins over the lower layers, including when it happens
+to repeat the field's own default. `--port 8080` therefore overrides
+`ACME_PORT=9000`, just as `--excited=false` overrides `ACME_EXCITED=true`. Use
+omission, not a repeated default, when the intent is to let the lower layer
+supply the value.
+
+Every boolean field behaves this way, including `Option<bool>` fields. A field
+declared as `Option<bool>` distinguishes "no value was supplied anywhere" from
+an explicit `false`, which matters when a
+[subcommand merge](#give-each-subcommand-its-own-settings) must tell a missing
+value from a deliberate one.
+
+The generated documentation metadata describes the same surface. Boolean fields
+report `takes_value: true` with a `BOOL` value name, `true` and `false` as
+possible values, and `value_optional: true`. Man pages render the flag as
+`--excited[=BOOL]`, with the bracketed placeholder italicized.
+
+## Make discovery match the application
+
+Application names do not need to bend around OrthoConfig's defaults. Put the
+discovery contract beside the struct when the public flag or filenames are part
+of the CLI design:
+
+<!-- tested-example: guide-discovery -->
+```rust
+use ortho_config::{OrthoConfig, OrthoResult};
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Deserialize, Serialize, OrthoConfig)]
+#[ortho_config(
+    prefix = "ACME_",
+    discovery(
+        app_name = "acme-server",
+        config_file_name = "server.toml",
+        dotfile_name = ".acme-server.toml",
+        project_file_name = ".acme-server.toml",
+        config_cli_long = "config",
+        config_cli_short = 'c',
+        config_cli_visible = true
+    )
+)]
+struct Config {
+    #[ortho_config(default = 8080)]
+    port: u16,
+}
+
+fn main() -> OrthoResult<()> {
+    let config = Config::load()?;
+    println!("port={}", config.port);
+    Ok(())
+}
+```
+
+This application accepts `--config` and `-c`, shows them in `--help`, reads
+`ACME_CONFIG_PATH`, looks for `.acme-server.toml` in project locations, and uses
+`server.toml` in platform configuration directories. Keeping these choices in
+the derive also exposes them through `OrthoConfigDocs`, so generated help
+describes the same contract.
+
+### Handle every `load_first` outcome
+
+Applications that drive discovery by hand use `ConfigDiscovery` directly.
+`ConfigDiscovery::load_first` distinguishes three outcomes. `Ok(Some(...))`
+contains the first successfully parsed candidate. `Ok(None)` means discovery
+had no candidates to try. `Err(...)` means candidates existed but none loaded
+successfully; surface or map that error rather than treating it as absence:
+
+<!-- tested-example: guide-load-first-outcomes -->
+```rust
+use ortho_config::{ConfigDiscovery, OrthoResult};
+
+fn load_discovered_config(discovery: &ConfigDiscovery) -> OrthoResult<()> {
+    match discovery.load_first() {
+        Ok(Some(_config)) => {
+            // Merge or deserialize the discovered Figment value.
+            println!("discovery=loaded");
+            Ok(())
         }
-        Ok(())
+        Ok(None) => {
+            // Continue with application defaults.
+            println!("discovery=absent");
+            Ok(())
+        }
+        Err(error) => Err(error),
+    }
+}
+
+fn main() -> OrthoResult<()> {
+    let discovery = ConfigDiscovery::builder("acme").build();
+    load_discovered_config(&discovery)
+}
+```
+
+## Switch between named profiles
+
+Profiles are named bundles of configuration values kept inside the
+configuration file, such as a `staging` profile that raises the log level and
+moves the port. Profile support is opt-in: add `profiles` to the struct-level
+attribute.
+
+<!-- tested-example: guide-profiles -->
+```rust
+use ortho_config::{OrthoConfig, OrthoResult};
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Deserialize, Serialize, OrthoConfig)]
+#[ortho_config(prefix = "ACME_", profiles)]
+struct Config {
+    #[ortho_config(default = String::from("info"))]
+    log_level: String,
+
+    #[ortho_config(default = 8080)]
+    port: u16,
+}
+
+fn main() -> OrthoResult<()> {
+    let outcome = Config::load_with_profile()?;
+    if let Some(selected) = outcome.selection().first() {
+        println!("profile={} from {}", selected.name, selected.source);
+    }
+    let config = outcome.into_config();
+    println!("log_level={} port={}", config.log_level, config.port);
+    Ok(())
+}
+```
+
+Declare each profile as a `[profile.<name>]` table in `.acme.toml`. JSON5 and
+YAML files use the equivalent `profile.<name>` key path:
+
+<!-- tested-example: guide-profiles-file -->
+```toml
+log_level = "info"
+
+[profile.staging]
+log_level = "debug"
+port = 9000
+```
+
+Select a profile with the generated `--profile` flag or the `ACME_PROFILE`
+environment variable. The selector variable is always the struct's `prefix`
+followed by `PROFILE`:
+
+<!-- tested-example: guide-profiles-run -->
+```console
+$ cargo run
+log_level=info port=8080
+$ cargo run -- --profile staging
+profile=staging from the --profile flag
+log_level=debug port=9000
+$ ACME_PROFILE=staging cargo run -- --port 3000
+profile=staging from the selector environment variable
+log_level=debug port=3000
+```
+
+The last run shows the precedence rule: a profile is still configuration-file
+data, so environment variables and command-line arguments outrank it. With
+profiles enabled, precedence from lowest to highest is:
+
+1. application-defined defaults;
+2. configuration files;
+3. the selected profile, with one overlay per file in the resolved chain that
+   defines it, base file first;
+4. environment variables; and
+5. command-line arguments.
+
+`load_with_profile()` returns a `ProfileLoadOutcome`. Borrow the configuration
+with `config()`, take it with `into_config()`, and read the selection with
+`selection()`, which holds zero or one `SelectedProfile` today. Each entry
+carries the profile `name` and its `source`, either `ProfileSource::Flag` or
+`ProfileSource::Environment`. `load_with_profile_from_iter` accepts explicit
+arguments, and the `_with_sources` variants accept
+[injected environment sources](#resolve-discovery-and-merging-without-process-state).
+The ordinary `load()` and `load_from_iter()` keep working on an opted-in
+struct when the application does not need to report the selection.
+
+### Selection rules
+
+- The `--profile` flag beats `ACME_PROFILE` whenever both are present. An empty
+  flag value also suppresses the environment fallback.
+- An empty selector, such as `ACME_PROFILE=""` left behind by a stray `export`,
+  means "no profile" rather than an invalid name.
+- The name `default` is reserved and also means "no profile"; defining
+  `[profile.default]` fails with `OrthoError::ReservedProfileName`.
+- Profile names are case-sensitive and must match `[A-Za-z0-9_-]+`.
+- A selector value that is not valid Unicode fails the load rather than
+  silently falling back to the unprofiled configuration.
+
+### Profile errors
+
+Selecting a profile that no file defines fails with
+`OrthoError::UnknownProfile`. The error names the profile, says whether it came
+from the flag or the environment variable, and lists up to 16 available names
+in sorted order. When no configuration file was found at all, or files exist
+but define no profiles, the error says which, so a leaked `ACME_PROFILE` is not
+mistaken for a missing file.
+
+Inside a profile body, the keys `cmds` and `inherits` are forbidden and fail
+with `OrthoError::ProfileForbiddenKey`: subcommand configuration ignores
+profiles, and `inherits` is reserved for future single-parent inheritance.
+
+Opting in reserves the `profile` name across all three sources. The `profile`
+root key is taken out of file tables, `ACME_PROFILE` is not merged as a
+setting, and the generated flag is not part of the merged command-line values.
+A field that claims the `profile` key, the `--profile` flag, or the
+`ACME_PROFILE` variable on an opted-in struct is a compile-time error. Structs
+that do not opt in keep the four-tier precedence, gain no `--profile` flag, and
+treat a `[profile.*]` table like any other unknown key.
+
+## Control which configuration files become layers
+
+File discovery normally stops at the first candidate that loads, and that
+remains the default: `AutomaticMode::FirstWins` scans candidates most-preferred
+first and stops at the first file that parses. The opt-in
+`AutomaticMode::StackScopes` composes every applicable file that loads instead,
+so a system-wide file can provide a base that user and project files refine.
+
+Three ideas order that stack:
+
+- a **scope** is `DiscoveryScope::System`, `DiscoveryScope::User`, or
+  `DiscoveryScope::Project`, covering automatic locations such as `/etc/xdg`,
+  the home and application-data folders, and the project directory;
+- **scope order is precedence order**: scopes are applied in the order given,
+  and the default `system`, `user`, `project` order lets project files override
+  user files, which in turn override system-wide files; and
+- within a scope the least-preferred location is applied first and the
+  most-preferred last, so the location that first-wins would have selected
+  still wins, while every lower-preferred location contributes a base layer for
+  the keys it alone sets.
+
+That reversal is deliberate, because the two orderings run in opposite
+directions: the candidate list is a _preference_ order, while a composed layer
+list is a _precedence_ order. Walking candidates in reverse is what lets one
+rule, "later applied wins", serve both. Emitting them in preference order
+instead would let a fallback such as `~/.demo.toml` silently override
+`$XDG_CONFIG_HOME/demo/config.toml` as soon as a second location started
+loading.
+
+Canonical paths are de-duplicated across scopes, keeping the earliest position
+in application order, so a file reachable from two scopes contributes one layer
+rather than two.
+
+### Configure the policy from the derive
+
+The policy keys live in the same `discovery(...)` attribute as the other
+discovery settings. Supplying any of them switches the generated loader onto
+the policy path:
+
+<!-- tested-example: guide-scoped-discovery -->
+```rust
+use ortho_config::{OrthoConfig, OrthoResult};
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Deserialize, Serialize, OrthoConfig)]
+#[ortho_config(
+    prefix = "ACME_",
+    discovery(
+        app_name = "acme",
+        env_vars = ["ACME_CONFIG_PATH", "ACME_LEGACY_CONFIG"],
+        explicit_mode = "optional",
+        automatic_mode = "stack_scopes",
+        scope_order = ["system", "user", "project"]
+    )
+)]
+struct Config {
+    #[ortho_config(default = 8080)]
+    port: u16,
+}
+
+fn main() -> OrthoResult<()> {
+    let config = Config::load()?;
+    println!("port={}", config.port);
+    Ok(())
+}
+```
+
+With neither selector variable set and no candidate file present, the example
+prints `port=8080`: the stacked scopes contribute nothing and the default
+survives. The policy keys are:
+
+- `env_vars`: an array of environment variable names, tried in order, so that
+  an older name still selects a file. It is mutually exclusive with `env_var`.
+- `explicit_mode`: `"required_exclusive"` (the default) or `"optional"`.
+- `automatic_mode`: `"first_wins"` (the default) or `"stack_scopes"`.
+- `scope_order`: an array drawn from `"system"`, `"user"`, and `"project"`,
+  applied in the order written.
+- `project_root_from`: the name of a `PathBuf` or `Option<PathBuf>` CLI field
+  whose value supplies the project root described below.
+
+Every part of this section is opt-in. Discovery stays first-wins and every
+selected path stays required unless one of the keys above says otherwise, so
+applications that do not use them need no change.
+
+### Select a file explicitly
+
+Behind the derive keys sits `ConfigFilePolicy`, which places an ordered chain
+of explicit selectors above automatic discovery. Applications that build the
+policy by hand start from `ConfigFilePolicy::from_builder(...)`. Each rung is a
+`ConfigPathSelector`:
+
+- `ConfigPathSelector::cli(path)` takes an optional path already parsed by a
+  CLI adapter, such as the generated `--config-path` field;
+- `ConfigPathSelector::env("VAR")` names an environment variable to read; an
+  empty value counts as unset;
+- `.label("primary")`, applied to a rung, replaces the diagnostics label it
+  would otherwise carry, such as the variable name; and
+- `.legacy_alias()`, applied to a rung, marks it as an older, compatibility
+  variable name.
+
+Rungs resolve in order and the first that yields a path wins. A winning rung
+suppresses the rungs after it and automatic probing entirely, so a file named
+on the command line is never joined by automatically discovered files. When no
+rung yields a path, the policy falls back to automatic discovery over
+`scope_order`.
+
+`ExplicitMode` decides what a selected path means:
+
+- `ExplicitMode::RequiredExclusive`, the default, reports a selected file that
+  is missing or unreadable as a failure and loads no fallback; and
+- `ExplicitMode::Optional` accepts an absent selected path while still
+  suppressing automatic discovery.
+
+Resolution returns a `FileLayerOutcome`, a replayable value reporting the
+winning selection through `selection()`, non-fatal defects through
+`reportable_errors()`, and the scopes that actually contributed layers through
+`origins()`. Under `AutomaticMode::FirstWins`, `origins()` is always empty,
+because that mode walks a flat candidate list and scope has no bearing on what
+loads.
+
+### Root the project scope
+
+The project scope is rooted at the working directory by default. Two spellings
+replace it with a caller-selected directory:
+
+- `ConfigFilePolicy::project_root(root)` replaces every automatic project root
+  on a hand-built policy; and
+- the derive key `project_root_from = "field_name"` names the CLI field whose
+  value becomes that root. The field must be of type `PathBuf` or
+  `Option<PathBuf>`, and must not be skipped for the CLI; the derive rejects
+  any other field at compile time.
+
+## Enable another file format
+
+TOML is enabled by default. Enable the `json5` or `yaml` feature when users
+already work in that format:
+
+<!-- tested-example: guide-yaml-install -->
+```toml
+[dependencies]
+ortho_config = { version = "0.10.0", features = ["yaml"] }
+```
+
+YAML uses YAML 1.2 semantics: legacy words such as `yes` and `on` remain
+strings, and duplicate mapping keys are rejected. In this file, `enabled` and
+`mode` are therefore strings and only `port` is a number:
+
+<!-- tested-example: guide-yaml -->
+```yaml
+enabled: yes
+mode: on
+port: 8080
+```
+
+The `yaml` feature also requires the `serde_json` feature, which is part of the
+default feature set. If default features are disabled, enable both explicitly.
+
+## Give each subcommand its own settings
+
+Many CLIs have global options plus commands with different configuration. Derive
+`OrthoConfig` for each subcommand's argument struct and merge only the
+selected command:
+
+<!-- tested-example: guide-subcommand -->
+```rust
+use clap::{Parser, Subcommand};
+use ortho_config::{OrthoConfig, OrthoResult, SubcmdConfigMerge};
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Parser)]
+#[command(name = "acme")]
+struct Cli {
+    #[command(subcommand)]
+    command: Command,
+}
+
+#[derive(Debug, Subcommand)]
+enum Command {
+    Serve(ServeConfig),
+}
+
+#[derive(Debug, Default, Parser, Deserialize, Serialize, OrthoConfig)]
+#[command(name = "serve")]
+#[ortho_config(prefix = "ACME_SERVE_")]
+struct ServeConfig {
+    #[arg(long)]
+    port: Option<u16>,
+}
+
+fn main() -> OrthoResult<()> {
+    match Cli::parse().command {
+        Command::Serve(cli) => {
+            let config = cli.load_and_merge()?;
+            println!("port={:?}", config.port);
+        }
+    }
+    Ok(())
+}
+```
+
+Subcommand settings live under a `cmds` namespace so they cannot collide with
+global settings. For the `serve` command above, a file supplies them in a
+`[cmds.serve]` table and the environment supplies them as
+`ACME_SERVE_CMDS_SERVE_PORT`: the struct prefix, then `CMDS_`, the command
+name, and the field.
+
+For an enum with many variants, derive `SelectedSubcommandMerge` on the enum
+and call `load_globals_and_merge_selected_subcommand`. The generated match
+keeps the entry point small; the
+[Hello World example](../examples/hello_world/) uses this pattern.
+
+### Let files override clap defaults
+
+A `clap` default normally counts as a command-line value, so it would beat a
+file or environment value. Add `#[ortho_config(cli_default_as_absent)]` to a
+field when the clap default should sit below files and environment variables
+instead. The derive infers `default_value`, `default_value_t`, and
+`default_values_t` defaults, so the value need only be declared in clap.
+`default_value` is replayed through clap's parser, including `ValueEnum` and
+`#[arg(value_parser = ...)]` fields. Scalars, `Option<T>`, and `Vec<T>` are
+supported; nested wrappers and map fields require an explicit
+`#[ortho_config(default = ...)]` instead.
+
+For a subcommand, pair the attribute with a match-aware loader such as
+`load_and_merge_with_matches`. Clap's match metadata distinguishes a parser
+default from an explicit command-line value; without it, values in the parsed
+struct are treated as command-line input. The subcommand merge starts from the
+struct's `Default` implementation, so implement `Default` to agree with the
+clap defaults. The
+[v0.10.0 migration guide](v0-10-0-migration-guide.md#infer-parser-faithful-string-defaults)
+has a complete, tested example using `load()`.
+
+### Keep parse-only commands separate
+
+Some commands only parse arguments and do not participate in configuration
+loading. Keep those arguments in a separate clap-only type:
+
+<!-- tested-example: guide-clap-only-parse -->
+```rust
+use clap::Parser;
+
+#[derive(Debug, Parser)]
+struct ParseOnlyArgs {
+    #[arg(long)]
+    format: Option<String>,
+}
+
+fn main() {
+    let args = ParseOnlyArgs::parse();
+    println!("format={:?}", args.format);
+}
+```
+
+This parse-only workflow calls clap directly and does not load files or merge
+environment values. Because `ParseOnlyArgs` does not derive `OrthoConfig`, it
+has no `load_and_merge` or source-aware merge API. Use an `OrthoConfig`-derived
+struct, such as `ServeConfig` above, when a command needs configuration
+layering.
+
+For a hand-built Cargo external-subcommand parser, see the next section.
+
+## Cargo external-subcommand entry points
+
+Cargo runs `cargo <name> [OPTIONS]` by locating a binary named `cargo-<name>` on
+`PATH` and executing it with the subcommand name injected as the second
+argument: argv becomes `["<path>/cargo-<name>", "<name>", OPTIONS...]`. A
+parser that models only `cargo-<name> [OPTIONS]` rejects that injected `<name>`
+token before any application logic can run.
+
+`ortho_config::cargo::external_subcommand` wraps a hand-built `clap::Command`
+in the standard wrapper shape: a synthetic `cargo` parent that requires a
+single subcommand carrying the tool's real options. The worked example below
+parses the Cargo-injected argv all the way to the option value:
+
+<!-- tested-example: guide-cargo-external-subcommand -->
+```rust
+use ortho_config::cargo::external_subcommand;
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let args_command = clap::Command::new("demo")
+        .version("1.2.3")
+        .arg(
+            clap::Arg::new("verbose")
+                .long("verbose")
+                .action(clap::ArgAction::SetTrue),
+        );
+    let cli = external_subcommand("cargo-demo", "demo", args_command);
+    let matches = match cli.try_get_matches_from(std::env::args()) {
+        Ok(matches) => matches,
+        Err(error) => error.exit(),
+    };
+    let demo = matches
+        .subcommand_matches("demo")
+        .ok_or_else(|| std::io::Error::other("subcommand_required guarantees a subcommand"))?;
+    assert!(demo.get_flag("verbose"));
+    Ok(())
+}
+```
+
+The returned command accepts both invocation forms with the same inner options
+and no duplicated parser setup:
+
+- `cargo demo --verbose` (Cargo dispatch: argv
+  `['cargo-demo', 'demo', '--verbose']`), and
+- `cargo-demo demo --verbose` (direct invocation with the same injected
+  token).
+
+The adoption cost is that options move one level down: callers read them through
+`subcommand_matches("demo")` on the parsed matches rather than from the
+top-level matches.
+
+The wrapper is CLI entry-point structure, not configuration loading. It does
+not change OrthoConfig's merge precedence and it does not add a second
+configuration-loading pathway.
+
+Derive-based callers do not need the helper. Wrap the `Args` struct in a
+single-variant `#[command(subcommand)]` enum, as `cargo-orthohelp` does in
+`cargo-orthohelp/src/cli/mod.rs`.
+
+### Binary-level obligations
+
+The helper leaves the following binary-level obligations with the caller:
+
+- **Version.** The version belongs on the inner command, where the caller
+  controls it. The synthetic parent is version-less, so a top-level
+  `cargo-demo --version` intentionally errors with `UnknownArgument` rather
+  than printing a version. This diverges from the derive path, where
+  `cargo-orthohelp` sets `#[command(version)]` on its parent and
+  `cargo-orthohelp --version` works.
+- **Invocation hints.** Cargo-facing binaries should augment the
+  `MissingSubcommand` and `UnknownArgument` errors with a hint naming the
+  `cargo <name>` invocation form, as `cargo-orthohelp/src/main.rs` does. The
+  following program adds that hint to the wrapped command:
+
+<!-- tested-example: guide-cargo-error-hints -->
+```rust
+use ortho_config::cargo::external_subcommand;
+use std::io::Write;
+
+fn main() {
+    let cli = external_subcommand("cargo-demo", "demo", clap::Command::new("demo"));
+    if let Err(error) = cli.try_get_matches_from(std::env::args_os()) {
+        exit_for_clap_error(&error);
+    }
+}
+
+fn exit_for_clap_error(error: &clap::Error) -> ! {
+    let kind = error.kind();
+    let exit_code = error.exit_code();
+    if matches!(
+        kind,
+        clap::error::ErrorKind::UnknownArgument | clap::error::ErrorKind::MissingSubcommand
+    ) {
+        drop(write_augmented_clap_error(error));
+        std::process::exit(exit_code);
+    }
+    error.exit();
+}
+
+fn write_augmented_clap_error(error: &clap::Error) -> std::io::Result<()> {
+    let mut stderr = std::io::stderr().lock();
+    write!(stderr, "{error}")?;
+    writeln!(
+        stderr,
+        "note: invoke this tool via `cargo <name>` or as `cargo-<name> <name> [OPTIONS]`"
+    )
+}
+```
+
+- **Tracing.** Cargo-facing binaries should initialize a tracing subscriber
+  before parsing and emit a debug event at the dispatch boundary once the
+  injected token is accepted. `cargo-orthohelp/src/main.rs` is the reference
+  implementation. The library helper does not install a subscriber, because
+  libraries must not install global recorders;
+  [Add production diagnostics](#add-production-diagnostics) shows the
+  application-side set-up.
+
+The design rationale is recorded in
+[ADR-0004](adrs/adr-0004-cargo-external-subcommand-entry-point.md).
+
+## Handle errors at the application boundary
+
+Library APIs return `OrthoResult<T>`, whose error is an `Arc<OrthoError>`.
+Propagate it while loading, then render or map it where the application owns
+the user experience:
+
+<!-- tested-example: guide-errors -->
+```rust
+use ortho_config::{OrthoConfig, OrthoError};
+use serde::Deserialize;
+
+#[derive(Debug, Deserialize, OrthoConfig)]
+struct Config {
+    port: u16,
+}
+
+fn main() {
+    match Config::load_from_iter(["acme", "--port", "not-a-number"]) {
+        Ok(config) => println!("port={}", config.port),
+        Err(error) => match error.as_ref() {
+            OrthoError::CliParsing(clap_error) => eprintln!("{clap_error}"),
+            other => eprintln!("configuration error: {other}"),
+        },
     }
 }
 ```
 
-The `PostMergeContext` provides metadata about the merge process:
-
-- `prefix()` – the environment variable prefix used during loading
-- `loaded_files()` – paths of configuration files that contributed to the merge
-- `has_cli_input()` – whether CLI arguments were present in the merge
-
-Use post-merge hooks sparingly. Most configuration needs are satisfied by the
-standard merge pipeline combined with field-level attributes like
-`cli_default_as_absent` and `merge_strategy`. Hooks are best suited for:
-
-- Normalizing values after all layers have been applied
-- Performing validation that depends on multiple fields being merged
-- Conditional transformations based on which sources contributed
-
-The Hello World example demonstrates this pattern with `GreetCommand`, which
-uses a post-merge hook to clean up whitespace-only preambles.
-
-### Localizing CLI copy
-
-`ortho_config` exposes a `Localizer` trait, so applications can swap the text
-`clap` displays without abandoning sensible defaults. Each implementation is
-`Send + Sync` and returns owned `String` instances, making it cheap to cache
-resolved messages or fall back to the stock help text. The helper type
-`LocalizationArgs<'a> = HashMap<&'a str, FluentValue<'a>>` mirrors Fluent’s
-placeholder model, keeping argument-aware lookups ergonomic.
-
-The crate now ships a Fluent-backed implementation. `FluentLocalizer` embeds an
-English catalogue at `locales/en-US/messages.ftl`, layers any consumer bundles
-over those defaults, logs formatting errors with `tracing`, and falls back to
-the next bundle when a lookup fails:
-
-```rust
-use ortho_config::{langid, FluentLocalizer, LocalizationArgs, Localizer};
-
-static APP_EN: &str = include_str!("../locales/en-US/app.ftl");
-
-let localizer = FluentLocalizer::builder(langid!("en-US"))
-    .with_consumer_resources([APP_EN])
-    .try_build()
-    .expect("embedded locales load successfully");
-
-let mut args: LocalizationArgs<'_> = LocalizationArgs::default();
-args.insert("binary", "demo".into());
-assert_eq!(
-localizer
-    .lookup("cli.usage", Some(&args))
-    .expect("usage copy exists"),
-    "Usage: demo [OPTIONS] <COMMAND>"
-);
-```
-
-Applications can inject a custom logger with `with_error_reporter` when they
-need to capture Fluent formatting errors alongside command parsing failures.
-
-The Hello World example ships `hello_world::localizer::DemoLocalizer`, which
-builds a `FluentLocalizer` from `examples/hello_world/locales/en-US` and drives
-`CommandLine::command().localize(&localizer)` and
-`CommandLine::try_parse_localized_env`. If the localization setup ever fails,
-the example falls back to `NoOpLocalizer`, preserving the stock `clap` strings
-until translations are fixed.
-
-Errors surfaced by `clap` can be localized as well. Use
-`localize_clap_error_with_command` to map each `ErrorKind` to a Fluent
-identifier of the form `clap-error-<kebab-case>`, forwarding argument context
-such as the missing flag or the offending value. Supplying the command enables
-the helper to populate missing context (for example, the available subcommands
-when `clap` emits `DisplayHelpOnMissingArgumentOrSubcommand`). When no
-translation exists, the helper returns the original `clap` error unchanged:
-
-```rust
-use clap::CommandFactory;
-use ortho_config::{localize_clap_error_with_command, Localizer};
-
-# #[derive(clap::Parser)]
-# struct Cli {}
-fn parse(localizer: &dyn Localizer) -> Result<Cli, clap::Error> {
-    let mut command = Cli::command().localize(localizer);
-    let mut matches = command
-        .try_get_matches()
-        .map_err(|err| {
-            localize_clap_error_with_command(err, localizer, Some(&command))
-        })?;
-
-    Cli::from_arg_matches_mut(&mut matches).map_err(|err| {
-        let err = err.with_cmd(&command);
-        localize_clap_error_with_command(err, localizer, Some(&command))
-    })
-}
-```
-
-## Installation and dependencies
-
-Add `ortho_config` as a dependency in `Cargo.toml` along with `serde`:
-
-```toml
-[dependencies]
-ortho_config = "0.8.0"            # replace with the latest version
-serde = { version = "1.0", features = ["derive"] }
-clap = { version = "4", features = ["derive"] }    # required for CLI support
-```
-
-By default, only TOML configuration files are supported. To enable JSON5
-(`.json` and `.json5`) and YAML (`.yaml` and `.yml`) support, enable the
-corresponding cargo features:
-
-```toml
-[dependencies]
-ortho_config = { version = "0.8.0", features = ["json5", "yaml"] }
-# Enabling these features expands file formats; precedence stays: defaults < file < env < CLI.
-```
-
-Enabling the `json5` feature causes both `.json` and `.json5` files to be
-parsed using the JSON5 format. Without this feature, these files are ignored
-during discovery and do not cause errors if present. The `yaml` feature
-similarly enables `.yaml` and `.yml` files; without it, such files are skipped
-during discovery and do not cause errors if present.
-
-`ortho_config` re-exports its parsing dependencies, so consumers do not need to
-declare them directly. Access `figment`, `uncased`, `xdg` (on Unix-like and
-Redox targets), and the optional parsers (`figment_json5`, `json5`,
-`serde_saphyr`, `toml`) via `ortho_config::` paths. The `serde_json` re-export
-is enabled by default because the crate relies on it internally; disable
-default features only when explicitly opting back into `serde_json`.
-
-### Dependency architecture for derive macro users
-
-The `#[derive(OrthoConfig)]` macro emits fully qualified paths rooted at
-`ortho_config`. For example, generated code references
-`ortho_config::figment::Figment` and `ortho_config::uncased::Uncased` rather
-than `figment::...` or `uncased::...`. Those paths resolve because
-`ortho_config` re-exports these crates.
-
-For screen readers: The following diagram shows that generated code references
-re-exported crates through `ortho_config`, so consumer crates can rely on the
-runtime crate dependency.
-
-```mermaid
-flowchart TD
-    A[Consumer crate] -->|depends on| B[ortho_config]
-    C[derive OrthoConfig] -->|generates| D[ortho_config::figment::...]
-    C -->|generates| E[ortho_config::uncased::...]
-    B -->|re-exports| F[figment]
-    B -->|re-exports| G[uncased]
-    B -->|re-exports on Unix/Redox| H[xdg]
-```
-
-_Figure 1: Derive output resolves parser crates through `ortho_config`._
-
-In the common case, `Cargo.toml` does not need direct `figment`, `uncased`, or
-`xdg` dependencies:
-
-```toml
-[dependencies]
-ortho_config = "0.8.0"
-serde = { version = "1.0", features = ["derive"] }
-clap = { version = "4", features = ["derive"] }
-```
-
-### Troubleshooting dependency errors
-
-- If source code imports `figment`, `uncased`, or `xdg` directly, either switch
-  imports to `ortho_config::figment` / `ortho_config::uncased` /
-  `ortho_config::xdg`, or keep explicit dependencies for that direct usage.
-- If derive output fails with unresolved `ortho_config::...` paths, ensure the
-  dependency key is named `ortho_config` in `Cargo.toml` or use the
-  `#[ortho_config(crate = "...")]` attribute to specify the alias.
-- **Dependency aliasing** is supported via the `crate` attribute. When
-  renaming the dependency in `Cargo.toml` (for example,
-  `my_cfg = { package = "ortho_config", ... }`), add
-  `#[ortho_config(crate = "my_cfg")]` to the struct so generated code
-  references the correct crate path.
-- If dependency resolution reports conflicts, inspect duplicates with
-  `cargo tree -d` and prefer the versions selected through `ortho_config`
-  unless direct usage requires something else.
-
-### FAQ: should `figment`, `uncased`, or `xdg` be direct dependencies?
-
-No for derive-generated code. Yes, only when application code directly imports
-those crates without going through the `ortho_config::` re-exports.
-
-YAML parsing is handled by the pure-Rust `serde-saphyr` crate. It adheres to
-the YAML 1.2 specification, so unquoted scalars such as `yes`, `on`, and `off`
-remain strings. The provider enables `Options::strict_booleans`, ensuring only
-`true` and `false` deserialize as booleans, while legacy YAML 1.1 literals are
-treated as plain strings. Duplicate mapping keys surface as parsing errors
-instead of silently accepting the last entry, helping catch typos early.
-
-## Migrating from earlier versions
-
-Projects using a pre‑0.5 release can upgrade with the following steps:
-
-- `#[derive(OrthoConfig)]` remains the correct way to annotate configuration
-  structs. No additional derives are required.
-- Remove any `load_with_reference_fallback` helpers. The merge logic inside
-  `load_and_merge_subcommand_for` supersedes this workaround.
-- Replace calls to deprecated helpers such as `load_subcommand_config_for` with
-  `ortho_config::subcommand::load_and_merge_subcommand_for` or import
-  `ortho_config::SubcmdConfigMerge` to call `load_and_merge` directly.
-
-Import it with:
-
-```rust
-use ortho_config::SubcmdConfigMerge;
-```
-
-Subcommand structs can leverage the `SubcmdConfigMerge` trait to expose a
-`load_and_merge` method automatically:
-
-```rust
-use ortho_config::{OrthoConfig, OrthoResult};
-use ortho_config::SubcmdConfigMerge;
-use serde::Deserialize;
-
-#[derive(Deserialize, OrthoConfig)]
-struct PrArgs {
-    reference: String,
-}
-
-# fn demo(pr_args: &PrArgs) -> OrthoResult<()> {
-let merged = pr_args.load_and_merge()?;
-# let _ = merged;
-# Ok(())
-# }
-```
-
-After parsing the relevant subcommand struct, call `load_and_merge()?` on that
-value (for example, `pr_args.load_and_merge()?`) to obtain the merged
-configuration for that subcommand.
-
-## Defining configuration structures
-
-A configuration is represented by a plain Rust struct. To take advantage of
-`OrthoConfig`, derive the following traits:
-
-- `serde::Deserialize` and `serde::Serialize` – required for deserializing
-  values and merging overrides.
-
-- The derive macro generates a hidden `clap::Parser` implementation, so
-  manual `clap` annotations are not required in typical use. CLI customization
-  is performed using `ortho_config` attributes such as `cli_short`, or
-  `cli_long`.
-
-- `OrthoConfig` – provided by the library. This derive macro generates the code
-  to load and merge configuration from multiple sources.
-
-Optionally, the struct can include a `#[ortho_config(prefix = "PREFIX")]`
-attribute. The prefix sets a common string for environment variables and
-configuration file names. When the attribute omits a trailing underscore,
-`ortho_config` appends one automatically so environment variables consistently
-use `<PREFIX>_`. Trailing underscores are trimmed and the prefix is lower‑cased
-when used to form file names. For example, a prefix of `APP` results in
-environment variables like `APP_PORT` and file names such as `.app.toml`.
-
-### Field-level attributes
-
-Field attributes modify how a field is sourced or merged:
-
-| Attribute                   | Behaviour                                                                                                                                                                                       |
-| --------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `default = expr`            | Supplies a default value when no source provides one. The expression can be a literal or a function path.                                                                                       |
-| `cli_long = "name"`         | Overrides the automatically generated long CLI flag (kebab-case).                                                                                                                               |
-| `cli_short = 'c'`           | Adds a single-letter short flag for the field.                                                                                                                                                  |
-| `merge_strategy = "append"` | For `Vec<T>` fields, specifies that values from different sources should be concatenated. This is currently the only supported strategy and is the default for vector fields.                   |
-| `cli_default_as_absent`     | Treats typed clap defaults (`default_value_t`, `default_values_t`) as absent during configuration merging. File and environment values take precedence, while explicit CLI overrides still win. |
-
-Unrecognized keys are ignored by the derive macro for forwards compatibility.
-Unknown keys will therefore silently do nothing. Developers who require
-stricter validation may add manual `compile_error!` guards.
-
-Vector append buffers operate on raw JSON values, so element types only need to
-implement `serde::Deserialize`. Deriving `serde::Serialize` remains useful when
-applications serialize configuration back out (for example, to emit defaults),
-but it is no longer required merely to opt into the append strategy.
-
-By default, each field receives a long flag derived from its name in kebab‑case
-and a short flag. The macro chooses the short flag using these rules:
-
-- Use the field's first ASCII alphanumeric character.
-- If that character is already taken or reserved, try its uppercase form.
-- If both are unavailable, no short flag is assigned; specify `cli_short` to
-  resolve the collision.
-
-| Scenario                          | Result                 |
-| --------------------------------- | ---------------------- |
-| First letter free                 | `-p`                   |
-| Lowercase taken; uppercase free   | `-P`                   |
-| Both cases taken                  | none (set `cli_short`) |
-| Explicit override via `cli_short` | `-r`                   |
-
-Collisions are evaluated against short flags already assigned within the same
-parser, and reserved characters such as clap's `-h` and `-V`. A character is
-considered taken if it matches either set.
-
-The macro does not scan other characters in the field name when deriving the
-short flag. Short flags must be single ASCII alphanumeric characters and may
-not use clap's global `-h` or `-V` options. Long flags must contain only ASCII
-alphanumeric characters or hyphens, must not start with `-`, cannot be named
-`help` or `version`, and the macro rejects underscores.
-
-For example, when multiple fields begin with the same character, `cli_short`
-can disambiguate the final field:
-
-```rust
-#[derive(OrthoConfig)]
-struct Options {
-    port: u16,                         // -p
-    path: String,                      // -P
-    #[ortho_config(cli_short = 'r')]
-    peer: String,                      // -r via override
-}
-```
-
-### Example configuration struct
-
-The following example illustrates many of these features:
-
-```rust
-  use ortho_config::{OrthoConfig, OrthoError};
-  use serde::{Deserialize, Serialize};
-
-  #[derive(Debug, Clone, Deserialize, Serialize, OrthoConfig)]
-  // env vars use APP_ (the macro adds the underscore automatically)
-  #[ortho_config(prefix = "APP")]
-  struct AppConfig {
-      /// Logging verbosity
-      log_level: String,
-
-    /// Port to bind on – defaults to 8080 when unspecified
-    #[ortho_config(default = 8080)]
-    port: u16,
-
-    /// Optional list of features. Values from files, environment and CLI are appended.
-    #[ortho_config(merge_strategy = "append")]
-    features: Vec<String>,
-
-    /// Nested configuration for the database. A separate prefix is used to avoid ambiguity.
-    #[serde(flatten)]
-    database: DatabaseConfig,
-
-    /// Enable verbose output; also available as -v via cli_short
-    #[ortho_config(cli_short = 'v')]
-    verbose: bool,
-  }
-
-#[derive(Debug, Clone, Deserialize, Serialize, OrthoConfig)]
-#[ortho_config(prefix = "DB")]               // used in conjunction with APP_ prefix to form APP_DB_URL
-struct DatabaseConfig {
-    url: String,
-
-    #[ortho_config(default = 5)]
-    pool_size: Option<u32>,
-}
-
-fn main() -> Result<(), OrthoError> {
-    // Parse CLI arguments and merge with defaults, file and environment
-    let config = AppConfig::load()?;
-    println!("Final config: {:#?}", config);
-    Ok(())
-}
-```
-
-`clap` attributes are not required in general; flags are derived from field
-names and `ortho_config` attributes. In this example, the `AppConfig` struct
-uses a prefix of `APP`. The `DatabaseConfig` struct declares a prefix `DB`,
-resulting in environment variables such as `APP_DB_URL`. The `features` field
-is a `Vec<String>` and accumulates values from multiple sources rather than
-overwriting them.
-
-### Customizing configuration discovery
-
-Configuration discovery can be tailored per struct using the `discovery(...)`
-attribute. The keys recognized today include:
-
-- `app_name`: directory name used under XDG and application data folders.
-- `env_var`: override for the environment variable consulted before discovery
-  runs (defaults to `<PREFIX>CONFIG_PATH`).
-- `config_file_name`: primary filename searched in platform-specific
-  configuration directories (defaults to `config.toml`).
-- `dotfile_name`: dotfile name consulted in the current working directory and
-  the user's home directory.
-- `project_file_name`: filename searched within project roots (defaults to the
-  dotfile name).
-- `config_cli_long` / `config_cli_short`: rename the CLI flag used to provide an
-  explicit configuration path.
-- `config_cli_visible`: when `true`, the generated CLI flag appears in help
-  output instead of remaining hidden.
-
-Supplying only the required keys allows renaming of the CLI flag without
-altering file discovery, or vice versa. When the attribute is omitted, the
-defaults described in [Config path override](#config-path-override) continue to
-apply.
-
-## Loading configuration and precedence rules
-
-### How loading works
-
-The `load_from_iter` method (used by the convenience `load`) performs the
-following steps:
-
-1. Builds a `figment` configuration profile. A defaults provider constructed
-   from the `#[ortho_config(default = …)]` attributes is added first.
-
-2. Attempts to load a configuration file. Candidate file paths are searched in
-   the following order:
-
-    1. If provided, a path supplied via the CLI flag generated by the
-       `discovery(...)` attribute (which defaults to a hidden `--config-path`)
-       or the `<PREFIX>CONFIG_PATH` environment variable (for example,
-       `APP_CONFIG_PATH` or `CONFIG_PATH`) takes precedence; see
-       [Config path override](#config-path-override).
-
-    2. A dotfile named `.<prefix>.toml` in the current working directory.
-
-    3. A dotfile of the same name in the user's home directory.
-
-    4. On Unix‑like systems, the XDG configuration directory (e.g.
-       `~/.config/app/config.toml`) is searched using the `xdg` crate; on
-       Windows, the `%APPDATA%` and `%LOCALAPPDATA%` directories are checked.
-
-    5. If the `json5` or `yaml` features are enabled, files with `.json`,
-       `.json5`, `.yaml`, or `.yml` extensions are also considered in these
-       locations.
-
-3. Adds an environment provider using the prefix specified on the struct. Keys
-   are upper‑cased and nested fields use double underscores (`__`) to separate
-   components.
-
-4. Adds a provider containing the CLI values (captured as `Option<T>` fields)
-   as the final layer.
-
-5. Merges vector fields according to the `merge_strategy` (currently only
-   `append`) so that lists of values from lower precedence sources are extended
-   with values from higher precedence ones.
-
-6. Attempts to extract the merged configuration into the concrete struct. On
-   success it returns the completed configuration; otherwise an `OrthoError` is
-   returned.
-
-### Config path override
-
-The derive macro always recognizes a configuration override flag and the
-associated environment variables even when no field is declared explicitly. By
-default a hidden `--config-path` flag is accepted alongside
-`<PREFIX>CONFIG_PATH` and the unprefixed `CONFIG_PATH`. Applying the
-struct-level `discovery(...)` attribute customizes this behaviour, allowing the
-CLI flag to be renamed or exposed and the searched filenames to be adjusted
-during discovery:
-
-```rust
-#[derive(Debug, Deserialize, ortho_config::OrthoConfig)]
-#[ortho_config(
-    prefix = "APP_",
-    discovery(
-        app_name = "demo",
-        env_var = "DEMO_CONFIG_PATH",
-        config_file_name = "demo.toml",
-        dotfile_name = ".demo.toml",
-        project_file_name = ".demo.toml",
-        config_cli_long = "config",
-        config_cli_short = 'c',
-        config_cli_visible = true,
-    )
-)]
-struct CliArgs {
-    #[ortho_config(default = 8080)]
-    port: u16,
-}
-```
-
-The snippet above exposes a visible `--config`/`-c` flag, renames the
-environment override to `DEMO_CONFIG_PATH`, and instructs discovery to search
-for `demo.toml` (and `.demo.toml`) within the standard directories. Omitting
-`config_cli_visible` keeps the flag hidden while still parsing it, and leaving
-`config_cli_short` unset skips the short alias. When the `discovery(...)`
-attribute is absent, the defaults—hidden `--config-path`, `<PREFIX>CONFIG_PATH`
-and `CONFIG_PATH`, and the automatically derived dotfile names—remain in effect.
-
-### Source precedence
-
-Values are loaded from each layer in a specific order. Later layers override
-earlier ones. The precedence, from lowest to highest, is:
-
-1. **Application‑defined defaults** – values provided via `default` attributes
-   or `Option<T>` fields are considered defaults.
-
-2. **Configuration file** – values from a TOML (or JSON5/YAML) file loaded from
-   one of the paths listed above.
-
-3. **Environment variables** – variables prefixed with the struct's `prefix`
-   (e.g. `APP_PORT`, `APP_DATABASE__URL`) override file values.
-
-4. **Command‑line arguments** – values parsed by `clap` override all other
-   sources.
-
-Nested structs are flattened in the environment namespace by joining field
-names with double underscores. For example, if `AppConfig` has a nested
-`database` field and the prefix is `APP`, then `APP_DATABASE__URL` sets the
-`database.url` field. If a nested struct has its own prefix attribute, that
-prefix is used for its fields (e.g. `APP_DB_URL`).
-
-When `clap`'s `flatten` attribute is employed to compose argument groups, the
-flattened struct is initialized even if no CLI flags within the group are
-specified. During merging, `ortho_config` discards these empty groups so that
-values from configuration files or the environment remain in place unless a
-field is explicitly supplied on the command line.
-
-### Using defaults and optional fields
-
-Fields of type `Option<T>` are treated as optional values. If no source
-provides a value for an `Option<T>` field then it remains `None`. To provide a
-default value for a non‑`Option` field or for an `Option<T>` field that should
-have an initial value, specify `#[ortho_config(default = expr)]`. This default
-acts as the lowest‑precedence source and is overridden by file, environment or
-CLI values.
-
-### Environment variable naming
-
-Environment variables are upper‑cased and use underscores. The struct‑level
-prefix (if supplied) is prepended without any separator, and nested fields are
-separated by double underscores. For the `AppConfig` and `DatabaseConfig`
-example above, valid environment variables include `APP_LOG_LEVEL`, `APP_PORT`,
-`APP_DATABASE__URL` and `APP_DATABASE__POOL_SIZE`. If the nested struct has its
-own prefix (`DB`), then the environment variable becomes `APP_DB_URL`.
-
-Comma-separated values such as `DDLINT_RULES=A,B,C` are parsed as lists. The
-loader converts these strings into arrays before merging, so array fields
-behave the same across environment variables, CLI arguments and configuration
-files. Values containing literal commas must be wrapped in quotes or brackets
-to disable list parsing.
-
-## Configuration inheritance
-
-A configuration file may specify an `extends` key pointing to another file. The
-referenced file is loaded first and the current file's values override it. The
-path is resolved relative to the file containing the `extends` directive.
-Missing files raise a not-found error that includes both the resolved absolute
-path and the file that declared `extends`, making it clear what needs to be
-created. Precedence across all sources becomes base file → extending file →
-environment variables → CLI flags. Cycles are detected and reported via a
-`CyclicExtends` error. Prefix handling and subcommand namespaces work as normal
-when inheritance is in use.
-
-## Dynamic rule tables
-
-Map fields such as `BTreeMap<String, RuleConfig>` allow configuration files to
-declare arbitrary rule keys. Any table nested under `rules.<name>` is
-deserialized into the map without prior knowledge of the key names. This
-enables use cases like:
-
-```toml
-[rules.consistent-casing]
-enabled = true
-[rules.no-tabs]
-enabled = false
-```
-
-Each entry becomes a map key with its associated struct value.
-
-## Ignore patterns
-
-Lists of files or directories to exclude can be specified via comma-separated
-environment variables and CLI flags. Values are merged using the `append`
-strategy, so that configuration defaults are extended by environment variables
-and finally by the CLI. Whitespace around entries is trimmed and duplicates are
-preserved. For example:
-
-```bash
-DDLINT_IGNORE_PATTERNS=".git/,build/"
-mytool --ignore-patterns target/
-```
-
-results in `ignore_patterns = [".git/", "build/", "target/"]`.
-
-By default, the ignore-pattern list includes `[".git/", "build/", "target/"]`.
-These defaults are extended (not replaced) by environment variables and CLI
-flags via the `append` merge strategy.
-
-## Subcommand configuration
-
-Many CLI applications use `clap` subcommands to perform different operations.
-`OrthoConfig` supports per‑subcommand defaults via a dedicated `cmds`
-namespace. The helper function `load_and_merge_subcommand_for` loads defaults
-for a specific subcommand and merges them beneath the CLI values. The merged
-struct is returned as a new instance; the original `cli` struct remains
-unchanged. CLI fields left unset (`None`) do not override environment or file
-defaults, avoiding accidental loss of configuration.
-
-### How it works
-
-When a struct derives `OrthoConfig`, it also implements the associated
-`prefix()` method. This method returns the configured prefix string.
-`load_and_merge_subcommand_for(prefix, cli_struct)` uses this prefix to build a
-`cmds.<subcommand>` section name for the configuration file and an
-`PREFIX_CMDS_SUBCOMMAND_` prefix for environment variables. Configuration is
-loaded in the same order as global configuration (defaults → file → environment
-→ CLI), but only values in the `[cmds.<subcommand>]` section or environment
-variables beginning with `PREFIX_CMDS_<SUBCOMMAND>_` are considered.
-
-### Example
-
-Suppose an application has a `pr` subcommand that accepts a `reference`
-argument and a `repo` global option. With `OrthoConfig` the argument structures
-might be defined as follows:
-
+Preserve `clap`'s display-only exits for `--help` and `--version`; use
+`is_display_request` when a wider application error layer needs to distinguish
+them. `OrthoError::try_aggregate` combines independent validation failures
+without inventing an error for an empty collection. The result extension traits
+`OrthoResultExt`, `OrthoMergeExt`, and `ResultIntoFigment` keep conversions
+explicit at integration boundaries.
+
+## Localize help and parse failures together
+
+Localization is most reliable when the command metadata is translated before
+parsing and any resulting error goes through the same localizer.
+`LocalizedParse` provides that path for any `clap::Parser`:
+
+<!-- tested-example: guide-localization -->
 ```rust
 use clap::Parser;
-use ortho_config::OrthoConfig;
-use ortho_config::SubcmdConfigMerge;
-use serde::{Deserialize, Serialize};
+use ortho_config::{LocalizedParse, NoOpLocalizer};
 
-#[derive(Parser, Deserialize, Serialize, Debug, OrthoConfig, Clone, Default)]
-#[ortho_config(prefix = "VK")]               // all variables start with VK
-pub struct GlobalArgs {
-    pub repo: Option<String>,
+#[derive(Debug, Parser)]
+#[command(name = "acme", bin_name = "acme")]
+struct Cli {
+    #[arg(long)]
+    verbose: bool,
 }
 
-#[derive(Parser, Deserialize, Serialize, Debug, OrthoConfig, Clone, Default)]
-#[ortho_config(prefix = "VK")]               // subcommands share the same prefix
-pub struct PrArgs {
-    #[arg(required = true)]
-    pub reference: Option<String>,            // optional for merging defaults but required on the CLI
-}
-
-fn main() -> Result<(), ortho_config::OrthoError> {
-    let cli_pr = PrArgs::parse();
-    // Merge defaults from [cmds.pr] and VK_CMDS_PR_* over CLI
-    let merged_pr = cli_pr.load_and_merge()?;
-    println!("PrArgs after merging: {:#?}", merged_pr);
+fn main() -> Result<(), clap::Error> {
+    let localizer = NoOpLocalizer::new();
+    let cli = Cli::try_parse_localized_from(
+        ["acme", "--verbose"],
+        &localizer,
+    )?;
+    assert!(cli.verbose);
+    println!("verbose={}", cli.verbose);
     Ok(())
 }
 ```
 
-A configuration file might include:
+`NoOpLocalizer` keeps clap's own text, which makes it a safe starting point.
+Swap in `FluentLocalizer` for translated catalogues. Use
+`LocalizeCmd::with_base` with `parse_localized_command` when catalogue
+identifiers must use an explicit root rather than the binary name. Missing
+translations fall back to the original `clap` text and emit a warning event, so
+users still receive a useful error.
 
-```toml
-[cmds.pr]
-reference = "https://github.com/leynos/mxd/pull/31"
+### Use the generated message identifiers
 
-[cmds.issue]
-reference = "https://github.com/leynos/mxd/issues/7"
-```
+Derived configurations implement `OrthoConfigLocalization`. Refer to Fluent
+messages through the generated constants rather than repeating identifier
+strings; this prevents catalogue and command declarations from drifting. Set
+the catalogue root explicitly with `localization_base`; when it is omitted, the
+derived application name supplies the default base:
 
-and environment variables could override these defaults:
-
-```bash
-VK_CMDS_PR_REFERENCE=https://github.com/owner/repo/pull/42
-VK_CMDS_ISSUE_REFERENCE=https://github.com/owner/repo/issues/101
-```
-
-Within the `vk` example repository, the global `--repo` option is provided via
-the `GlobalArgs` struct. A developer can set this globally using the
-environment variable `VK_REPO` without passing `--repo` on every invocation.
-Subcommands `pr` and `issue` load their defaults from the `cmds` namespace and
-environment variables. If the `reference` field is missing in the defaults, the
-tool continues using the CLI value instead of exiting with an error.
-
-### Merging a selected subcommand enum
-
-When the root CLI parses into a `Commands` enum, it is possible to derive
-`ortho_config_macros::SelectedSubcommandMerge` and import the
-`SelectedSubcommandMerge` trait from `ortho_config` to merge the selected
-variant in one call, instead of matching only to call `load_and_merge()` per
-branch.
-
-Variants that rely on `cli_default_as_absent` (because they use
-`default_value_t`) should be annotated with `#[ortho_subcommand(with_matches)]`
-so the merge can consult `ArgMatches` and treat clap defaults as absent.
-
-To load the global configuration and merge the selected subcommand in one
-expression, use `load_globals_and_merge_selected_subcommand` and supply a
-global loader as a closure.
-
+<!-- tested-example: guide-localization-ids -->
 ```rust
-use clap::{CommandFactory, FromArgMatches, Parser, Subcommand};
-use ortho_config::{SelectedSubcommandMerge, load_globals_and_merge_selected_subcommand};
+use ortho_config::{OrthoConfig, OrthoConfigLocalization};
+use serde::{Deserialize, Serialize};
 
-#[derive(Parser)]
+#[derive(Debug, Deserialize, Serialize, OrthoConfig)]
+#[ortho_config(prefix = "ACME_", localization_base = "acme.cli")]
+struct Config {
+    /// Report what would change without changing it.
+    #[ortho_config(default = false)]
+    is_dry_run: bool,
+}
+
+fn main() {
+    println!("base={}", Config::LOCALIZATION_BASE);
+    println!("about={}", Config::ABOUT_ID);
+    for ids in Config::ARG_IDS {
+        println!("{} help={}", ids.name, ids.help_id);
+    }
+}
+```
+
+The program prints:
+
+<!-- tested-example: guide-localization-ids-output -->
+```plaintext
+base=acme.cli
+about=acme-cli-about
+is_dry_run help=acme-cli-args-is_dry_run-help
+```
+
+Pass `Config::LOCALIZATION_BASE` to `LocalizeCmd::with_base` so the command
+tree and the catalogue share one root. The generated command constants are
+`ABOUT_ID`, `LONG_ABOUT_ID`, `USAGE_ID`, `VERSION_ID`, `LONG_VERSION_ID`,
+`AFTER_HELP_ID`, and `AFTER_LONG_HELP_ID`. `ARG_IDS` contains one
+`ArgLocalizationIds` record per eligible argument, with its clap `name` and
+`help_id`, `long_help_id`, and `value_name_id` constants.
+
+Identifiers normalize each dotted base segment to a Fluent-safe form and join
+segments with hyphens, while an argument's own segment keeps the Rust field
+name, underscores included. Duplicate normalized argument identifiers are
+rejected at compile time. Flattened, subcommand, and `skip_cli` fields do not
+receive argument constants.
+
+Per-field localized defaults are not yet available. The
+`#[ortho_config(localized_default = "...")]` attribute is recognized so that
+its absence is reported rather than silently ignored: using it fails the build
+with a diagnostic explaining that the feature is deferred.
+
+### Export identifier artefacts for tooling
+
+Translation tooling can read every derived identifier from a generated
+artefact. Emission is opt-in and provisional. Force a fresh expansion, because
+Cargo does not track the variable for proc-macro crates:
+
+<!-- tested-example: guide-identifier-artefact -->
+```console
+cargo clean -p <package> && ORTHO_CONFIG_EMIT_IDENTIFIERS=1 cargo build -p <package>
+```
+
+The resulting `${OUT_DIR}/ortho-config/cli-identifiers.json` is a standalone
+declaration inventory. Do not set the variable globally, and use the
+documentation IR for identifiers of mounted command trees. When the output
+exceeds 1 MiB, the index lists `cli-identifiers.<n>.json` parts; read those
+listed parts rather than expecting all entries in the single index file.
+
+Concurrent compiler processes for one package serialize their writes behind an
+exclusive lock, so a build that looks stuck may be waiting for a peer. To see
+that, add `ORTHO_CONFIG_ARTEFACT_REPORT=1` alongside the emission variable and
+rebuild. Three best-effort diagnostic files may then appear in the artefact
+directory:
+
+- `cli-identifiers.lock-wait.<pid>.json` appears when a publication waits for
+  the lock longer than five seconds, is refreshed while the wait continues, and
+  is removed once the lock is granted. Check its `written_at_ms` before acting
+  on it: process identifiers are reused, so a marker that is not recent
+  describes a wait that has ended.
+- `cli-identifiers.build-report.<pid>.json` names the process, the expansion,
+  the stage it reached, how long it waited, and when. A crate with several
+  derives keeps the report of its last publication.
+- `cli-identifiers.observation-errors.<pid>.jsonl` records any observation that
+  could not be written, so a build with no report is distinguishable from one
+  that could not write it.
+
+These files explain a build and never fail one, and none of them is part of the
+identifier inventory.
+
+## Test discovery without changing the process environment
+
+Tests that mutate environment variables interfere with one another. Build a
+`ConfigDiscovery` with `MapEnv` instead. Each test owns its values and can run
+in parallel:
+
+<!-- tested-example: guide-hermetic-discovery -->
+```rust
+use ortho_config::{ConfigDiscovery, MapEnv};
+use std::sync::Arc;
+
+fn main() {
+    let environment = Arc::new(
+        MapEnv::new()
+            .with_var("ACME_CONFIG", "/srv/acme/server.toml")
+            .with_var("HOME", "/home/tester"),
+    );
+
+    let discovery = ConfigDiscovery::builder("acme")
+        .env_var("ACME_CONFIG")
+        .env_source(environment)
+        .clear_project_roots()
+        .build();
+
+    assert_eq!(
+        discovery.candidates().first().map(|path| path.as_path()),
+        Some(std::path::Path::new("/srv/acme/server.toml"))
+    );
+    println!("candidate=/srv/acme/server.toml");
+}
+```
+
+`ProcessEnv` remains the default, so production applications do not need to
+change. `EnvSource` deliberately supports lookup by name but not enumeration;
+discovery cannot accidentally scan or log unrelated environment values.
+
+## Resolve discovery and merging without process state
+
+The previous section isolates file discovery. Tests and embedding applications
+can go further and resolve the complete configuration without reading the
+process environment at all. Two source traits divide the work:
+
+- `EnvSource`, shared as `SharedEnvSource`, answers named lookups such as
+  `ACME_CONFIG_PATH` during discovery; and
+- `ScanEnvSource`, shared as `SharedScanEnvSource`, grants the explicit
+  ability to enumerate variables for the environment merge layer.
+
+`MapEnv` implements both traits. Create one `Arc<MapEnv>`, then coerce cloned
+`Arc` values to each shared type; the same map then drives discovery lookups
+and merge enumeration. The derive-generated `load_from_iter_with_sources`
+accepts both:
+
+<!-- tested-example: guide-source-aware-load -->
+```rust
+use ortho_config::{
+    MapEnv, OrthoConfig, OrthoResult, SharedEnvSource, SharedScanEnvSource,
+};
+use serde::{Deserialize, Serialize};
+use std::sync::Arc;
+
+#[derive(Debug, Deserialize, Serialize, OrthoConfig)]
+#[ortho_config(prefix = "ACME_")]
+struct Config {
+    #[ortho_config(default = 8080)]
+    port: u16,
+}
+
+fn main() -> OrthoResult<()> {
+    let environment = Arc::new(MapEnv::new().with_var("ACME_PORT", "9000"));
+    let discovery: SharedEnvSource = environment.clone();
+    let merge: SharedScanEnvSource = environment;
+
+    let config = Config::load_from_iter_with_sources(["acme"], discovery, merge)?;
+    println!("port={}", config.port);
+    Ok(())
+}
+```
+
+The example prints `port=9000`. No process variable is read: the discovery
+source handles named lookups, while the scan source supplies the merge layer.
+The ordinary `load()` and `load_from_iter()` methods continue to use the
+process environment.
+
+### Compose layers without deserializing
+
+When layer composition is needed without deserializing a configuration,
+`OrthoConfig` also generates `compose_layers_from_iter_with_sources`. It takes
+the same three arguments and returns the composed layers:
+
+<!-- tested-example: guide-compose-layers-with-sources -->
+```rust
+use ortho_config::{MapEnv, OrthoConfig, SharedEnvSource, SharedScanEnvSource};
+use serde::Deserialize;
+use std::sync::Arc;
+
+#[derive(Debug, Deserialize, OrthoConfig)]
+#[ortho_config(prefix = "ACME_")]
+pub struct Config {
+    #[serde(default)]
+    pub port: u16,
+}
+
+fn main() {
+    let environment = Arc::new(
+        MapEnv::new()
+            .with_var("ACME_CONFIG_PATH", "/srv/acme.toml")
+            .with_var("ACME_PORT", "9000"),
+    );
+    let discovery: SharedEnvSource = environment.clone();
+    let merge: SharedScanEnvSource = environment;
+
+    let _composition = Config::compose_layers_from_iter_with_sources(
+        ["acme"], discovery, merge,
+    );
+    println!("composition=ready");
+}
+```
+
+The ordinary `compose_layers_from_iter` and `compose_layers` methods remain
+process-backed.
+
+### Build an environment provider from a map
+
+Applications that assemble their own `figment` stack can attach the scan source
+to `CsvEnv`, OrthoConfig's environment provider, with `with_source`:
+
+<!-- tested-example: guide-csv-env-with-source -->
+```rust
+use ortho_config::figment::Figment;
+use ortho_config::{CsvEnv, MapEnv};
+use serde::Deserialize;
+use std::sync::Arc;
+
+#[derive(Debug, Deserialize)]
+struct Database {
+    host: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct Settings {
+    database: Database,
+    tags: Vec<String>,
+}
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let source = Arc::new(
+        MapEnv::new()
+            .with_var("APP_DATABASE__HOST", "localhost")
+            .with_var("APP_TAGS", "one,two"),
+    );
+    let provider = CsvEnv::prefixed("APP_").split("__").with_source(source);
+    let settings: Settings = Figment::new().merge(provider).extract()?;
+    println!("host={} tags={:?}", settings.database.host, settings.tags);
+    Ok(())
+}
+```
+
+The example prints `host=localhost tags=["one", "two"]`. The injected provider
+follows the same declarative rules as the process-backed provider:
+
+- prefix matching is case-insensitive and strips the matching prefix;
+- `lowercase(true)` and `uppercase(true)` transform names at their place in the
+  builder chain;
+- each `split` replaces its separator with a dotted key component, so
+  `DATABASE__HOST` becomes `database.host`; and
+- CSV parsing is enabled by default: comma-containing scalar values become
+  lists, while values beginning with `[`, `{`, or a quote remain structured or
+  quoted values. Use `csv(false)` when a comma must remain part of a scalar.
+
+Providers that use `map()` or `filter_map()` cannot be injected, because
+arbitrary closures cannot be replayed against a `ScanEnvSource`; the
+source-aware path rejects them rather than silently changing the key mapping.
+
+### Inject sources into a subcommand
+
+For an `OrthoConfig`-derived subcommand, pass a `SharedScanEnvSource` to
+`load_and_merge_with_sources` instead of calling the process-backed
+`load_and_merge`:
+
+<!-- tested-example: guide-subcommand-merge-sources -->
+```rust
+use clap::Parser;
+use ortho_config::{MapEnv, OrthoConfig, OrthoResult, SubcmdConfigMerge};
+use serde::{Deserialize, Serialize};
+use std::sync::Arc;
+
+#[derive(Debug, Default, Parser, Deserialize, Serialize, OrthoConfig)]
+#[command(name = "serve")]
+#[ortho_config(prefix = "ACME_SERVE_")]
+struct ServeConfig {
+    #[arg(long)]
+    port: Option<u16>,
+}
+
+fn main() -> OrthoResult<()> {
+    let cli = ServeConfig::parse_from(["serve"]);
+    let environment = Arc::new(
+        MapEnv::new().with_var("ACME_SERVE_CMDS_SERVE_PORT", "9000"),
+    );
+    let config = cli.load_and_merge_with_sources(environment)?;
+    println!("port={:?}", config.port);
+    Ok(())
+}
+```
+
+The example prints `port=Some(9000)`. This injects the environment layer only;
+files are still discovered from the process, and explicit command-line values
+keep their precedence.
+
+When both file discovery and environment scanning must use explicit sources for
+an enum of subcommands, call
+`load_globals_and_merge_selected_subcommand_with_sources`. Its file context
+performs named discovery lookups, while the shared scanning source supplies the
+environment layer. The selected command's CLI values retain their normal
+precedence. For example, this injects `APP_CMDS_RUN_LEVEL` without reading the
+process environment:
+
+<!-- tested-example: guide-selected-subcommand-sources -->
+```rust
+use std::{path::Path, sync::Arc};
+use clap::{CommandFactory, FromArgMatches, Parser, Subcommand};
+use ortho_config::{
+    MapEnv, OrthoConfig, SelectedSubcommandSources, SharedScanEnvSource,
+    SubcommandFileContext, load_globals_and_merge_selected_subcommand_with_sources,
+};
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Parser)]
 struct Cli {
     #[command(subcommand)]
     command: Commands,
 }
 
-#[derive(Subcommand, ortho_config_macros::SelectedSubcommandMerge)]
+#[derive(Debug, Subcommand, ortho_config::SelectedSubcommandMerge)]
 enum Commands {
-    #[ortho_subcommand(with_matches)]
-    Greet(GreetArgs),
     Run(RunArgs),
 }
 
-// Placeholder types for the example; real subcommands define fields and derive
-// `OrthoConfig`.
-struct GreetArgs;
-struct RunArgs;
+#[derive(Debug, Default, Deserialize, Serialize, Parser, OrthoConfig)]
+#[command(name = "run")]
+#[ortho_config(prefix = "APP_")]
+struct RunArgs {
+    #[arg(long)]
+    level: Option<u8>,
+}
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-let mut cmd = Cli::command();
-let matches = cmd.get_matches();
-let cli = Cli::from_arg_matches(&matches)?;
-let (_globals, _merged) = load_globals_and_merge_selected_subcommand(
-    &matches,
-    cli.command,
-    || Ok::<_, std::io::Error>(()),
-)?;
-Ok(())
+    let matches = Cli::command().try_get_matches_from(["app", "run"])?;
+    let cli = Cli::from_arg_matches(&matches)?;
+    let environment = Arc::new(MapEnv::new().with_var("APP_CMDS_RUN_LEVEL", "3"));
+    let files = SubcommandFileContext::new(Path::new("."), environment.as_ref());
+    let merge_source: SharedScanEnvSource = environment.clone();
+    let sources = SelectedSubcommandSources::new(files, merge_source);
+    let (_globals, command) = load_globals_and_merge_selected_subcommand_with_sources(
+        &matches,
+        cli.command,
+        sources,
+        || Ok::<_, std::io::Error>(()),
+    )?;
+    assert_eq!(match command { Commands::Run(config) => config.level }, Some(3));
+    Ok(())
 }
 ```
 
-### Hello world walkthrough
+`SelectedSubcommandSources` applies only to the selected command. The caller
+still owns globals loading; if globals must also avoid process access, inject
+their file and environment sources separately in the globals loader.
 
-<https://github.com/leynos/ortho-config/tree/main/examples/hello_world>
+A manual `SelectedSubcommandMerge` implementation supports injected sources by
+overriding the trait's `load_and_merge_selected_with_sources` method.
+Otherwise, the default returns
+`SelectedSubcommandMergeError::SourceInjectionUnsupported` without invoking the
+process-backed `load_and_merge_selected` method.
 
-The `hello_world` example crate demonstrates these patterns in a compact
-setting. Global options such as `--recipient` or `--salutation` are resolved by
-`load_global_config`, which now reuses
-`HelloWorldCli::compose_layers_from_iter` to collect defaults, discovered files
-and environment variables before applying CLI overrides. When callers pass
-`-s/--salutation`, the helper clears earlier vector contributions, so CLI input
-replaces file or environment values. The `greet` subcommand adds optional
-behaviour like a preamble (`--preamble "Good morning"`) or custom punctuation
-while reusing the merged global configuration. The `take-leave` subcommand
-combines switches and optional arguments (`--wave`, `--gift`, `--channel email`,
-`--remind-in 15`) alongside greeting adjustments
-(`--preamble "Until next time"`, `--punctuation ?`) to describe how the
-farewell should unfold. Each subcommand struct derives `OrthoConfig` so
-defaults from `[cmds.greet]` or `[cmds.take-leave]` merge automatically when
-`load_and_merge_selected()` is invoked on the derived `Commands` enum.
+### Choose the file-discovery source
 
-Behavioural tests in `examples/hello_world/tests` exercise scenarios such as
-`hello_world greet --preamble "Good morning"` and running
-`hello_world --is-excited take-leave` with `--gift biscuits`, `--remind-in 15`,
-`--channel email`, and `--wave`. These end-to-end checks verify that CLI
-arguments override configuration files and that validation errors surface
-cleanly when callers provide blank strings or conflicting switches.
+The process-backed loaders are the default. Use them when the running process's
+own environment should decide which configuration files are found and which
+variables are merged: they take their named lookups from the live process
+environment and use the current directory as the local base.
 
-Sample configuration files live in `examples/hello_world/config`. The
-`baseline.toml` defaults underpin both the automated tests and the demo
-scripts, while `overrides.toml` extends the baseline to demonstrate inheritance
-by adjusting the recipient and salutation. The paired `scripts/demo.sh` and
-`scripts/demo.cmd` helpers copy these files into a temporary directory before
-running `cargo run -p hello_world`, illustrating how file defaults, environment
-variables, and CLI arguments override one another without mutating the working
-tree.
+Use `SubcommandFileContext::new(base, discovery)` with a source-aware `_at`
+loader when the search inputs must be supplied rather than inherited. The
+context pairs an explicit local file base with a lookup-only `EnvSource`; it
+answers named lookups for `HOME`, `USERPROFILE` (non-Unix), `XDG_CONFIG_HOME`,
+and `XDG_CONFIG_DIRS`, and on non-Unix targets may also supply the native
+configuration directory. The explicit-prefix and configured-prefix loaders are
+`load_and_merge_subcommand_with_sources_at` and
+`load_and_merge_subcommand_for_with_sources_at`; their match-aware variants are
+`load_and_merge_subcommand_with_matches_with_sources_at` and
+`load_and_merge_subcommand_for_with_matches_with_sources_at`. Pass
+`SubcommandCliMatches::new(&cli, &matches)` to a match-aware variant, which is
+required for fields marked `cli_default_as_absent`.
 
-### Treating clap defaults as absent
+On Unix and Redox, candidates are tried in the order `HOME` dotfiles, the XDG
+bases (the configured `XDG_CONFIG_HOME`, else `$HOME/.config` or the platform
+home fallback, then each absolute `XDG_CONFIG_DIRS` entry), and finally the
+explicit base. Only the first existing `config.<ext>` per extension is kept
+from the XDG bases. On other platforms, discovery uses `HOME`/`USERPROFILE` or
+the platform home fallback, then the native configuration directory from
+`EnvSource::config_dir_fallback` when available, and finally the explicit base.
 
-Non‑`Option` fields annotated with `#[arg(default_value_t = ...)]` normally
-override configuration files and environment variables because `clap` always
-populates them. The `cli_default_as_absent` attribute changes this behaviour:
-when the user does not explicitly provide a value on the command line, the
-field is excluded from the CLI layer so that file and environment values take
-precedence.
+On Unix and Redox, missing XDG candidates, including candidates whose metadata
+check returns `NotFound`, are skipped. Any other metadata-check error stops
+discovery and is returned as `OrthoError::File`, with the candidate path and
+underlying I/O error. Inspect the reported path and correct the discovery
+source or filesystem permissions before retrying.
 
-Add `cli_default_as_absent` and define the default in clap. The derive macro
-now infers the struct default from clap's default metadata, so the default only
-needs to be declared once:
-
-```rust
-#[derive(Parser, Deserialize, Serialize, OrthoConfig)]
-#[ortho_config(prefix = "APP_")]
-struct GreetArgs {
-    #[arg(long, default_value_t = String::from("!"))]
-    #[ortho_config(cli_default_as_absent)]
-    punctuation: String,
-}
-```
-
-`default_value_t` and `default_values_t` are supported for inferred defaults.
-`default_value` inference is intentionally unsupported for now; use
-`default_value_t` or add an explicit `#[ortho_config(default = ...)]` to avoid
-string-parser mismatches. Parser-faithful `default_value` inference is planned
-as a day-2 follow-up.
-
-If `#[ortho_config(default = ...)]` is still provided, that explicit value
-remains available for generated defaults/documentation metadata.
-
-**Precedence with the attribute (lowest to highest):**
-
-1. Struct default (`#[ortho_config(default = ...)]` or inferred from clap)
-2. Configuration file
-3. Environment variable
-4. Explicit CLI override (e.g. `--punctuation "?"`)
-
-Without `cli_default_as_absent`, the clap default would always beat the file
-and environment layers. With the attribute, calling `greet` without
-`--punctuation` allows a `[cmds.greet] punctuation = "?"` file entry or
-`APP_CMDS_GREET_PUNCTUATION=?` environment variable to win.
-
-When using this attribute, pass the `ArgMatches` so the crate can inspect
-`value_source()`:
-
-```rust
-let matches = GreetArgs::command().get_matches();
-let cli = GreetArgs::from_arg_matches(&matches)?;
-let merged = cli.load_and_merge_with_matches(&matches)?;
-```
-
-Clap's `value_source()` uses argument IDs (the field identifier unless
-`#[arg(id = "...")]` overrides it). This behaviour requires the `serde_json`
-feature (enabled by default).
-
-### Dispatching with `clap‑dispatch`
-
-The `clap‑dispatch` crate can be combined with `OrthoConfig` to simplify
-subcommand execution. Each subcommand struct implements a trait defining the
-action to perform. An enum of subcommands is annotated with
-`#[clap_dispatch(fn run(...))]`, and the `load_and_merge_subcommand_for`
-function can be called on each variant before dispatching. See the
-`Subcommand Configuration` section of the `OrthoConfig` [README](../README.md)
-for a complete example.
-
-## Error handling
-
-`load` and `load_and_merge_subcommand_for` return `OrthoResult<T>`, an alias for
-`Result<T, Arc<OrthoError>>`. `OrthoError` wraps errors from `clap`, file I/O
-and `figment`. Failures during the final merge of CLI values over configuration
-sources surface as the `Merge` variant, providing clearer diagnostics when the
-combined data is invalid. When multiple sources fail, the errors are collected
-into the `Aggregate` variant so callers can inspect each individual failure.
-Consumers should handle these errors appropriately, for example by printing
-them to stderr and exiting. If required fields are missing after merging, the
-crate returns `OrthoError::MissingRequiredValues` with a user‑friendly list of
-missing paths and hints on how to provide them. For example:
-
-```plaintext
-Missing required values:
-  sample_value (use --sample-value, SAMPLE_VALUE, or file entry)
-```
-
-### Preserving `clap` display exits
-
-When a user passes `--help` or `--version`, `clap` surfaces specialized
-`ErrorKind::DisplayHelp` / `DisplayVersion` errors so applications can print
-usage text and exit successfully. Deriving `OrthoConfig` often goes hand in
-hand with `Cli::try_parse()` so applications can map errors into their own
-types. Before performing that conversion, call
-`ortho_config::is_display_request` to detect these cases and delegate to
-`err.exit()`:
-
+<!-- tested-example: guide-subcommand-sources -->
 ```rust
 use clap::Parser;
-use ortho_config::{is_display_request, OrthoConfig};
-
-fn parse_cli() -> Result<MyCli, CliError> {
-    match MyCli::try_parse() {
-        Ok(cli) => Ok(cli),
-        Err(mut err) => {
-            if is_display_request(&err) {
-                err.exit();
-            }
-            Err(CliError::ArgumentParsing(err.into()))
-        }
-    }
-}
-```
-
-The `examples/hello_world` crate applies this pattern in `main.rs`. Behavioural
-tests assert that both `--help` and `--version` exit with code 0 so regressions
-are caught automatically.
-
-### Aggregating multiple errors
-
-To return multiple errors in one go, use `OrthoError::aggregate`. It accepts
-any iterator of items that can be converted into `Arc<OrthoError>` so both
-owned and shared errors are supported. If the list might be empty,
-`OrthoError::try_aggregate` returns `Option<OrthoError>` instead of panicking:
-
-```rust
+use ortho_config::{
+    MapEnv, OrthoConfig, OrthoResult, SharedScanEnvSource, SubcommandFileContext,
+    load_and_merge_subcommand_for_with_sources_at,
+};
+use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use ortho_config::OrthoError;
 
-// From bare errors
-let err = OrthoError::aggregate(vec![
-    OrthoError::Validation { key: "port".into(), message: "must be positive".into() },
-    OrthoError::gathering(figment::Error::from("invalid")),
-]);
-
-// From shared errors
-let err = OrthoError::aggregate(vec![
-    Arc::new(OrthoError::Validation { key: "x".into(), message: "bad".into() }),
-    OrthoError::gathering_arc(figment::Error::from("boom")),
-]);
-```
-
-### Gathering vs Merge errors
-
-`OrthoConfig` distinguishes between two phases of configuration loading:
-
-- **Gathering** (`OrthoError::Gathering`): Errors that occur while reading
-  configuration sources (files, environment variables). These indicate problems
-  with the source data itself, such as malformed TOML or invalid JSON.
-
-- **Merge** (`OrthoError::Merge`): Errors that occur while combining layers and
-  deserializing the final configuration. These indicate incompatibilities
-  between the merged data and the target struct, such as type mismatches or
-  invalid field values.
-
-When deserializing the final merged configuration fails (for example, because a
-field has an invalid type after all layers are combined), the error is reported
-as `Merge`. This distinction helps diagnose whether an issue lies with a
-specific source file (Gathering) or with the combined result of all layers
-(Merge).
-
-### Mapping errors ergonomically
-
-To reduce boiler‑plate when converting between error types, the crate exposes
-small extension traits:
-
-- `OrthoResultExt::into_ortho()` converts `Result<T, E>` into
-  `OrthoResult<T>` when `E: Into<OrthoError>` (e.g., `serde_json::Error`).
-- `OrthoMergeExt::into_ortho_merge()` converts `Result<T, figment::Error>`
-  into `OrthoResult<T>` as `OrthoError::Merge`.
-- `OrthoJsonMergeExt::into_ortho_merge_json()` converts
-  `Result<T, serde_json::Error>` into `OrthoResult<T>` as `OrthoError::Merge`,
-  preserving location information from the JSON parser.
-- `IntoFigmentError::into_figment()` converts `Arc<OrthoError>` (or
-  `&Arc<OrthoError>`) into `figment::Error` for interop in tests or adapters,
-  cloning the inner error to preserve structured details where possible.
-- `ResultIntoFigment::to_figment()` converts `OrthoResult<T>` into
-  `Result<T, figment::Error>`.
-
-Examples:
-
-```rust
-use ortho_config::{OrthoMergeExt, OrthoResultExt, ResultIntoFigment};
-
-fn sanitize<T: serde::Serialize>(v: &T) -> ortho_config::OrthoResult<serde_json::Value> {
-    serde_json::to_value(v).into_ortho()
+#[derive(Debug, Default, Parser, Deserialize, Serialize, OrthoConfig)]
+#[command(name = "serve")]
+#[ortho_config(prefix = "ACME_SERVE_")]
+struct ServeCli {
+    #[arg(long)]
+    port: Option<u16>,
 }
 
-fn extract(fig: figment::Figment) -> ortho_config::OrthoResult<MyCfg> {
-    fig.extract::<MyCfg>().into_ortho_merge()
-}
+fn main() -> OrthoResult<()> {
+    let cli = ServeCli::default();
+    // Naming both XDG locations keeps the search inside supplied paths:
+    // nothing outside this map and the explicit base is consulted.
+    let discovery = MapEnv::new()
+        .with_var("XDG_CONFIG_HOME", "/srv/acme/config")
+        .with_var("XDG_CONFIG_DIRS", "/srv/acme/fallback");
+    let base = std::path::Path::new("/srv/acme/local");
+    let files = SubcommandFileContext::new(base, &discovery);
+    let merge: SharedScanEnvSource =
+        Arc::new(MapEnv::new().with_var("ACME_SERVE_CMDS_SERVE_PORT", "9000"));
 
-fn interop(r: ortho_config::OrthoResult<MyCfg>) -> Result<MyCfg, figment::Error> {
-    r.to_figment()
+    let config = load_and_merge_subcommand_for_with_sources_at(&cli, files, merge)?;
+    println!("port={:?}", config.port);
+    Ok(())
 }
 ```
 
-## Documentation metadata (OrthoConfigDocs)
+The example prints `port=Some(9000)`. No process variable is read: the merge
+source supplies the `ACME_SERVE_CMDS_SERVE_PORT` layer, and file discovery
+reads only the variables the context's `EnvSource` answers. Because the map
+names both XDG variables, discovery's default `XDG_CONFIG_DIRS` of `/etc/xdg`
+is never reached. The merge layer outranks the file layer, so the printed value
+does not depend on what those directories happen to contain.
 
-The derive macro now emits an `OrthoConfigDocs` implementation alongside the
-runtime loader. This lets tooling such as `cargo-orthohelp` serialize a stable,
-clap-agnostic intermediate representation (IR) for man pages and PowerShell
-help.
+The localization runtime is also published as its own crate. An application
+that only needs Fluent lookup and formatting can depend on `ortho_l10n`
+directly and avoid configuration discovery, the derive macros, Figment, and
+Clap entirely. The types are the same ones `ortho_config` re-exports, so code
+that mixes imports from both names the same types and needs no adapter. See the
+[ortho_l10n README](../ortho_l10n/README.md)
+for its API.
 
+## Add production diagnostics
+
+OrthoConfig emits structured `tracing` events for discovery attempts, selected
+files, skips, and failures. The library does not install a subscriber; the
+binary should do that once during start-up. Add the subscriber with its
+environment-filter support:
+
+<!-- tested-example: guide-tracing-install -->
+```toml
+[dependencies]
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+```
+
+<!-- tested-example: guide-tracing -->
 ```rust
-use ortho_config::docs::OrthoConfigDocs;
+use ortho_config::{OrthoConfig, OrthoResult};
+use serde::Deserialize;
 
-#[derive(serde::Deserialize, serde::Serialize, ortho_config::OrthoConfig)]
-#[ortho_config(prefix = "APP")]
-struct AppConfig {
+#[derive(Deserialize, OrthoConfig)]
+struct Config {
     #[ortho_config(default = 8080)]
     port: u16,
 }
 
-let ir = AppConfig::get_doc_metadata();
-let json = ortho_config::serde_json::to_string_pretty(&ir)?;
-println!("{json}");
+fn main() -> OrthoResult<()> {
+    tracing_subscriber::fmt()
+        .with_env_filter("ortho_config=debug")
+        .with_writer(std::io::stderr)
+        .try_init()
+        .ok();
+
+    let config = Config::load()?;
+    println!("port={}", config.port);
+    Ok(())
+}
 ```
 
-When IDs are not supplied, the macro generates deterministic defaults such as
-`{app}.about` for the CLI overview and `{app}.fields.{field}.help` for field
-descriptions. Field-level metadata can be refined with `help_id`,
-`long_help_id`, `value(type = "...")`, `deprecated(note_id = "...")`,
-`env(name = "...")`, and `file(key_path = "...")`. These documentation
-attributes affect only the emitted IR; they do not change runtime naming or
-loading behaviour.
+Diagnostics go to standard error, so standard output stays clean for the
+application's own results. Do not log configuration values or candidate paths
+around these events. The crate's own diagnostics avoid path and value fields
+because configuration locations and values may be sensitive.
 
-### Generating IR with cargo-orthohelp
+Metrics are a low-cost opt-in when the application already has a `metrics`
+recorder:
 
-`cargo-orthohelp` compiles a tiny bridge binary that calls
-`OrthoConfigDocs::get_doc_metadata()`, resolves Fluent messages per locale, and
-writes localized IR JSON into the chosen output directory. Add metadata to the
-package `Cargo.toml` so the tool knows which config type to load:
-
+<!-- tested-example: guide-metrics-install -->
 ```toml
-[package.metadata.ortho_config]
-root_type = "hello_world::cli::HelloWorldCli"
-locales = ["en-US", "ja"]
+[dependencies]
+ortho_config = { version = "0.10.0", features = ["metrics"] }
 ```
 
-Run the tool from the project root:
+The feature emits bounded counters for discovery, merging, and subcommand path
+resolution, such as `ortho_config.discovery.attempts` and
+`ortho_config.merge.outcomes`. OrthoConfig never installs a recorder, and
+enabling the feature does nothing visible until the application installs one.
 
-```bash
-cargo orthohelp --out-dir target/orthohelp --locale en-US
-```
+## Use an aliased dependency
 
-`--cache` reuses any previously generated IR cached under
-`target/orthohelp/<hash>/ir.json`, while `--no-build` skips the bridge build
-and fails if the cache is missing. The generated per-locale JSON lives under
-`<out>/ir/<locale>.json` and is ready for downstream generators.
+Cargo permits dependency aliases. The derive macros can generate paths through
+that alias, which is useful in workspaces that reserve the canonical crate name:
 
-### Generating man pages
-
-`cargo-orthohelp` can generate roff-formatted man pages from the localized IR.
-Use `--format man` to produce `man/man<N>/<name>.<N>` files suitable for
-installation via `make install` or packaging:
-
-```bash
-cargo orthohelp --format man --out-dir target/man --locale en-US
-```
-
-The generator produces standard man page sections in the canonical order:
-
-1. **NAME** – binary name and one-line description
-2. **SYNOPSIS** – usage pattern with flags
-3. **DESCRIPTION** – expanded about text
-4. **OPTIONS** – CLI flags with types, defaults, and possible values
-5. **ENVIRONMENT** – environment variables mapped to fields
-6. **FILES** – configuration file paths and discovery locations
-7. **PRECEDENCE** – source priority order (defaults → file → env → CLI)
-8. **EXAMPLES** – usage examples from the IR
-9. **SEE ALSO** – related commands and documentation links
-10. **EXIT STATUS** – standard exit codes
-
-Additional options:
-
-- `--man-section <N>` – man page section number (default: 1)
-- `--man-date <DATE>` – override the date shown in the footer
-- `--man-split-subcommands` – generate separate man pages for each subcommand
-
-Text is automatically escaped for roff: backslashes are doubled, and leading
-dashes, periods, and single quotes are escaped to prevent macro interpretation.
-Enum fields list their possible values in the OPTIONS description.
-
-### Generating PowerShell help
-
-`cargo-orthohelp` can generate PowerShell external help in Microsoft Assistance
-Markup Language (MAML) alongside a wrapper module so `Get-Help {BinName} -Full`
-surfaces the same configuration metadata as the man page generator. Use the
-`ps` format to emit the module layout under `powershell/<ModuleName>`:
-
-```bash
-cargo orthohelp --format ps --out-dir target/orthohelp --locale en-US
-```
-
-The generator produces:
-
-- `powershell/<ModuleName>/<ModuleName>.psm1` – wrapper module.
-- `powershell/<ModuleName>/<ModuleName>.psd1` – module manifest.
-- `powershell/<ModuleName>/<culture>/<ModuleName>-help.xml` – MAML help.
-- `powershell/<ModuleName>/<culture>/about_<ModuleName>.help.txt` – about topic.
-
-`en-US` help is always generated. If only other locales are rendered, the
-generator copies the first locale into `en-US` unless fallback generation is
-disabled with `--ensure-en-us false`.
-
-PowerShell options:
-
-- `--ps-module-name <NAME>` – override the module name (defaults to the binary
-  name).
-- `--ps-split-subcommands <BOOL>` – emit wrapper functions for subcommands.
-- `--ps-include-common-parameters <BOOL>` – include CommonParameters in MAML.
-- `--ps-help-info-uri <URI>` – set `HelpInfoUri` for Update-Help payloads.
-- `--ensure-en-us <BOOL>` – control the `en-US` fallback behaviour.
-
-To set defaults in `Cargo.toml`, use the Windows metadata table:
-
+<!-- tested-example: guide-alias-install -->
 ```toml
-[package.metadata.ortho_config.windows]
-module_name = "MyModule"
-include_common_parameters = true
-split_subcommands_into_functions = false
-help_info_uri = "https://example.com/help/MyModule"
+[dependencies]
+config_layer = { package = "ortho_config", version = "0.10.0" }
+serde = { version = "1.0", features = ["derive"] }
 ```
 
-## Additional notes
+Name the alias on every type that derives an OrthoConfig macro:
 
-- **Vector merging** – For `Vec<T>` fields the default merge strategy is
-  `append`, meaning that values from the configuration file appear first, then
-  environment variables and finally CLI arguments. Use
-  `merge_strategy = "append"` explicitly for clarity. When overrides should
-  discard earlier layers entirely (for example, to replace a default list with
-  a CLI-provided value) apply `merge_strategy = "replace"` instead.
-- **Map merging** – Map fields (such as `BTreeMap<String, _>`) default to keyed
-  merges, where later layers update only the entries they define. Apply
-  `merge_strategy = "replace"` when later layers must replace the entire map.
-  The hello_world example exposes a `greeting_templates` map that uses this
-  strategy, so declarative configuration files can swap the full template set
-  at once.
+<!-- tested-example: guide-alias-derive -->
+```rust
+use config_layer::{OrthoConfig, OrthoResult};
+use serde::Deserialize;
 
-- **Option&lt;T&gt; fields** – Fields of type `Option<T>` are not treated as
-  required. They default to `None` and can be set via any source. Required CLI
-  arguments can be represented as `Option<T>` to allow configuration defaults
-  while still requiring the CLI to provide a value when defaults are absent;
-  see the `vk` example above.
+#[derive(Deserialize, OrthoConfig)]
+#[ortho_config(crate = "config_layer", prefix = "ACME_")]
+struct Config {
+    #[ortho_config(default = 8080)]
+    port: u16,
+}
 
-- **Changing naming conventions** – Runtime naming continues to use the
-  default snake/hyphenated (underscores → hyphens)/upper snake mappings. For
-  documentation output, use `env(name = "...")` and `file(key_path = "...")` to
-  override IR metadata without altering runtime behaviour.
+fn main() -> OrthoResult<()> {
+    let config = Config::load_from_iter(["acme"])?;
+    assert_eq!(config.port, 8080);
+    println!("port={}", config.port);
+    Ok(())
+}
+```
 
-- **Testing** – Because the CLI and environment variables are merged at
-  runtime, integration tests should set environment variables and construct CLI
-  argument vectors to exercise the merge logic. The `figment` crate makes it
-  easy to inject additional providers when writing unit tests.
+The same attribute is supported by `SelectedSubcommandMerge`. OrthoConfig
+re-exports the dependencies used by generated code, so a derive-only consumer
+does not need direct `figment`, `uncased`, `xdg`, or format-parser dependencies.
 
-- **Sanitized providers** – The `sanitized_provider` helper returns a `Figment`
-  provider with `None` fields removed. It aids manual layering when bypassing
-  the derive macro. For example:
+## Generate help from the same metadata
 
-  ```rust
-  use figment::{Figment, providers::Serialized};
-  use ortho_config::sanitized_provider;
+`#[derive(OrthoConfig)]` also implements `OrthoConfigDocs`. The metadata
+records fields, source names, precedence, discovery, defaults, and nested
+subcommands. Derive `OrthoConfigSubcommandDocs` on a `clap::Subcommand` enum so
+the generated tree includes every variant.
 
-  let fig = Figment::from(Serialized::defaults(&Defaults::default()))
-      .merge(sanitized_provider(&cli)?);
-  let cfg: Defaults = fig.extract()?;
-  ```
+Inspect the metadata in code:
 
-## Conclusion
+<!-- tested-example: guide-orthohelp-metadata -->
+```rust
+use ortho_config::{OrthoConfig, OrthoConfigDocs};
+use serde::{Deserialize, Serialize};
 
-`OrthoConfig` streamlines configuration management in Rust applications. By
-defining a single struct and annotating it with a small number of attributes,
-developers obtain a full configuration parser that respects CLI arguments,
-environment variables and configuration files with predictable precedence.
-Subcommand support and integration with `clap‑dispatch` further reduce
-boiler‑plate in complex CLI tools. The example `vk` repository demonstrates how
-a real application can adopt `OrthoConfig` to handle global options and
-subcommand defaults. Contributions to the project are welcome, and the design
-documents outline planned improvements such as richer error messages and
-support for additional naming strategies.
+#[derive(Deserialize, Serialize, OrthoConfig)]
+#[ortho_config(prefix = "ACME_")]
+struct Config {
+    /// Address on which the service listens.
+    #[ortho_config(default = String::from("127.0.0.1"))]
+    host: String,
+}
+
+fn main() {
+    let metadata = Config::get_doc_metadata();
+    assert_eq!(metadata.fields.len(), 1);
+    assert_eq!(metadata.fields[0].name, "host");
+    println!("field={}", metadata.fields[0].name);
+}
+```
+
+Or use `cargo-orthohelp` to emit intermediate representation (IR), Unix man
+pages, PowerShell help, compact agent context, or all formats. The
+[README](../README.md#install-the-documentation-generator) explains how to
+install it. Point it at a package:
+
+<!-- tested-example: guide-orthohelp-command -->
+```console
+cargo orthohelp --package hello_world --format agent-context
+```
+
+The tool builds a small bridge against the selected package. Name the root
+configuration type in the package's `Cargo.toml` with
+`[package.metadata.ortho_config] root_type = "crate::path::Type"` (or pass
+`--root-type`), keep that type public, and make its documentation metadata
+available from the selected library or binary target. The default format is
+`ir`. `--format agent-context` writes `agent-context.json` and also emits the
+same compact JSON document to standard output, so a pipeline can consume it
+directly.
+
+## Generate every format at once
+
+Passing `--format all` runs the IR, man-page, PowerShell, and agent-context
+generators in a single invocation. Use it when one release build has to supply
+human help and agent context together:
+
+<!-- tested-example: guide-orthohelp-format-all -->
+```console
+cargo orthohelp --format all --package hello_world --locale en-US
+```
+
+Every artefact is written below the output root, which defaults to
+`<target_dir>/orthohelp/out` and can be redirected with `--out-dir`. For a
+single locale the tree is:
+
+<!-- tested-example: guide-orthohelp-format-all-tree -->
+```plaintext
+<out>/
+├── agent-context.json
+├── ir/
+│   └── en-US.json
+├── man/
+│   └── man1/
+│       └── hello_world.1
+└── powershell/
+    └── HelloWorld/
+        ├── HelloWorld.psd1
+        ├── HelloWorld.psm1
+        └── en-US/
+            ├── HelloWorld-help.xml
+            └── about_HelloWorld.help.txt
+```
+
+The IR generator writes one `ir/<locale>.json` per resolved locale. Man pages
+live under `man/man<N>/<bin>.<N>`, where `N` is the section number: the
+`--man-section` option defaults to `1`, accepts `1` to `8`, and names both the
+directory and the file extension. The PowerShell generator writes its module
+under `powershell/<ModuleName>/`, with a culture subdirectory per resolved
+locale holding `<ModuleName>-help.xml` and `about_<ModuleName>.help.txt`.
+
+`ModuleName` is resolved from these sources in order:
+
+1. `--ps-module-name`;
+2. the `module_name` key under `[package.metadata.ortho_config.windows]`;
+3. the hint declared on the type itself as
+   `#[ortho_config(windows(module_name = "Custom"))]`; and
+4. the binary name.
+
+Each source applies only when every earlier one is absent, so a type declaring
+`Custom` generates `Custom` even when package metadata declares a
+`[package.metadata.ortho_config.windows]` table without its own `module_name`.
+
+Agent context is not locale-scoped: `agent-context.json` sits at the output
+root rather than under a locale directory, so a run with several locales still
+writes exactly one such document, which is also written to standard output.
+Command summaries inside it are resolved from the package's `en-US` resources
+rather than from a requested `--locale`, and are omitted when no such resource
+exists.
+
+### Choose locales
+
+`--locale` is repeatable, and repeated values are deduplicated while keeping
+the order in which they were first given. With more than one locale the IR
+gains one JSON file per locale, the man tree nests each locale as
+`<locale>/man/man<N>/<bin>.<N>`, and the PowerShell module gains one culture
+subdirectory per locale.
+
+`--locale` takes precedence over `--all-locales`. When neither is given, the
+command uses the single locale `en-US`, even when the package metadata or the
+package's `locales/` directory declares others. With `--all-locales` and no
+`--locale`, the command renders the locales declared in package metadata, or
+those discovered under the package's `locales/` directory when metadata
+declares none, and falls back to `en-US` only when neither source is available.
+
+The PowerShell `en-US` fallback is separate from that locale default. When the
+requested locales omit `en-US`, the generator also writes an `en-US` help set
+built from the first locale, because PowerShell culture probing strongly
+prefers an `en-US` culture to be present. `--ensure-en-us` controls this and is
+on by default; pass `--ensure-en-us false` to suppress the extra culture. The
+fallback copies text rather than translating it: with `--locale ja` the `en-US`
+directory holds the Japanese help, so do not read its name as a language
+guarantee.
+
+`--format all` is additive. It writes the same artefacts, at the same paths, as
+running `--format ir`, `--format man`, `--format ps`, and
+`--format agent-context` one after another, and each format keeps its own
+output paths as a compatibility contract. The
+[cargo-orthohelp design](cargo-orthohelp-design.md) records those per-format
+paths and the versioning rule that protects them.
+
+## Offer a compact contract to automation
+
+Agent context complements human help with a small, stable JSON description of
+commands, inputs, output modes, interaction, and mutation boundaries. A common
+application convention is a `context --json` command; `cargo-orthohelp` uses
+`--format agent-context` for generation.
+
+The smallest valid context created by `AgentContext::new("acme")` serializes to
+this shape:
+
+<!-- tested-example: guide-agent-context -->
+```json
+{
+  "schema_version": "1",
+  "kind": "acme.agent_context",
+  "package": "acme",
+  "commands": [],
+  "profiles": { "supported": false },
+  "feedback": { "supported": false },
+  "policy": { "agent_native": "warn", "exceptions": [] },
+  "skill_manifests": []
+}
+```
+
+Fill `AgentCommand` entries only with claims the executable honours.
+`SkillManifest` and `SkillCommandRef` link skills to real commands. They do not
+replace command validation or grant an agent capabilities that the CLI does not
+have. Consumers should ignore unknown fields, so that later additive releases
+do not break them. For constructing and serializing these types from Rust, see
+the [API guide](cargo-orthohelp-api-guide.md).
+
+### Advertise profile support
+
+A struct that opts into [profiles](#switch-between-named-profiles) advertises
+the selection contract in agent context. For a struct with `prefix = "APP_"`,
+`cargo-orthohelp` emits:
+
+<!-- tested-example: guide-profile-metadata -->
+```json
+{
+  "profiles": {
+    "supported": true,
+    "selection": {
+      "flag": "profile",
+      "env_var": "APP_PROFILE"
+    }
+  }
+}
+```
+
+The `flag` follows the agent-context input convention and omits the leading
+`--`. Each command in the context also lists a `profile` input, so an agent can
+discover the flag from any command. The unsupported case still serializes as
+`{ "supported": false }`, and the optional `selection` and `list_command`
+fields are omitted when absent; `list_command` is reserved for a future
+profile-listing command.
+
+Which profile is active is a runtime fact rather than generated metadata. An
+application that offers `context --json` can report it from
+`ProfileLoadOutcome::selection()`, for example as
+`{"name": "staging", "source": "flag"}` or
+`{"name": "staging", "source": "environment"}`; the application owns that
+rendering.
+
+## Declare behaviour metadata for agents
+
+Commands that prompt or mutate state should declare that behaviour so agents
+can decide whether an invocation is safe before running it. Add a struct-level
+`behaviour(...)` attribute to the command's arguments struct:
+
+<!-- tested-example: guide-behaviour-metadata -->
+```rust
+use ortho_config::{OrthoConfig, OrthoConfigDocs};
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Deserialize, Serialize, OrthoConfig)]
+#[ortho_config(
+    prefix = "APP_",
+    behaviour(
+        interaction = "interactive",
+        mutation = "delete",
+        bypass = "--force",
+        dry_run = "--dry-run"
+    )
+)]
+struct PurgeArgs {
+    /// Skip the confirmation prompt.
+    #[ortho_config(default = false)]
+    force: bool,
+
+    /// Report what would be deleted without deleting it.
+    #[ortho_config(default = false)]
+    dry_run: bool,
+}
+
+fn main() {
+    if let Some(behaviour) = PurgeArgs::get_doc_metadata().behaviour {
+        println!(
+            "mutation={:?} bypass={:?}",
+            behaviour.mutation, behaviour.bypass
+        );
+    }
+}
+```
+
+The example prints `mutation=Some(Delete) bypass=Some("--force")`. Supported
+keys and values are:
+
+- `interaction = "non_interactive"` or `"interactive"` — whether the command
+  can prompt;
+- `mutation = "read_only"`, `"write"`, `"delete"`, or `"submit"` — the
+  mutation boundary;
+- `bypass = "--force"` — the confirmation or prompt bypass flag, which must
+  match `--[a-z0-9]+(-[a-z0-9]+)*`; and
+- `dry_run = "--dry-run"` — the dry-run flag, with the same grammar.
+
+The declaration flows into the generated documentation IR and, through the
+`cargo-orthohelp` bridge, into agent context as `interaction_mode`,
+`mutation_effect`, `bypass_flag`, and `dry_run_flag`. Commands left unannotated
+report `"unknown"` for the two enums and `null` for the two flags; the tool
+never infers these facts from command names or flags.
+
+`interaction = "non_interactive"` combined with a `bypass` declaration is a
+compile error: a command that never prompts has nothing to bypass.
+
+## Agent-native policy checking
+
+`cargo orthohelp --check-agent-native` runs an opt-in policy check against a
+target package. It does not build the bridge crate or require `root_type`, a
+library target, or an `ortho_config` dependency, so it works for packages still
+adopting the toolchain. Configure the policy under
+`[package.metadata.ortho_config.policy]` in the target package's `Cargo.toml`:
+
+<!-- tested-example: guide-policy-config -->
+```toml
+[package.metadata.ortho_config.policy]
+mode = "warn"
+
+[[package.metadata.ortho_config.policy.exceptions]]
+kind = "verb"
+name = "get"
+reason = "redundant but part of the migration surface"
+
+[[package.metadata.ortho_config.policy.exceptions]]
+kind = "flag"
+name = "--format"
+reason = "scoped legacy flag"
+command_path = "fixture"
+```
+
+The keys are:
+
+| Key                         | Type                      | Default  | Meaning                                        |
+| --------------------------- | ------------------------- | -------- | ---------------------------------------------- |
+| `mode`                      | `"off"`/`"warn"`/`"deny"` | `"off"`  | Enforcement mode for the check.                |
+| `exceptions[].kind`         | `"verb"`/`"flag"`         | required | Whether the exception names a verb or a flag.  |
+| `exceptions[].name`         | string                    | required | The verb or flag as typed on the command line. |
+| `exceptions[].reason`       | string                    | required | Why the project exempts this vocabulary item.  |
+| `exceptions[].command_path` | string                    | absent   | Optional space-separated command path scope.   |
+
+_Table 5: Agent-native policy configuration keys._
+
+Then run the check, naming the package:
+
+<!-- tested-example: guide-policy-check -->
+```console
+cargo orthohelp --check-agent-native --package my-cli --out-dir out
+```
+
+The command atomically writes a machine-stable `out/policy-report.json`, emits
+the same compact JSON document to standard output, prints a one-line human
+summary to standard error, and skips generation. The report includes the
+effective mode, findings, configured exceptions with their reasons, and the
+canonical vocabulary in `vocabulary.verbs` and `vocabulary.flags`.
+
+The enforcement default is `off`: a package with no policy table checks
+nothing. In `warn` mode, findings are reported without failing the command; in
+`deny` mode, deny-level findings cause a non-zero exit after the report has
+been written. Today the check validates the policy configuration itself, such
+as malformed, redundant, or duplicated exceptions, and reports the canonical
+vocabulary; linting command verbs and flags against that vocabulary is planned
+for a later release. Exception reasons appear in `policy-report.json` but not
+in agent context, which carries only the exception kind, name, and optional
+command scope.
+
+`--policy-mode <off|warn|deny>` overrides the configured mode for the report
+and requires `--check-agent-native`. It never changes the generated agent
+context, which records what the project has committed to.
+
+Adding `--format` runs the policy check before generation. The policy report is
+then the only JSON document on standard output; successful checks continue
+generation, including writing `agent-context.json` for `agent-context` and
+`all`, while a deny-mode violation emits the report and fails before any
+generator artefact is created.
+
+Because a misspelt table _name_ still resolves to `off`, gate on the mode
+rather than assuming the check ran. The off-mode summary ("nothing was
+checked") is one signal; a `jq`-based assertion is a stronger continuous
+integration (CI) recipe:
+
+<!-- tested-example: guide-policy-ci -->
+```console
+cargo orthohelp --check-agent-native --package my-cli --out-dir out
+jq -e '.mode != "off"' out/policy-report.json
+```
+
+## Lint the declared behaviour
+
+The behaviour rules are exported by `cargo_orthohelp::policy::rules` as
+`check_behaviour(context, mode) -> PolicyReport`. They consume a compiled agent
+context rather than a package manifest, which is why they are a library API
+instead of part of `--check-agent-native`: the policy-only run deliberately
+skips the bridge build, and the behaviour rules need its output. Generate
+`agent-context.json` with `cargo orthohelp --format agent-context`, then check
+it:
+
+<!-- tested-example: guide-check-command -->
+```rust
+use cargo_orthohelp::policy::PolicyMode;
+use cargo_orthohelp::policy::rules::behaviour::check_behaviour;
+use ortho_config::{AgentContext, serde_json};
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let json = std::fs::read_to_string("agent-context.json")?;
+    let agent_context: AgentContext = serde_json::from_str(&json)?;
+
+    let report = check_behaviour(&agent_context, PolicyMode::Warn);
+    println!("{}", serde_json::to_string_pretty(&report)?);
+    Ok(())
+}
+```
+
+Each behaviour finding carries a stable `rule_id` and `code`. `location` is
+always `null` for now: agent context carries no source spans, so the `message`
+names the command path plus the exact annotation to add. For a context whose
+only command, `purge`, declares no behaviour, the program prints:
+
+<!-- markdownlint-disable MD013 -->
+<!-- tested-example: guide-check-report -->
+```json
+{
+  "version": "1",
+  "tool": "cargo-orthohelp",
+  "mode": "warn",
+  "results": [
+    {
+      "rule_id": "agent-native.behaviour.undeclared",
+      "code": "interaction_unknown",
+      "severity": "warn",
+      "message": "command `purge` has undeclared interaction behaviour; add `behaviour(interaction = \"non_interactive\")` or `behaviour(interaction = \"interactive\")` to its arguments struct",
+      "location": null
+    },
+    {
+      "rule_id": "agent-native.behaviour.undeclared",
+      "code": "mutation_unknown",
+      "severity": "warn",
+      "message": "command `purge` has undeclared mutation boundary; add `behaviour(mutation = \"read_only\")`, `behaviour(mutation = \"write\")`, `behaviour(mutation = \"delete\")`, or `behaviour(mutation = \"submit\")` to its arguments struct",
+      "location": null
+    }
+  ],
+  "summary": { "off": 0, "warn": 2, "deny": 0, "total": 2 },
+  "exceptions": [],
+  "vocabulary": {
+    "verbs": ["get", "list", "create", "update", "delete", "jobs", "profile", "feedback"],
+    "flags": ["--json", "--no-input", "--force", "--dry-run", "--limit", "--cursor", "--wait", "--profile", "--deliver"]
+  }
+}
+```
+<!-- markdownlint-enable MD013 -->
+
+The rule set contains four rules:
+
+- `agent-native.behaviour.destructive-bypass` / `destructive_bypass_missing` —
+  a `mutation = "delete"` command that declares no bypass;
+- `agent-native.behaviour.prompt-bypass` / `prompt_bypass_missing` — an
+  `interaction = "interactive"` command that declares no bypass;
+- `agent-native.behaviour.bypass-unknown` / `bypass_flag_unknown` — a declared
+  bypass that matches no declared input, which is contradiction detection
+  between two declarations rather than name inference; and
+- `agent-native.behaviour.undeclared` / `interaction_unknown` and
+  `mutation_unknown` — omitted metadata, which stays undeclared.
+
+Findings follow command-path order. A command declared `non_interactive` is
+exempt from `destructive-bypass`: it cannot prompt, so the declaration itself
+is the approved non-interactive path. `PolicyMode::Off` evaluates no rule and
+returns a report with no findings, still carrying the canonical vocabulary.
+Annotate incrementally, starting with destructive commands:
+
+1. Declare `behaviour(mutation = "delete", bypass = "--force", ...)` on each
+   destructive command's arguments struct.
+2. Add `interaction` and other `mutation` declarations as the command surface
+   stabilizes.
+3. Run the check in warning mode before enforcing it in continuous
+   integration.
+
+## Upgrade from an earlier release
+
+Each release with compatibility notes has a migration guide that separates
+required changes from improvements that can be adopted later:
+
+- [v0.10.0 migration guide](v0-10-0-migration-guide.md) — from v0.9.0. Most
+  applications need no code changes; review explicit command-line values that
+  restate defaults, Fluent catalogue identifiers, and struct literals of
+  `AgentContext` or `DocMetadata`.
+- [v0.9.0 migration guide](v0-9-0-migration-guide.md) — from v0.8.0, including
+  the YAML 1.2 parser change and `load_first` error reporting.
+
+The [changelog](../CHANGELOG.md) lists every release's additions and fixes.
+
+## A practical path from here
+
+For a new CLI, begin with the first layered struct and add only the required
+sections. A typical progression is:
+
+1. choose stable CLI and environment names;
+2. add a project file for durable settings;
+3. customize discovery if the defaults are not part of the public interface;
+4. split independent commands into subcommand configurations;
+5. replace environment mutation in tests with injected sources;
+6. localize help and initialize tracing at the application boundary; and
+7. generate human and agent documentation once the command surface stabilizes.
+
+The [Hello World application](../examples/hello_world/) demonstrates these
+pieces in a larger layout. Its public greeting command is `greet`: file
+settings use `[cmds.greet]`, and environment settings use
+`HELLO_WORLD_CMDS_GREET_<FIELD>`. The
+[API documentation](https://docs.rs/ortho_config) is the source for complete
+type and method signatures.

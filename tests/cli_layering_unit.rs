@@ -1,7 +1,7 @@
 //! Unit tests for CLI layered configuration loading.
 //!
 //! This suite exercises [`spycatcher_harness::cli::load_subcommand_config_from_iter`]
-//! in isolation using `figment::Jail` to control the filesystem and environment.
+//! in isolation using explicit file and environment sources.
 //! It covers:
 //!
 //! - Cassette-name precedence (CLI > env > config file > default) for `replay`.
@@ -24,9 +24,12 @@ use spycatcher_harness::config;
 
 #[path = "cli_layering/support.rs"]
 mod support;
+#[cfg(unix)]
+#[path = "cli_layering/unreadable_file.rs"]
+mod unreadable_file;
 
 use support::{
-    REPLAY_FILE_CONFIG, REPLAY_LOCALIZATION_FILE_CONFIG, load_with_jail, optional_locale_text,
+    REPLAY_FILE_CONFIG, REPLAY_LOCALIZATION_FILE_CONFIG, load_with_sources, optional_locale_text,
     valid_locale_text,
 };
 
@@ -36,7 +39,7 @@ proptest! {
         locale in valid_locale_text(),
         fallback_locale in valid_locale_text(),
     ) {
-        let loaded = load_with_jail(
+        let loaded = load_with_sources(
             &[
                 "spycatcher-harness",
                 "replay",
@@ -87,7 +90,7 @@ proptest! {
             ));
         }
 
-        let loaded = load_with_jail(&argv, Some(config_file.as_str()), &env_vars)
+        let loaded = load_with_sources(&argv, Some(config_file.as_str()), &env_vars)
             .map_err(|error| TestCaseError::fail(error.to_string()))?;
         let expected_locale = cli_locale
             .as_deref()
@@ -139,15 +142,15 @@ fn replay_cassette_name_precedence(
     #[case] env_vars: &[(&str, &str)],
     #[case] expected_cassette_name: &str,
 ) {
-    let loaded = load_with_jail(argv, config_file, env_vars).expect("config should load");
+    let loaded = load_with_sources(argv, config_file, env_vars).expect("config should load");
     assert_eq!(loaded.cassette_name, expected_cassette_name);
     assert_eq!(loaded.mode, config::Mode::Replay);
 }
 
 #[rstest]
 fn replay_localization_defaults_to_fallback_locale() {
-    let loaded =
-        load_with_jail(&["spycatcher-harness", "replay"], None, &[]).expect("config should load");
+    let loaded = load_with_sources(&["spycatcher-harness", "replay"], None, &[])
+        .expect("config should load");
 
     assert_eq!(loaded.localization.locale, None);
     assert_eq!(loaded.localization.fallback_locale, "en-US");
@@ -197,7 +200,7 @@ fn replay_localization_precedence(
     #[case] env_vars: &[(&str, &str)],
     #[case] expected: (Option<&str>, &str),
 ) {
-    let loaded = load_with_jail(argv, config_file, env_vars).expect("config should load");
+    let loaded = load_with_sources(argv, config_file, env_vars).expect("config should load");
 
     let (expected_locale, expected_fallback_locale) = expected;
     assert_eq!(loaded.localization.locale.as_deref(), expected_locale);
@@ -214,7 +217,7 @@ fn env_nested_locale_wins_over_file_only_cli_alias() {
         "locale = \"en-GB\"\n",
         "fallback_locale = \"en-GB\"\n",
     );
-    let loaded = load_with_jail(
+    let loaded = load_with_sources(
         &["spycatcher-harness", "replay"],
         Some(config),
         &[
@@ -236,7 +239,7 @@ fn env_nested_locale_wins_over_file_only_cli_alias() {
 
 #[rstest]
 fn cli_locale_alias_wins_over_env_nested_locale() {
-    let loaded = load_with_jail(
+    let loaded = load_with_sources(
         &[
             "spycatcher-harness",
             "replay",
@@ -282,7 +285,7 @@ fn localization_overrides_work_for_each_subcommand(
         subcommand.to_uppercase()
     );
     let env_vars = [(env_locale.as_str(), "en-CA")];
-    let loaded = load_with_jail(&argv, Some(&config), &env_vars).expect("config should load");
+    let loaded = load_with_sources(&argv, Some(&config), &env_vars).expect("config should load");
 
     assert_eq!(loaded.mode, expected_mode);
     assert_eq!(loaded.localization.locale.as_deref(), Some("en-CA"));
@@ -291,7 +294,7 @@ fn localization_overrides_work_for_each_subcommand(
 
 #[rstest]
 fn invalid_cli_locale_fails_loading() {
-    let error = load_with_jail(
+    let error = load_with_sources(
         &["spycatcher-harness", "replay", "--locale", "not_a_locale"],
         None,
         &[],
@@ -312,7 +315,7 @@ fn invalid_cli_locale_fails_loading() {
 /// Rejects an invalid explicit fallback with its field, value, and parser error.
 #[rstest]
 fn invalid_cli_fallback_locale_fails_loading() {
-    let error = load_with_jail(
+    let error = load_with_sources(
         &[
             "spycatcher-harness",
             "replay",
@@ -345,7 +348,7 @@ fn record_supports_cmds_namespace_for_nested_upstream_values() {
         "api_key_env = \"TEST_API_KEY\"\n"
     );
 
-    let loaded = load_with_jail(&["spycatcher-harness", "record"], Some(config), &[])
+    let loaded = load_with_sources(&["spycatcher-harness", "record"], Some(config), &[])
         .expect("record config should load");
     let upstream = loaded
         .upstream
@@ -359,7 +362,7 @@ fn record_supports_cmds_namespace_for_nested_upstream_values() {
 #[rstest]
 fn verify_supports_cmds_namespace_overrides() {
     let config = "[cmds.verify]\ncassette_name = \"verify_cassette\"\n";
-    let loaded = load_with_jail(&["spycatcher-harness", "verify"], Some(config), &[])
+    let loaded = load_with_sources(&["spycatcher-harness", "verify"], Some(config), &[])
         .expect("verify config should load");
     assert_eq!(loaded.cassette_name, "verify_cassette");
     assert_eq!(loaded.mode, config::Mode::Verify);
@@ -367,7 +370,7 @@ fn verify_supports_cmds_namespace_overrides() {
 
 #[rstest]
 fn invalid_values_fail_loading() {
-    let error = load_with_jail(
+    let error = load_with_sources(
         &["spycatcher-harness", "replay"],
         None,
         &[("SPYCATCHER_HARNESS_CMDS_REPLAY_LISTEN", "not-an-address")],
@@ -379,4 +382,82 @@ fn invalid_values_fail_loading() {
             || (message.contains("socket") && message.contains("parse")),
         "expected error about invalid listen address, got: {message}",
     );
+}
+
+#[rstest]
+fn explicit_cli_value_equal_to_application_default_wins() {
+    let loaded = load_with_sources(
+        &["spycatcher-harness", "replay", "--cassette-name", "default"],
+        Some(REPLAY_FILE_CONFIG),
+        &[("SPYCATCHER_HARNESS_CMDS_REPLAY_CASSETTE_NAME", "from_env")],
+    )
+    .expect("explicit CLI default should load");
+
+    assert_eq!(loaded.cassette_name, "default");
+}
+
+#[rstest]
+#[case("replay", config::Mode::Replay)]
+#[case("verify", config::Mode::Verify)]
+fn record_only_values_do_not_leak_to_other_subcommands(
+    #[case] subcommand: &str,
+    #[case] expected_mode: config::Mode,
+) {
+    let config = "[cmds.record]\ncassette_name = \"record_only_file\"\n";
+    let loaded = load_with_sources(
+        &["spycatcher-harness", subcommand],
+        Some(config),
+        &[(
+            "SPYCATCHER_HARNESS_CMDS_RECORD_CASSETTE_NAME",
+            "record_only_env",
+        )],
+    )
+    .expect("other subcommand should ignore record-only values");
+
+    assert_eq!(loaded.cassette_name, "default");
+    assert_eq!(loaded.mode, expected_mode);
+}
+
+#[rstest]
+fn malformed_discovered_file_remains_visible() {
+    let error = load_with_sources(
+        &["spycatcher-harness", "replay"],
+        Some("[cmds.replay\n"),
+        &[],
+    )
+    .expect_err("malformed discovered file should fail loading");
+    let message = error.to_string();
+
+    assert!(
+        message.contains(".spycatcher_harness.toml"),
+        "error should identify the discovered file: {message}",
+    );
+    assert!(
+        message.to_ascii_lowercase().contains("parse")
+            || message.to_ascii_lowercase().contains("toml"),
+        "error should identify the parse failure: {message}",
+    );
+}
+
+#[cfg(unix)]
+#[rstest]
+fn unreadable_discovered_file_remains_visible() -> eyre::Result<()> {
+    let Some(load_result) =
+        unreadable_file::load_with_unreadable_file(&["spycatcher-harness", "replay"])?
+    else {
+        return Ok(());
+    };
+    let Err(error) = load_result else {
+        eyre::bail!("unreadable discovered file unexpectedly loaded");
+    };
+    let message = error.to_string();
+    if !message.contains(".spycatcher_harness.toml") {
+        eyre::bail!("error should identify the discovered file: {message}");
+    }
+    let message_lower = message.to_ascii_lowercase();
+    if !message_lower.contains("permission denied") && !message_lower.contains("permissiondenied") {
+        eyre::bail!("error should identify the read failure: {message}");
+    }
+
+    Ok(())
 }

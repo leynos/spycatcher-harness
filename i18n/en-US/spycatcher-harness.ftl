@@ -8,14 +8,14 @@ harness-error-mode-not-yet-implemented = mode not yet implemented: { $mode }
 harness-error-io = io failure: { $source }
 
 cli-about = Deterministic record/replay harness for LLM API testing
-cli-long-about =
+cli-long_about =
     Deterministic record/replay harness for LLM API testing.
     { $binary } records upstream LLM API traffic into cassettes, replays
     cassette responses for repeatable tests, and verifies cassette integrity
     before those cassettes are used in automation.
 cli-usage = { $binary } <COMMAND>
 cli-version = { $version }
-cli-merge-help =
+cli-after_long_help =
     Configuration precedence: CLI > env > config files > defaults.
     Subcommand defaults merge from the `cmds` namespace.
     Example:
