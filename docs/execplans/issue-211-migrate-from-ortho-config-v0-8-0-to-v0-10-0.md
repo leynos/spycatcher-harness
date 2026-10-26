@@ -120,7 +120,7 @@ the repository inventory has not yet confirmed applicability.
 | Facade localization re-exports (`FluentValue`, `Localizer`, Fluent runtime) | No extra direct runtime dependency      | The CLI still needs the configuration facade and does not directly depend on `fluent-bundle`; existing facade imports remain valid through re-exports.                                                                                                                                                                                                               |
 | v0.9 discovery errors                                                       | Required through the selected loader    | Test absent configuration, malformed TOML, and unreadable candidate as distinct outcomes.                                                                                                                                                                                                                                                                            |
 | v0.9 YAML 1.2 semantics                                                     | Not applicable                          | The app uses TOML; the manifest enables no YAML or JSON5 feature.                                                                                                                                                                                                                                                                                                    |
-| v0.9 discovery derive metadata / subcommand documentation                   | Not applicable                          | The app uses hand-written Clap argument structs and no `OrthoConfigDocs` derive or generator.                                                                                                                                                                                                                                                                        |
+| v0.9 discovery derive metadata / subcommand documentation                   | Not applicable                          | The app uses handwritten Clap argument structs and no `OrthoConfigDocs` derive or generator.                                                                                                                                                                                                                                                                         |
 | v0.9 combined localized parse API                                           | Required comparison                     | Use shipped `parse_localized_command`; keep a narrow adapter for the legacy `cli` message root and public path.                                                                                                                                                                                                                                                      |
 | v0.9 runtime re-exports, tracing and metrics                                | Audit                                   | No duplicate parser dependencies exist. Keep `metrics`, which the harness uses directly.                                                                                                                                                                                                                                                                             |
 | Proposed, unreleased error variants                                         | Not applicable                          | Do not use APIs absent from the published release.                                                                                                                                                                                                                                                                                                                   |
@@ -188,8 +188,8 @@ any old package versions still selected through another dependency chain.
 - [x] Validate the declared MSRV with `rustc 1.89.0` (commit
   `29483883eed69d5fb4db01964cdf2af4d86e9cb2`, 2025-08-04). Stable Cargo cannot
   accept the repository's nightly-only `-Zthreads=8`; direct Cargo validation
-  therefore omitted only that performance flag, retained the mold linker flag
-  and `RUSTC_WRAPPER`, and left the build-standard contract tests' default
+  therefore omitted only that performance flag, retained the configured linker
+  flag and `RUSTC_WRAPPER`, and left the build-standard contract tests' default
   Makefile view intact. All 458 all-target tests and 28 doctests passed (4
   ignored), and `cargo check --workspace --all-targets --all-features` passed.
 - [x] Resolve CodeRabbit's first valid findings and rerun the complete
@@ -224,8 +224,9 @@ any old package versions still selected through another dependency chain.
   byte-identical imported copies and allow an upstream link map instead of
   importing every companion document. This plan maps those links to the
   immutable upstream commit. The imported copies remain byte-identical.
-- [ ] Commit, push over SSH, set the requested upstream, and create a draft
-  PR. Reconcile the existing open draft PR #147 before publication.
+- [x] Commit and push the validated migration over SSH; set the requested
+  branch upstream and create the draft PR. Leave issue #123 open for the
+  `Closes #123` automation when the new PR merges; do not merge this change.
 
 ## Decisions and discoveries
 
@@ -292,10 +293,14 @@ any old package versions still selected through another dependency chain.
   process-global cases, the config-layering suites add five, and the new
   process-backed precedence target adds four. Baseline and migrated runs have
   no skipped nextest cases; four existing doctests remain ignored.
-- Hosted-state check: issue #123 remains open, and its prior v0.9 draft PR #147
-  is also still open on the old `issue-123-adopt-ortho-config-v0-9-0-...`
-  branch. The requested issue-211 branch has no existing PR. Resolve the
-  supersession consistently when creating the new draft PR.
+- Hosted-state result: created draft PR #215 from the requested branch at
+  `1642aab0dddbad07c417e6414286ddfbeade4f78`; its body closes #211 and #123
+  when merged and links this session. Closed the earlier v0.9 PR #147 as
+  superseded by #215. Issue #123 remains open until #215 merges.
+- Push result: the local branch,
+  `origin/issue-211-migrate-from-ortho-config-v0-8-0-to-v0-10-0`, and GitHub
+  head all resolve to `1642aab0dddbad07c417e6414286ddfbeade4f78`. SSH and
+  GitHub API identity checks both resolved to `leynos`.
 - CodeRabbit's final review completed with one minor finding requesting local
   navigation for upstream-relative links. The repository instructions allow
   documenting an upstream link map, and the plan records a complete target map
