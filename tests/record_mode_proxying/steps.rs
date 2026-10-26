@@ -374,6 +374,7 @@ pub(crate) fn first_upstream_request(
     Ok(request.clone())
 }
 
+/// A missing client response must remain distinguishable from the expected gateway error.
 #[expect(
     clippy::panic_in_result_fn,
     reason = "BDD assertion helper preserves step assertion behaviour"
@@ -383,6 +384,9 @@ fn assert_response_status(proxy_world: &ProxyWorld, expected: u16) -> Result<(),
         .response
         .with_ref(Clone::clone)
         .ok_or_else(|| std::io::Error::other("client response should be recorded"))?;
-    assert_eq!(response.status, expected);
+    assert_eq!(
+        response.status, expected,
+        "proxy response status must match the scenario expected status"
+    );
     Ok(())
 }
