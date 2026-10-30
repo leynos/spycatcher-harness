@@ -237,7 +237,7 @@ their support modules rather than growing `src/cli/mod.rs`.
 | `src/cli_args.rs`          | `LocalizationArgs` and `RecordUpstreamArgs` serializable merge shapes            |
 | `src/cli_help.rs`          | Stock long-form merge help used when CLI localization is disabled                |
 | `src/cli/localization.rs`  | Localization override selection and validation                                   |
-| `src/cli/localize_cmd.rs`  | Project-owned `LocalizeCmd` trait and localized `clap` parsing helper            |
+| `src/cli/localize_cmd.rs`  | `LocalizeCmd` adapter, per-command `$binary`/`$version`, localized parser        |
 | `src/cli/localizer.rs`     | Early locale selection and Fluent-backed CLI localizer construction              |
 
 _Table 2: CLI adapter and support modules._

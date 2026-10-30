@@ -31,6 +31,10 @@ jobs:
         run: cargo +1.95.0 install merman-cli --version "=${MERMAN_CLI_VERSION}" --locked
       - name: Setup Rust
         uses: leynos/shared-actions/.github/actions/setup-rust@6e99f225cb06684f9e6f89b63a7ca4a04095c067
+      - name: Install the minimum supported Rust version
+        run: rustup toolchain install 1.89.0 --profile minimal
+      - name: Check the minimum supported Rust version
+        run: cargo +1.89.0 check --locked --workspace --all-targets --all-features
       - name: Setup uv
         uses: astral-sh/setup-uv@4bc6759c82322ff7efa28de54a45404ca6869912
         with:

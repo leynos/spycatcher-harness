@@ -610,8 +610,9 @@ CLI localization responsibilities:
   `ortho_config::FluentLocalizer` for Fluent-backed messages.
 - Localize `clap` help, `--version`, and parse errors through the pre-parse
   locale flow with OrthoConfig's `LocalizeCmd::with_base("cli")` and
-  `parse_localized_command(...)`. The project adapter retains the existing
-  `cli-version` `$version` interpolation; the catalogue uses v0.10.0's
+  `parse_localized_command(...)`. The project adapter applies that pass one
+  command at a time so every command-copy lookup receives the legacy `$binary`
+  and `$version` interpolation arguments; the catalogue uses v0.10.0's
   `long_about` and `after_long_help` suffix spellings.
 - Fall back to `NoOpLocalizer` if localization resources fail to load, or when
   `SPYCATCHER_HARNESS_DISABLE_LOCALIZATION` explicitly opts out of CLI

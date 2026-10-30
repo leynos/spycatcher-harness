@@ -2,7 +2,8 @@
 //!
 //! The upstream API owns generated Fluent identifiers and parse-error
 //! localization. This module keeps the harness's established `cli` catalogue
-//! root and the version interpolation required by its catalogue.
+//! root and the legacy interpolation contract: every command-copy lookup
+//! receives `$binary` and, when the command declares one, `$version`.
 
 use clap::{Command, CommandFactory, Parser};
 use ortho_config::{
@@ -35,11 +36,7 @@ pub trait LocalizeCmd {
 
 impl LocalizeCmd for Command {
     fn localize(self, localizer: &dyn Localizer) -> Self {
-        let original = self.clone();
-        let command_localizer = CommandCopyLocalizer::new(localizer);
-        let command =
-            OrthoLocalizeCmd::with_base(self, ROOT_COMMAND_ID).localize(&command_localizer);
-        apply_version_compatibility(command, &original, localizer)
+        localize_command(self, ROOT_COMMAND_ID, localizer)
     }
 }
 
@@ -87,73 +84,62 @@ where
     parse_localized_command::<C, _, _>(command, iter, localizer).map(|(parsed, _matches)| parsed)
 }
 
-/// Applies the application-specific version interpolation after upstream localization.
+/// Localizes one command's own copy, then recurses into its subcommands.
 ///
-/// `OrthoConfig` v0.10.0 supplies the `cli` base and underscore-preserving
-/// suffixes such as `long_about` and `after_long_help`. The harness's
-/// `cli-version` message also interpolates `$version`, which upstream does not
-/// provide, so this adapter retains that application-specific value.
-fn apply_version_compatibility(
-    mut command: Command,
-    original: &Command,
-    localizer: &dyn Localizer,
-) -> Command {
-    let command_id = command_identifier(original);
-    let args = command_args(original);
+/// Upstream v0.10.0 passes no arguments to `about` and only `$binary` to
+/// longer metadata. The harness catalogue predates that split: its messages
+/// may interpolate both `$binary` and `$version` in any command-copy field.
+/// Applying the upstream pass one command at a time keeps the `cli.<command>`
+/// identifier path while letting [`CommandCopyLocalizer`] restore the legacy
+/// arguments for every lookup.
+fn localize_command(command: Command, base: &str, localizer: &dyn Localizer) -> Command {
+    let command_localizer = CommandCopyLocalizer::for_command(&command, localizer);
+    let localized_command =
+        OrthoLocalizeCmd::with_base(command, base).localize_self(&command_localizer);
 
-    if let Some(value) = localizer.lookup(&format!("{command_id}-version"), Some(&args)) {
-        command = command.version(value);
-    }
-    command.mut_subcommands(|subcommand| {
-        if let Some(original_subcommand) = original.find_subcommand(subcommand.get_name()) {
-            apply_version_compatibility(subcommand, original_subcommand, localizer)
-        } else {
-            subcommand
-        }
+    localized_command.mut_subcommands(|subcommand| {
+        let child_base = format!("{base}.{}", subcommand.get_name());
+        localize_command(subcommand, &child_base, localizer)
     })
 }
 
-/// Builds the legacy catalogue identifier for one command.
-fn command_identifier(command: &Command) -> String {
-    match command.get_name() {
-        "spycatcher-harness" => ROOT_COMMAND_ID.to_owned(),
-        name => format!("{ROOT_COMMAND_ID}-{name}"),
-    }
-}
-
-/// Adapts the legacy version message to the command-tree localization context.
+/// Adds the legacy interpolation arguments to one command's copy lookups.
 struct CommandCopyLocalizer<'a> {
-    /// Localizer used for every command-copy field except legacy version text.
+    /// Localizer that owns the actual catalogue lookups.
     localizer: &'a dyn Localizer,
+    /// Binary name used for `$binary` interpolation in this command's copy.
+    binary: String,
+    /// Version used for `$version` interpolation, when the command declares one.
+    version: Option<String>,
 }
 
 impl<'a> CommandCopyLocalizer<'a> {
-    /// Wraps the application localizer for the upstream command-tree pass.
-    const fn new(localizer: &'a dyn Localizer) -> Self {
-        Self { localizer }
+    /// Captures the interpolation values for `command`.
+    fn for_command(command: &Command, localizer: &'a dyn Localizer) -> Self {
+        Self {
+            localizer,
+            binary: command.get_name().to_owned(),
+            version: command.get_version().map(str::to_owned),
+        }
     }
 }
 
 impl Localizer for CommandCopyLocalizer<'_> {
     fn lookup(&self, id: &str, args: Option<&LocalizationArgs<'_>>) -> Option<String> {
-        if id.ends_with("-version") {
-            None
+        let mut compatible_args = args.cloned().unwrap_or_default();
+        compatible_args.insert("binary", self.binary.clone().into());
+        if let Some(version) = &self.version {
+            compatible_args.insert("version", version.clone().into());
         } else {
-            self.localizer.lookup(id, args)
+            // A version-less command must not receive a stale `$version` from
+            // the caller; Fluent would otherwise render an unexpected value.
+            compatible_args.remove("version");
         }
+
+        self.localizer.lookup(id, Some(&compatible_args))
     }
 
     fn locale(&self) -> Option<&LanguageIdentifier> {
         self.localizer.locale()
     }
-}
-
-/// Provides the interpolation values used by the legacy CLI version message.
-fn command_args(command: &Command) -> LocalizationArgs<'static> {
-    let mut args = LocalizationArgs::new();
-    args.insert("binary", command.get_name().to_owned().into());
-    if let Some(version) = command.get_version() {
-        args.insert("version", version.to_owned().into());
-    }
-    args
 }
