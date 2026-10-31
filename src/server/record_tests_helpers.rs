@@ -52,11 +52,11 @@ pub(crate) struct FakeUpstream {
 }
 
 impl ChatCompletionsUpstream for FakeUpstream {
-    async fn send_chat_completions(
+    fn send_chat_completions(
         &self,
         _request: ChatCompletionsRequest<'_>,
-    ) -> HarnessResult<ObservedResponse> {
-        self.response.as_ref().map_or_else(
+    ) -> impl std::future::Future<Output = HarnessResult<ObservedResponse>> {
+        std::future::ready(self.response.as_ref().map_or_else(
             |()| {
                 Err(HarnessError::UpstreamRequestFailed {
                     source: Box::new(std::io::Error::new(
@@ -66,14 +66,14 @@ impl ChatCompletionsUpstream for FakeUpstream {
                 })
             },
             |response| Ok(response.clone()),
-        )
+        ))
     }
 
-    async fn stream_chat_completions(
+    fn stream_chat_completions(
         &self,
         _request: ChatCompletionsRequest<'_>,
-    ) -> HarnessResult<StreamingObservedResponse> {
-        self.response.as_ref().map_or_else(
+    ) -> impl std::future::Future<Output = HarnessResult<StreamingObservedResponse>> {
+        std::future::ready(self.response.as_ref().map_or_else(
             |()| {
                 Err(HarnessError::UpstreamRequestFailed {
                     source: Box::new(std::io::Error::new(
@@ -93,7 +93,7 @@ impl ChatCompletionsUpstream for FakeUpstream {
                     .boxed(),
                 })
             },
-        )
+        ))
     }
 }
 

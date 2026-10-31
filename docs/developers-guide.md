@@ -103,6 +103,16 @@ head is not, and its check mode fails on every project whose coverage gates are
 off. What the split takes off the pull request is the call to the service; the
 CLI archive is already pinned by digest.
 
+Both coverage callers (`ci.yml` and `coverage-main.yml`) set
+`baseline-rust-file: .coverage-baseline-v2.rust`. The ratchet restores its
+baseline from a cache keyed by that path, so a new path starts from the
+committed figure instead of the cached one. The file was introduced when the
+bump to `nightly-2026-10-30` lowered measured coverage from 90.1% to 87.4% with
+every test unchanged, and holds the new measurement rounded down to one decimal
+place (87.4). To reset the baseline after a similar toolchain change, commit
+the new figure under a new suffix (`.coverage-baseline-v3.rust`) and point both
+callers at it.
+
 `.github/workflows/coverage-main.yml` is the one publisher. It runs on a push to
 `main`, writes the ratchet baseline, and uploads to CodeScene only when both
 hold:
@@ -654,4 +664,7 @@ issue #146 records, by re-running the workspace suite and the three
 panic-semantics tests under both backends on the then-supported nightly; if
 Cranelift passes, adopt it and update the routing contracts.
 
-Re-measure on the next toolchain pin.
+The pinned toolchain is now `nightly-2026-10-30`. No measurement has been taken
+on it: both observations above were made on `nightly-2026-02-26`, and the
+exception stands on them until the 2027-04-03 revisit, when the suite is
+re-measured under both backends.

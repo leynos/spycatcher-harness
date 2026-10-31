@@ -133,10 +133,6 @@ enum StubResponse {
     Stream(Vec<u8>),
 }
 
-#[expect(
-    clippy::expect_used,
-    reason = "fail fast on poisoned mutex during integration tests"
-)]
 async fn stub_handler(
     State(state): State<StubState>,
     headers: HeaderMap,

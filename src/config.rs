@@ -23,7 +23,7 @@ use url::Url;
 /// use spycatcher_harness::HarnessConfig;
 ///
 /// let cfg = HarnessConfig::default();
-/// assert!(!cfg.cassette_name.is_empty());
+/// assert_ne!(cfg.cassette_name, "");
 /// ```
 #[derive(Debug, Clone)]
 pub struct HarnessConfig {
@@ -239,7 +239,7 @@ mod tests {
     #[rstest]
     fn default_config_has_non_empty_cassette_name() {
         let cfg = HarnessConfig::default();
-        assert!(!cfg.cassette_name.is_empty());
+        assert_ne!(cfg.cassette_name, "");
     }
 
     #[rstest]

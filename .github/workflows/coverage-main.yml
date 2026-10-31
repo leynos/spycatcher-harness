@@ -53,6 +53,9 @@ jobs:
           format: lcov
           use-cargo-nextest: 'false'
           with-ratchet: 'true'
+          # Reset after the nightly-2026-10-30 bump lowered measured coverage:
+          # a new path misses the restored baseline cache entry.
+          baseline-rust-file: .coverage-baseline-v2.rust
       # Whether the token is set, as a plain step output. The expression is
       # evaluated before the shell runs, so this step binds nothing: the token
       # sits in no `env` in this workflow, because the upload action is

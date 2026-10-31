@@ -28,18 +28,18 @@ struct FakeUpstream {
 }
 
 impl ChatCompletionsUpstream for FakeUpstream {
-    async fn send_chat_completions(
+    fn send_chat_completions(
         &self,
         _request: ChatCompletionsRequest<'_>,
-    ) -> HarnessResult<ObservedResponse> {
-        Ok(self.response.clone())
+    ) -> impl std::future::Future<Output = HarnessResult<ObservedResponse>> {
+        std::future::ready(Ok(self.response.clone()))
     }
 
-    async fn stream_chat_completions(
+    fn stream_chat_completions(
         &self,
         _request: ChatCompletionsRequest<'_>,
-    ) -> HarnessResult<StreamingObservedResponse> {
-        Ok(StreamingObservedResponse {
+    ) -> impl std::future::Future<Output = HarnessResult<StreamingObservedResponse>> {
+        std::future::ready(Ok(StreamingObservedResponse {
             status: self.response.status,
             headers: self.response.headers.clone(),
             proxy_headers: self.response.proxy_headers.clone(),
@@ -47,7 +47,7 @@ impl ChatCompletionsUpstream for FakeUpstream {
                 self.response.body.clone(),
             ))])
             .boxed(),
-        })
+        }))
     }
 }
 
@@ -57,18 +57,18 @@ struct MalformedStreamUpstream {
 }
 
 impl ChatCompletionsUpstream for MalformedStreamUpstream {
-    async fn send_chat_completions(
+    fn send_chat_completions(
         &self,
         _request: ChatCompletionsRequest<'_>,
-    ) -> HarnessResult<ObservedResponse> {
-        Ok(sample_response(b"{}"))
+    ) -> impl std::future::Future<Output = HarnessResult<ObservedResponse>> {
+        std::future::ready(Ok(sample_response(b"{}")))
     }
 
-    async fn stream_chat_completions(
+    fn stream_chat_completions(
         &self,
         _request: ChatCompletionsRequest<'_>,
-    ) -> HarnessResult<StreamingObservedResponse> {
-        Ok(StreamingObservedResponse {
+    ) -> impl std::future::Future<Output = HarnessResult<StreamingObservedResponse>> {
+        std::future::ready(Ok(StreamingObservedResponse {
             status: 200,
             headers: vec![("content-type".to_owned(), "text/event-stream".to_owned())],
             proxy_headers: vec![("content-type".to_owned(), b"text/event-stream".to_vec())],
@@ -79,7 +79,7 @@ impl ChatCompletionsUpstream for MalformedStreamUpstream {
                     .map(|chunk| Ok(axum::body::Bytes::from(chunk))),
             )
             .boxed(),
-        })
+        }))
     }
 }
 
