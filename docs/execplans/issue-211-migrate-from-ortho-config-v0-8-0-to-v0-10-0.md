@@ -227,6 +227,60 @@ any old package versions still selected through another dependency chain.
 - [x] Commit and push the validated migration over SSH; set the requested
   branch upstream and create the draft PR. Leave issue #123 open for the
   `Closes #123` automation when the new PR merges; do not merge this change.
+- [x] Run the full sequential gate suite on `67c4f84` plus this working tree.
+  Six of seven gates passed: `make lint` (Rustdoc, Clippy with `-D warnings`,
+  and the Whitaker Dylint suite), `make typecheck`, `make test` (474 nextest
+  cases with none skipped; 28 doctests pass with 4 ignored),
+  `make test-workflow-contracts`, `make markdownlint`, and `make nixie`.
+  `make check-fmt` failed only on `mdtablefix` table layout in this plan;
+  `make fmt` reformatted four lines and the repeated check passes.
+- [x] Repeat all seven gates after the rebase onto `8308c66`, whose toolchain
+  bump to `nightly-2026-10-30` invalidates every earlier compiler result. All
+  seven pass: `make check-fmt`, `make lint`, `make typecheck`, `make test` (476
+  nextest cases, none skipped; 28 doctests pass, 4 ignored),
+  `make test-workflow-contracts`, `make markdownlint`, and `make nixie`.
+- [x] Diagnose the hosted coverage failure as a measurement artefact of the new
+  subprocess tests rather than lost assertions. `cargo llvm-cov` exports
+  `LLVM_PROFILE_FILE` so child processes write their own profiles, but every
+  binary test clears its child environment with `Command::env_clear`, which
+  dropped the variable. The spawned binary then reported no coverage and its
+  lines counted as uncovered. The equivalent tests on `main` spawn the binary
+  without clearing the environment, which is why the baseline retained those
+  lines.
+- [x] Repair coverage measurement with one shared helper,
+  `tests/common/coverage_profile.rs`. `preserve_coverage_profile` re-adds only
+  `LLVM_PROFILE_FILE` after `env_clear`; all seven spawn sites in
+  `binary_localization_e2e`, `binary_cli_layering_e2e`, and
+  `binary_startup_isolation` call it, replacing the one local copy. The
+  variable configures the profiling runtime only, so the isolation under test
+  is unchanged.
+- [x] Measure the repaired candidate before the rebase with
+  `cargo llvm-cov --workspace --all-targets --lcov`: 3636 of 4043 lines,
+  89.93%, which was inside the 1.00 percentage point tolerance of the then
+  current 90.10% baseline. The binary reported 79/84, 47/49, 19/19, and 50/51
+  lines across its four modules, where the cleared environment previously
+  recorded none. This figure is superseded: the later toolchain bump changed
+  both the baseline and the measurement basis.
+- [x] Re-measure after the rebase with the pinned coverage toolchain, using the
+  `cargo llvm-cov` 0.9.0 binary that CI installs from
+  `.github/tool-manifest.toml`: 3519 of 4035 lines, 87.21%, against the
+  post-bump baseline of 87.42% and its 86.42% floor. The binary now reports
+  73/78 lines and `i18n`, `http_exchange`, and `error` report 47/49, 105/105,
+  and 14/14.
+- [x] Diagnose a false 76.15% result from the locally installed
+  `cargo-llvm-cov` 0.8.5. Under the new Cargo build-directory layout that
+  `nightly-2026-10-30` uses, 0.8.5 merges only part of the instrumented
+  objects, dropping whole unit-test mappings; the report contained 41 files with
+  `error` absent and `i18n` at 12/49. Version 0.9.0, which CI pins, reports
+  the same tree at 87.21% across 51 files. Local measurements must use the
+  pinned binary, not whatever `cargo install` last left on `PATH`.
+- [x] Deliver the regenerated `typos.toml` prerequisite separately. It was
+  committed on its own branch from `724f3db`, passed `make spelling` twice for
+  idempotence, `make check-fmt`, and `make markdownlint`, and merged as PR #227
+  (`b0f2c20`), so this branch's review diff carries no generated-file noise.
+- [ ] Publish the rebased branch onto `origin/main` (`8308c66`) with an
+  explicit lease, then confirm hosted CI, the coverage ratchet, CodeScene, and
+  review convergence on the published head.
 
 ## Decisions and discoveries
 
@@ -324,3 +378,36 @@ any old package versions still selected through another dependency chain.
   pinned Rust 1.89.0 toolchain and runs
   `cargo +1.89.0 check --locked --workspace --all-targets --all-features`,
   matching PR #147's minimum-supported-version gate.
+- Rebase result: the branch now sits on `origin/main` at `724bfde` after five
+  intervening upstream commits. The single `.github/workflows/ci.yml` conflict
+  was resolved by keeping the newer shared-actions pin together with the MSRV
+  steps. The resulting series is `59aea75`, `9be54c0`, `8ee245a`, and
+  `67c4f84`; recovery ref `backup/issue-211-pre-rebase-5ebe3b2` retains the
+  pre-rewrite tip.
+- CodeScene result: the rebased head cleared both advisory findings. The
+  duplicated help/version stdout helper became a shared `localized_stdout`
+  function, and the layering table cases now pass grouped structs plus a
+  `Subcommand` enum instead of long string-heavy argument lists.
+  `cs delta origin/main HEAD` reports no issues in the checked changes.
+- File-size result: `tests/cli_layering_unit.rs` exceeded the 400-line
+  repository limit at 509 lines. It is now a 35-line module root that declares
+  `cases`, `cassette_precedence`, `localization`, `error_reporting`, and
+  `namespaces` under `tests/cli_layering/`; the largest resulting file is 231
+  lines.
+- Hosted-state caveat: hosted run `40349444426` on `724f3db` failed the
+  coverage ratchet at 86.69% against a 90.10% baseline with a 1.00 percentage
+  point tolerance. That run predates the legacy-copy interpolation fix and the
+  two added suites (`binary_startup_isolation`, `cli_localize_cmd_compat`), so
+  the measurement must be repeated on the final head rather than assumed either
+  way.
+- Limitation: `unreadable_discovered_file_remains_visible` cannot prove the
+  permission failure on every runner. When the process can still open a
+  mode-`0o000` file, such as under a DAC-override capability, the helper returns
+  `None` and the test returns `Ok(())` without exercising the discovery error.
+  The skip is deliberate and visible in the helper's contract; it is not an
+  executed assertion, so the permission path remains unverified on such a
+  runner.
+- Discovery: rust-analyzer reports `E0308` for `&[&str; N]` arguments passed to
+  `&[&str]` parameters in this suite, and for `return Ok(())` in the result
+  helper, even though Cargo compiles the same calls. The diagnostics are stale
+  or spurious; the authoritative result is the scrutineer's Cargo gate run.
