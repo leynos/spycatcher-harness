@@ -248,7 +248,7 @@ mod tests {
         let first = parser
             .feed(b"data: {\"id\":\"chunk\"}\r")
             .expect("first fragment should wait for CRLF completion");
-        assert_eq!(first.len(), 0);
+        assert_eq!(first, Vec::<StreamEvent>::new());
 
         let second = parser
             .feed(b"\n\n")
@@ -305,7 +305,7 @@ mod tests {
             .feed(b"data: unfinished")
             .expect("pending line has not completed yet");
 
-        assert_eq!(events.len(), 0);
+        assert_eq!(events, Vec::<StreamEvent>::new());
         assert!(matches!(
             parser.finish(),
             Err(SseParseError::IncompleteEvent)
