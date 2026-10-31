@@ -33,6 +33,63 @@ use support::{
     valid_locale_text,
 };
 
+/// One cassette-name precedence case.
+struct CassetteNameCase {
+    /// Command-line arguments passed to the loader.
+    argv: &'static [&'static str],
+    /// Optional config-file fixture.
+    config_file: Option<&'static str>,
+    /// Environment overrides applied above the config file.
+    env_vars: &'static [(&'static str, &'static str)],
+    /// Cassette name expected after merging.
+    expected_cassette_name: &'static str,
+}
+
+/// One localization precedence case.
+struct LocalizationPrecedenceCase {
+    /// Command-line arguments passed to the loader.
+    argv: &'static [&'static str],
+    /// Optional config-file fixture.
+    config_file: Option<&'static str>,
+    /// Environment overrides applied above the config file.
+    env_vars: &'static [(&'static str, &'static str)],
+    /// Primary locale expected after merging.
+    expected_locale: Option<&'static str>,
+    /// Fallback locale expected after merging.
+    expected_fallback_locale: &'static str,
+}
+
+/// CLI subcommands exercised by the layering tests.
+#[derive(Clone, Copy, Debug)]
+enum Subcommand {
+    /// Record mode.
+    Record,
+    /// Replay mode.
+    Replay,
+    /// Verify mode.
+    Verify,
+}
+
+impl Subcommand {
+    /// Name used on the command line and in configuration paths.
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Record => "record",
+            Self::Replay => "replay",
+            Self::Verify => "verify",
+        }
+    }
+
+    /// Mode the loader should report for this subcommand.
+    fn mode(self) -> config::Mode {
+        match self {
+            Self::Record => config::Mode::Record,
+            Self::Replay => config::Mode::Replay,
+            Self::Verify => config::Mode::Verify,
+        }
+    }
+}
+
 proptest! {
     #[test]
     fn cli_locale_validation_accepts_generated_valid_language_identifiers(
@@ -112,38 +169,34 @@ proptest! {
 }
 
 #[rstest]
-#[case(
-    &["spycatcher-harness", "replay"],
-    None,
-    &[],
-    "default",
-)]
-#[case(
-    &["spycatcher-harness", "replay"],
-    Some(REPLAY_FILE_CONFIG),
-    &[],
-    "from_file",
-)]
-#[case(
-    &["spycatcher-harness", "replay"],
-    Some(REPLAY_FILE_CONFIG),
-    &[("SPYCATCHER_HARNESS_CMDS_REPLAY_CASSETTE_NAME", "from_env")],
-    "from_env",
-)]
-#[case(
-    &["spycatcher-harness", "replay", "--cassette-name", "from_cli"],
-    Some(REPLAY_FILE_CONFIG),
-    &[("SPYCATCHER_HARNESS_CMDS_REPLAY_CASSETTE_NAME", "from_env")],
-    "from_cli",
-)]
-fn replay_cassette_name_precedence(
-    #[case] argv: &[&str],
-    #[case] config_file: Option<&str>,
-    #[case] env_vars: &[(&str, &str)],
-    #[case] expected_cassette_name: &str,
-) {
-    let loaded = load_with_sources(argv, config_file, env_vars).expect("config should load");
-    assert_eq!(loaded.cassette_name, expected_cassette_name);
+#[case(CassetteNameCase {
+    argv: &["spycatcher-harness", "replay"],
+    config_file: None,
+    env_vars: &[],
+    expected_cassette_name: "default",
+})]
+#[case(CassetteNameCase {
+    argv: &["spycatcher-harness", "replay"],
+    config_file: Some(REPLAY_FILE_CONFIG),
+    env_vars: &[],
+    expected_cassette_name: "from_file",
+})]
+#[case(CassetteNameCase {
+    argv: &["spycatcher-harness", "replay"],
+    config_file: Some(REPLAY_FILE_CONFIG),
+    env_vars: &[("SPYCATCHER_HARNESS_CMDS_REPLAY_CASSETTE_NAME", "from_env")],
+    expected_cassette_name: "from_env",
+})]
+#[case(CassetteNameCase {
+    argv: &["spycatcher-harness", "replay", "--cassette-name", "from_cli"],
+    config_file: Some(REPLAY_FILE_CONFIG),
+    env_vars: &[("SPYCATCHER_HARNESS_CMDS_REPLAY_CASSETTE_NAME", "from_env")],
+    expected_cassette_name: "from_cli",
+})]
+fn replay_cassette_name_precedence(#[case] case: CassetteNameCase) {
+    let loaded =
+        load_with_sources(case.argv, case.config_file, case.env_vars).expect("config should load");
+    assert_eq!(loaded.cassette_name, case.expected_cassette_name);
     assert_eq!(loaded.mode, config::Mode::Replay);
 }
 
@@ -157,26 +210,28 @@ fn replay_localization_defaults_to_fallback_locale() {
 }
 
 #[rstest]
-#[case(
-    &["spycatcher-harness", "replay"],
-    Some(REPLAY_LOCALIZATION_FILE_CONFIG),
-    &[],
-    (Some("en-GB"), "en-US"),
-)]
-#[case(
-    &["spycatcher-harness", "replay"],
-    Some(REPLAY_LOCALIZATION_FILE_CONFIG),
-    &[
+#[case(LocalizationPrecedenceCase {
+    argv: &["spycatcher-harness", "replay"],
+    config_file: Some(REPLAY_LOCALIZATION_FILE_CONFIG),
+    env_vars: &[],
+    expected_locale: Some("en-GB"),
+    expected_fallback_locale: "en-US",
+})]
+#[case(LocalizationPrecedenceCase {
+    argv: &["spycatcher-harness", "replay"],
+    config_file: Some(REPLAY_LOCALIZATION_FILE_CONFIG),
+    env_vars: &[
         ("SPYCATCHER_HARNESS_CMDS_REPLAY_LOCALIZATION__LOCALE", "en-AU"),
         (
             "SPYCATCHER_HARNESS_CMDS_REPLAY_LOCALIZATION__FALLBACK_LOCALE",
             "en-US"
         ),
     ],
-    (Some("en-AU"), "en-US"),
-)]
-#[case(
-    &[
+    expected_locale: Some("en-AU"),
+    expected_fallback_locale: "en-US",
+})]
+#[case(LocalizationPrecedenceCase {
+    argv: &[
         "spycatcher-harness",
         "replay",
         "--locale",
@@ -184,29 +239,25 @@ fn replay_localization_defaults_to_fallback_locale() {
         "--fallback-locale",
         "en-US",
     ],
-    Some(REPLAY_LOCALIZATION_FILE_CONFIG),
-    &[
+    config_file: Some(REPLAY_LOCALIZATION_FILE_CONFIG),
+    env_vars: &[
         ("SPYCATCHER_HARNESS_CMDS_REPLAY_LOCALIZATION__LOCALE", "en-AU"),
         (
             "SPYCATCHER_HARNESS_CMDS_REPLAY_LOCALIZATION__FALLBACK_LOCALE",
             "en-US"
         ),
     ],
-    (Some("en-CA"), "en-US"),
-)]
-fn replay_localization_precedence(
-    #[case] argv: &[&str],
-    #[case] config_file: Option<&str>,
-    #[case] env_vars: &[(&str, &str)],
-    #[case] expected: (Option<&str>, &str),
-) {
-    let loaded = load_with_sources(argv, config_file, env_vars).expect("config should load");
+    expected_locale: Some("en-CA"),
+    expected_fallback_locale: "en-US",
+})]
+fn replay_localization_precedence(#[case] case: LocalizationPrecedenceCase) {
+    let loaded =
+        load_with_sources(case.argv, case.config_file, case.env_vars).expect("config should load");
 
-    let (expected_locale, expected_fallback_locale) = expected;
-    assert_eq!(loaded.localization.locale.as_deref(), expected_locale);
+    assert_eq!(loaded.localization.locale.as_deref(), case.expected_locale);
     assert_eq!(
         loaded.localization.fallback_locale,
-        expected_fallback_locale
+        case.expected_fallback_locale
     );
 }
 
@@ -267,27 +318,25 @@ fn cli_locale_alias_wins_over_env_nested_locale() {
 }
 
 #[rstest]
-#[case("record", config::Mode::Record)]
-#[case("replay", config::Mode::Replay)]
-#[case("verify", config::Mode::Verify)]
-fn localization_overrides_work_for_each_subcommand(
-    #[case] subcommand: &str,
-    #[case] expected_mode: config::Mode,
-) {
+#[case(Subcommand::Record)]
+#[case(Subcommand::Replay)]
+#[case(Subcommand::Verify)]
+fn localization_overrides_work_for_each_subcommand(#[case] subcommand: Subcommand) {
+    let name = subcommand.as_str();
     let config = format!(
-        "[cmds.{subcommand}.localization]\n\
+        "[cmds.{name}.localization]\n\
          locale = \"en-GB\"\n\
          fallback_locale = \"en-US\"\n"
     );
-    let argv = ["spycatcher-harness", subcommand];
+    let argv = ["spycatcher-harness", name];
     let env_locale = format!(
         "SPYCATCHER_HARNESS_CMDS_{}_LOCALIZATION__LOCALE",
-        subcommand.to_uppercase()
+        name.to_uppercase()
     );
     let env_vars = [(env_locale.as_str(), "en-CA")];
     let loaded = load_with_sources(&argv, Some(&config), &env_vars).expect("config should load");
 
-    assert_eq!(loaded.mode, expected_mode);
+    assert_eq!(loaded.mode, subcommand.mode());
     assert_eq!(loaded.localization.locale.as_deref(), Some("en-CA"));
     assert_eq!(loaded.localization.fallback_locale, "en-US");
 }
@@ -397,15 +446,12 @@ fn explicit_cli_value_equal_to_application_default_wins() {
 }
 
 #[rstest]
-#[case("replay", config::Mode::Replay)]
-#[case("verify", config::Mode::Verify)]
-fn record_only_values_do_not_leak_to_other_subcommands(
-    #[case] subcommand: &str,
-    #[case] expected_mode: config::Mode,
-) {
+#[case(Subcommand::Replay)]
+#[case(Subcommand::Verify)]
+fn record_only_values_do_not_leak_to_other_subcommands(#[case] subcommand: Subcommand) {
     let config = "[cmds.record]\ncassette_name = \"record_only_file\"\n";
     let loaded = load_with_sources(
-        &["spycatcher-harness", subcommand],
+        &["spycatcher-harness", subcommand.as_str()],
         Some(config),
         &[(
             "SPYCATCHER_HARNESS_CMDS_RECORD_CASSETTE_NAME",
@@ -415,7 +461,7 @@ fn record_only_values_do_not_leak_to_other_subcommands(
     .expect("other subcommand should ignore record-only values");
 
     assert_eq!(loaded.cassette_name, "default");
-    assert_eq!(loaded.mode, expected_mode);
+    assert_eq!(loaded.mode, subcommand.mode());
 }
 
 #[rstest]

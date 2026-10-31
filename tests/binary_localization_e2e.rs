@@ -23,30 +23,29 @@ fn localized_cli_output(args: &[&str]) -> std::io::Result<Output> {
     command.env_clear().args(args).output()
 }
 
-#[test]
-fn binary_emits_localized_help() {
-    let output = localized_cli_output(&["--help"]).expect("binary should execute");
+/// Runs `args` and returns the localized stdout, rejecting diagnostics.
+fn localized_stdout(args: &[&str], subject: &str) -> String {
+    let output = localized_cli_output(args).expect("binary should execute");
 
-    assert!(output.status.success(), "help should exit successfully");
+    assert!(
+        output.status.success(),
+        "{subject} should exit successfully"
+    );
     assert!(
         output.stderr.is_empty(),
-        "help should not write diagnostics"
+        "{subject} should not write diagnostics"
     );
-    let stdout = String::from_utf8(output.stdout).expect("stdout should be UTF-8");
-    insta::assert_snapshot!(stdout);
+    String::from_utf8(output.stdout).expect("stdout should be UTF-8")
+}
+
+#[test]
+fn binary_emits_localized_help() {
+    insta::assert_snapshot!(localized_stdout(&["--help"], "help"));
 }
 
 #[test]
 fn binary_emits_localized_version() {
-    let output = localized_cli_output(&["--version"]).expect("binary should execute");
-
-    assert!(output.status.success(), "version should exit successfully");
-    assert!(
-        output.stderr.is_empty(),
-        "version should not write diagnostics"
-    );
-    let stdout = String::from_utf8(output.stdout).expect("stdout should be UTF-8");
-    insta::assert_snapshot!(stdout);
+    insta::assert_snapshot!(localized_stdout(&["--version"], "version"));
 }
 
 #[test]
