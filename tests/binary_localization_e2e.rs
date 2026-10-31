@@ -6,6 +6,9 @@
 
 use std::process::{Command, ExitStatus, Output};
 
+#[path = "common/coverage_profile.rs"]
+mod coverage_profile;
+
 use eyre::WrapErr as _;
 use rstest::rstest;
 
@@ -20,32 +23,45 @@ use spycatcher_harness::cli::localizer::DISABLE_LOCALIZATION_ENV;
 /// Propagates an I/O error if launching or collecting the child process fails.
 fn localized_cli_output(args: &[&str]) -> std::io::Result<Output> {
     let mut command = Command::new(env!("CARGO_BIN_EXE_spycatcher-harness"));
-    command.env_clear().args(args).output()
+    command.env_clear().args(args);
+    coverage_profile::preserve_coverage_profile(&mut command);
+    command.output()
 }
 
 /// Runs `args` and returns the localized stdout, rejecting diagnostics.
-fn localized_stdout(args: &[&str], subject: &str) -> String {
-    let output = localized_cli_output(args).expect("binary should execute");
+///
+/// The fallible result keeps this helper free of `expect`, which the
+/// repository reserves for code inside `#[test]` functions.
+///
+/// # Errors
+///
+/// Returns an error when the subprocess cannot start, exits unsuccessfully,
+/// writes diagnostics, or emits non-UTF-8 stdout.
+fn localized_stdout(args: &[&str], subject: &str) -> eyre::Result<String> {
+    let output = localized_cli_output(args).wrap_err("execute localized subprocess")?;
 
-    assert!(
-        output.status.success(),
-        "{subject} should exit successfully"
-    );
-    assert!(
-        output.stderr.is_empty(),
-        "{subject} should not write diagnostics"
-    );
-    String::from_utf8(output.stdout).expect("stdout should be UTF-8")
+    if !output.status.success() {
+        eyre::bail!("{subject} should exit successfully");
+    }
+    if !output.stderr.is_empty() {
+        eyre::bail!(
+            "{subject} should not write diagnostics: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+    String::from_utf8(output.stdout).wrap_err("localized stdout is not UTF-8")
 }
 
 #[test]
-fn binary_emits_localized_help() {
-    insta::assert_snapshot!(localized_stdout(&["--help"], "help"));
+fn binary_emits_localized_help() -> eyre::Result<()> {
+    insta::assert_snapshot!(localized_stdout(&["--help"], "help")?);
+    Ok(())
 }
 
 #[test]
-fn binary_emits_localized_version() {
-    insta::assert_snapshot!(localized_stdout(&["--version"], "version"));
+fn binary_emits_localized_version() -> eyre::Result<()> {
+    insta::assert_snapshot!(localized_stdout(&["--version"], "version")?);
+    Ok(())
 }
 
 #[test]
@@ -65,12 +81,12 @@ fn binary_emits_localized_unknown_argument_error() {
 #[test]
 fn binary_can_disable_cli_localization_for_diagnostics() {
     let mut command = Command::new(env!("CARGO_BIN_EXE_spycatcher-harness"));
-    let output = command
+    command
         .env_clear()
         .env(DISABLE_LOCALIZATION_ENV, "1")
-        .arg("--help")
-        .output()
-        .expect("binary should execute");
+        .arg("--help");
+    coverage_profile::preserve_coverage_profile(&mut command);
+    let output = command.output().expect("binary should execute");
 
     assert!(output.status.success(), "help should exit successfully");
     let stdout = String::from_utf8(output.stdout).expect("stdout should be UTF-8");
@@ -82,12 +98,15 @@ fn binary_can_disable_cli_localization_for_diagnostics() {
 fn binary_uses_locale_flags_for_startup_error_rendering() {
     let temp_dir = tempfile::tempdir().expect("temporary directory should be created");
     let mut command = Command::new(env!("CARGO_BIN_EXE_spycatcher-harness"));
-    let output = command
-        .env_clear()
-        .current_dir(temp_dir.path())
-        .args(["record", "--locale", "en-GB", "--fallback-locale", "en-US"])
-        .output()
-        .expect("binary should execute");
+    command.env_clear().current_dir(temp_dir.path()).args([
+        "record",
+        "--locale",
+        "en-GB",
+        "--fallback-locale",
+        "en-US",
+    ]);
+    coverage_profile::preserve_coverage_profile(&mut command);
+    let output = command.output().expect("binary should execute");
 
     assert_eq!(
         output.status.code(),
@@ -139,6 +158,7 @@ fn diagnostic_help(
             command.env(key, configured_value);
         }
     }
+    coverage_profile::preserve_coverage_profile(&mut command);
     let output = command
         .output()
         .wrap_err("execute diagnostic help subprocess")?;

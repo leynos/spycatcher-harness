@@ -13,6 +13,9 @@ use cap_std::{
 };
 use rstest::rstest;
 
+#[path = "common/coverage_profile.rs"]
+mod coverage_profile;
+
 const RECORD_LOCALE_ENV: &str = "SPYCATCHER_HARNESS_CMDS_RECORD_LOCALIZATION__LOCALE";
 
 #[rstest]
@@ -61,6 +64,7 @@ fn process_backed_cli_preserves_configuration_precedence(
     if let Some(locale) = cli_locale {
         command.args(["--locale", locale]);
     }
+    coverage_profile::preserve_coverage_profile(&mut command);
     let output = command.output().expect("CLI process should execute");
 
     assert_eq!(output.status.code(), Some(1), "startup should fail cleanly");

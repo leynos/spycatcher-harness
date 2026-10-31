@@ -16,6 +16,9 @@ use rstest::rstest;
 use spycatcher_harness::cli::localizer::DISABLE_LOCALIZATION_ENV;
 use tempfile::TempDir;
 
+#[path = "common/coverage_profile.rs"]
+mod coverage_profile;
+
 /// Secret placed in the child environment to prove diagnostics redact it.
 const SECRET: &str = "startup-failure-secret-sentinel";
 
@@ -23,11 +26,10 @@ const SECRET: &str = "startup-failure-secret-sentinel";
 #[case::unknown_subcommand(&["not-a-subcommand"])]
 #[case::missing_option_value(&["record", "--listen"])]
 fn binary_parse_failures_write_only_to_stderr(#[case] args: &[&str]) -> Result<()> {
-    let output = Command::new(env!("CARGO_BIN_EXE_spycatcher-harness"))
-        .args(args)
-        .env_clear()
-        .output()
-        .wrap_err("run binary")?;
+    let mut command = Command::new(env!("CARGO_BIN_EXE_spycatcher-harness"));
+    command.args(args).env_clear();
+    coverage_profile::preserve_coverage_profile(&mut command);
+    let output = command.output().wrap_err("run binary")?;
 
     ensure!(
         output.status.code() == Some(2),
@@ -260,7 +262,7 @@ fn isolated_record_command(temp_dir: &TempDir, resources: &RecordStartupResource
         )
         .env("OPENROUTER_API_KEY", SECRET)
         .current_dir(temp_dir.path());
-    preserve_coverage_profile(&mut command);
+    coverage_profile::preserve_coverage_profile(&mut command);
     command
 }
 
@@ -380,10 +382,4 @@ fn assert_no_listener_traffic(resources: &RecordStartupResources) -> Result<()> 
         "failed startup must not contact the configured upstream"
     );
     Ok(())
-}
-
-fn preserve_coverage_profile(command: &mut Command) {
-    if let Some(profile_file) = std::env::var_os("LLVM_PROFILE_FILE") {
-        command.env("LLVM_PROFILE_FILE", profile_file);
-    }
 }
