@@ -325,6 +325,33 @@ any old package versions still selected through another dependency chain.
   `make test-workflow-contracts` passes, and `make nixie` validates every
   Mermaid diagram. The first `make lint` attempt failed only on
   `clippy::assertions_on_constants`; the `const` block fix cleared it.
+- [x] Publish the repair round as `7cd18aa` on top of `ceb4291` with an
+  explicit lease. The push fast-forwarded the remote branch, and the refreshed
+  tracking ref, `git ls-remote`, and `git rev-parse HEAD` all read
+  `7cd18aa2e807290b844c686b82bcb43514d05f1e`; the branch upstream is
+  `origin/issue-211-migrate-from-ortho-config-v0-8-0-to-v0-10-0`.
+- [x] Dispose of all five inline threads. Replies citing `7cd18aa` were posted
+  through the comment-token pool, CodeRabbit answered each one, and the read
+  back thread state shows all five as resolved, with two also marked outdated
+  because the repair moved their anchor lines.
+- [x] Reconcile the pre-merge table with a focused top-level comment rather
+  than a fresh full review. CodeRabbit reassessed the held candidate
+  `8308c66...7cd18aa` and reported every row resolved: docstring coverage
+  independently measured at 37/37 functions with complexity of at least 2
+  (90.82% across all 98 touched functions), the toolchain section present at
+  `docs/developers-guide.md:34`, the compile-time test present at
+  `src/upstream_tests.rs:130`, and the lockfile gap closed by one 0.10.0 entry
+  each for `ortho_config`, `ortho_config_macros`, and `ortho_l10n`.
+- [x] Confirm the hosted `CI` run `41237614055` on `7cd18aa` succeeded with
+  every step green, including the MSRV check, lint, and coverage. The coverage
+  step again logged `Current coverage: 87.21%` against the `87.4%` baseline,
+  which passes the ratchet.
+- Observation: CodeRabbit automatically paused its own reviews on this branch
+  after the review round because of the commit volume
+  (`reviews.auto_review.auto_pause_after_reviewed_commits`). The pause covers
+  automatic reviews only; the four saved pre-merge checks were reassessed on
+  `7cd18aa` in explicit conversation, and the final approval command is issued
+  on the final head.
 
 ## Decisions and discoveries
 
@@ -395,12 +422,14 @@ any old package versions still selected through another dependency chain.
   `1642aab0dddbad07c417e6414286ddfbeade4f78`; its body closes #211 and #123
   when merged and links this session. Closed the earlier v0.9 PR #147 as
   superseded by #215. Issue #123 remains open until #215 merges. This entry
-  records the original delivery state and is superseded by the publication
-  entry above, which reads `ceb4291`.
-- Push result: the local branch,
+  records the original delivery state and is superseded by the publication and
+  repair-round entries above, which now read `7cd18aa`.
+- Historical push result: at that first publication the local branch,
   `origin/issue-211-migrate-from-ortho-config-v0-8-0-to-v0-10-0`, and GitHub
-  head all resolve to `1642aab0dddbad07c417e6414286ddfbeade4f78`. SSH and
-  GitHub API identity checks both resolved to `leynos`.
+  head all resolved to `1642aab0dddbad07c417e6414286ddfbeade4f78`. SSH and
+  GitHub API identity checks both resolved to `leynos`. This is superseded:
+  after the rebase and the repair round, all three refs read
+  `7cd18aa2e807290b844c686b82bcb43514d05f1e`.
 - CodeRabbit's final review completed with one minor finding requesting local
   navigation for upstream-relative links. The repository instructions allow
   documenting an upstream link map, and the plan records a complete target map
