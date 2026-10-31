@@ -28,7 +28,7 @@ The `rstest-bdd` crates target Rust 1.88 or newer. This application declares
 that compiler floor. The application uses the Rust 2024 edition.
 
 `rstest-bdd` builds on stable Rust, but this repository currently pins
-`nightly-2026-02-26` via `rust-toolchain.toml` so contributors get consistent
+`nightly-2026-10-30` via `rust-toolchain.toml`, so contributors get consistent
 `rustfmt` and `clippy` behaviour while staying above the application's minimum.
 
 Step definitions may be synchronous functions (`fn`) or asynchronous functions

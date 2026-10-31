@@ -35,6 +35,7 @@ pub trait LocalizeCmd {
 }
 
 impl LocalizeCmd for Command {
+    /// Localizes the harness root command with the stock catalogue root.
     fn localize(self, localizer: &dyn Localizer) -> Self {
         localize_command(self, ROOT_COMMAND_ID, localizer)
     }
@@ -125,6 +126,11 @@ impl<'a> CommandCopyLocalizer<'a> {
 }
 
 impl Localizer for CommandCopyLocalizer<'_> {
+    /// Supplies the command's own binary and version to catalogue lookups.
+    ///
+    /// Values from the delegated localizer are kept, but `$binary` and
+    /// `$version` always describe this command so inherited copy cannot
+    /// render another command's name.
     fn lookup(&self, id: &str, args: Option<&LocalizationArgs<'_>>) -> Option<String> {
         let mut compatible_args = args.cloned().unwrap_or_default();
         compatible_args.insert("binary", self.binary.clone().into());

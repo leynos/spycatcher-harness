@@ -8,6 +8,7 @@ use rstest::rstest;
 
 use super::support::load_with_sources;
 
+/// Proves an invalid CLI locale surfaces the field, value, and parser error.
 #[rstest]
 fn invalid_cli_locale_fails_loading() {
     let error = load_with_sources(
@@ -53,6 +54,8 @@ fn invalid_cli_fallback_locale_fails_loading() {
     );
 }
 
+/// Proves an invalid environment listen address fails loading with an exact
+/// message naming the rejected value and its environment key.
 #[rstest]
 fn invalid_values_fail_loading() {
     let error = load_with_sources(
@@ -61,14 +64,14 @@ fn invalid_values_fail_loading() {
         &[("SPYCATCHER_HARNESS_CMDS_REPLAY_LISTEN", "not-an-address")],
     )
     .expect_err("invalid listen should fail loading");
-    let message = error.to_string();
-    assert!(
-        (message.contains("invalid") && message.contains("address"))
-            || (message.contains("socket") && message.contains("parse")),
-        "expected error about invalid listen address, got: {message}",
+
+    insta::assert_snapshot!(
+        error.to_string(),
+        @"failed to merge layered config for `replay`: Failed to merge CLI with configuration: invalid socket address syntax for key \"LISTEN\" in `SPYCATCHER_HARNESS_CMDS_REPLAY_` environment variable(s)"
     );
 }
 
+/// Proves a malformed discovered file is reported, not silently ignored.
 #[rstest]
 fn malformed_discovered_file_remains_visible() {
     let error = load_with_sources(
@@ -90,6 +93,10 @@ fn malformed_discovered_file_remains_visible() {
     );
 }
 
+/// Proves an unreadable discovered file is reported with its path.
+///
+/// Returns early when the runner can still read a mode-`0o000` file, because
+/// the read failure cannot then be provoked.
 #[cfg(unix)]
 #[rstest]
 fn unreadable_discovered_file_remains_visible() -> eyre::Result<()> {

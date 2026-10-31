@@ -9,6 +9,7 @@ use spycatcher_harness::config;
 
 use super::support::load_with_sources;
 
+/// Proves nested upstream tables load from `[cmds.record.upstream]`.
 #[rstest]
 fn record_supports_cmds_namespace_for_nested_upstream_values() {
     let config = concat!(
@@ -31,6 +32,7 @@ fn record_supports_cmds_namespace_for_nested_upstream_values() {
     assert_eq!(upstream.api_key_env, "TEST_API_KEY");
 }
 
+/// Proves verify reads its own `[cmds.verify]` overrides.
 #[rstest]
 fn verify_supports_cmds_namespace_overrides() {
     let config = "[cmds.verify]\ncassette_name = \"verify_cassette\"\n";

@@ -11,6 +11,7 @@ use spycatcher_harness::config;
 use super::cases::{CassetteNameCase, Subcommand};
 use super::support::{REPLAY_FILE_CONFIG, load_with_sources};
 
+/// Pins CLI over environment over file over default for cassette names.
 #[rstest]
 #[case(CassetteNameCase {
     argv: &["spycatcher-harness", "replay"],
@@ -43,6 +44,10 @@ fn replay_cassette_name_precedence(#[case] case: CassetteNameCase) {
     assert_eq!(loaded.mode, config::Mode::Replay);
 }
 
+/// Proves an explicit CLI value wins even when it equals the default.
+///
+/// Supplied values must stay distinguishable from absent ones so a later
+/// source cannot override an intentional choice.
 #[rstest]
 fn explicit_cli_value_equal_to_application_default_wins() {
     let loaded = load_with_sources(
@@ -55,6 +60,7 @@ fn explicit_cli_value_equal_to_application_default_wins() {
     assert_eq!(loaded.cassette_name, "default");
 }
 
+/// Proves record-only settings never reach replay or verify.
 #[rstest]
 #[case(Subcommand::Replay)]
 #[case(Subcommand::Verify)]

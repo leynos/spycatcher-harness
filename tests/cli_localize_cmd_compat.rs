@@ -12,6 +12,7 @@ use ortho_config::{FluentLocalizer, LocalizationArgs, Localizer};
 use rstest::rstest;
 use spycatcher_harness::cli::localization::{LocalizeCmd, try_parse_localized_from_iter};
 
+/// Proves the adapter keeps the pre-v0.10 catalogue ids and arguments.
 #[rstest]
 fn command_adapter_preserves_catalogue_ids_and_formatting_arguments() {
     let localizer = FluentLocalizer::builder(langid!("en-US"))

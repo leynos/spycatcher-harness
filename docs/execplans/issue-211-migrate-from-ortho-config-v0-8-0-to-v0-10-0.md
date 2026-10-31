@@ -278,9 +278,53 @@ any old package versions still selected through another dependency chain.
   committed on its own branch from `724f3db`, passed `make spelling` twice for
   idempotence, `make check-fmt`, and `make markdownlint`, and merged as PR #227
   (`b0f2c20`), so this branch's review diff carries no generated-file noise.
-- [ ] Publish the rebased branch onto `origin/main` (`8308c66`) with an
+- [x] Publish the rebased branch onto `origin/main` (`8308c66`) with an
   explicit lease, then confirm hosted CI, the coverage ratchet, CodeScene, and
-  review convergence on the published head.
+  review convergence on the published head. The force-push used
+  `--force-with-lease` against the recorded old tip `5ebe3b2`, the refreshed
+  tracking ref and remote head both read `ceb4291`, and the branch upstream now
+  points at `origin/issue-211-migrate-from-ortho-config-v0-8-0-to-v0-10-0`.
+- [x] Read the hosted checks on `ceb4291`. The CodeScene Code Health Review
+  passes with six quality gates and no findings, and its earlier inline threads
+  no longer exist on the rewritten head, so there is nothing left to reply to
+  or resolve. Gecko Security Review passes. Sourcery skips because the diff
+  exceeds its review limit. Codex reports a usage-limit failure for both its
+  review and its security review on this head; that is an external quota, not a
+  finding, and it produces no actionable review surface. CodeRabbit started a
+  fresh review of the `8308c66...ceb4291` range when the draft was marked
+  ready, and the `CI` run `41228543776` is still building.
+- [x] Confirm the hosted `CI` run `41228543776` on `ceb4291` succeeded, with
+  every step green: format, CV-005 contracts, the comprehensive Make gate,
+  spelling, Markdown lint, Mermaid validation, the MSRV 1.89.0 check, lint, and
+  `Test and Measure Coverage`. The coverage step logged
+  `Current coverage: 87.21%` against `Baseline coverage: 87.4%`, which passes
+  the ratchet and matches the pinned local measurement exactly, so the earlier
+  coverage regression is fully resolved on the published head.
+- [x] Review round on the published head `ceb4291`: five CodeRabbit inline
+  findings, three warning rows, and one inconclusive row from the pre-merge
+  table. Repairs: corrected the `rstest-bdd` toolchain pin; documented the
+  `localizer` parameter in the user's guide; set `HOME` for the process-backed
+  layering child; removed the tautological listener assertion while splitting
+  `binary_startup_isolation` into a module root and support file; pinned the
+  listen-address merge error with an inline snapshot; added docstrings across
+  touched functions; documented the toolchain, MSRV, and `cap-std` feature in
+  the developer's guide; added a compile-time `const` assertion test for
+  `should_forward_header`; and recorded `Cargo.lock` evidence for the
+  linked-issue check.
+- [x] Split `tests/binary_localization_e2e.rs` into a module root and a support
+  module so both files stay within the 400-line limit after the added
+  docstrings and the child `HOME`/XDG isolation.
+- [x] Correct the compile-time test after the first lint pass: Clippy's
+  `assertions_on_constants` rejects runtime `assert!` on constant values, so
+  the assertions now sit in a `const` block and remain compile-time checks.
+- Gate result: all seven gates pass on the repair-round working tree.
+  `make check-fmt` and `make markdownlint` report no changes across 37 Markdown
+  files, `make lint` runs Rustdoc, Clippy with `-D warnings`, and the Whitaker
+  Dylint suite, `make typecheck` passes, `make test` reports 477 nextest cases
+  with none skipped and 28 doctests passing with 4 ignored,
+  `make test-workflow-contracts` passes, and `make nixie` validates every
+  Mermaid diagram. The first `make lint` attempt failed only on
+  `clippy::assertions_on_constants`; the `const` block fix cleared it.
 
 ## Decisions and discoveries
 
@@ -350,7 +394,9 @@ any old package versions still selected through another dependency chain.
 - Hosted-state result: created draft PR #215 from the requested branch at
   `1642aab0dddbad07c417e6414286ddfbeade4f78`; its body closes #211 and #123
   when merged and links this session. Closed the earlier v0.9 PR #147 as
-  superseded by #215. Issue #123 remains open until #215 merges.
+  superseded by #215. Issue #123 remains open until #215 merges. This entry
+  records the original delivery state and is superseded by the publication
+  entry above, which reads `ceb4291`.
 - Push result: the local branch,
   `origin/issue-211-migrate-from-ortho-config-v0-8-0-to-v0-10-0`, and GitHub
   head all resolve to `1642aab0dddbad07c417e6414286ddfbeade4f78`. SSH and

@@ -90,6 +90,7 @@ proptest! {
     }
 }
 
+/// Proves an unconfigured locale falls back to the documented default.
 #[rstest]
 fn replay_localization_defaults_to_fallback_locale() {
     let loaded = load_with_sources(&["spycatcher-harness", "replay"], None, &[])
@@ -99,6 +100,9 @@ fn replay_localization_defaults_to_fallback_locale() {
     assert_eq!(loaded.localization.fallback_locale, "en-US");
 }
 
+/// Pins CLI over environment over file for `locale` and `fallback_locale`.
+///
+/// Each case supplies all three sources so the winning layer is explicit.
 #[rstest]
 #[case(LocalizationPrecedenceCase {
     argv: &["spycatcher-harness", "replay"],
@@ -151,6 +155,7 @@ fn replay_localization_precedence(#[case] case: LocalizationPrecedenceCase) {
     );
 }
 
+/// Proves the nested environment spelling outranks a file-only CLI alias.
 #[rstest]
 fn env_nested_locale_wins_over_file_only_cli_alias() {
     let config = concat!(
@@ -178,6 +183,7 @@ fn env_nested_locale_wins_over_file_only_cli_alias() {
     assert_eq!(loaded.localization.fallback_locale, "en-US");
 }
 
+/// Proves a CLI locale argument outranks the nested environment spelling.
 #[rstest]
 fn cli_locale_alias_wins_over_env_nested_locale() {
     let loaded = load_with_sources(
@@ -207,6 +213,7 @@ fn cli_locale_alias_wins_over_env_nested_locale() {
     assert_eq!(loaded.localization.fallback_locale, "en-US");
 }
 
+/// Proves each subcommand reads its own namespaced localization overrides.
 #[rstest]
 #[case(Subcommand::Record)]
 #[case(Subcommand::Replay)]

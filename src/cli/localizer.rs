@@ -222,6 +222,10 @@ mod tests {
 
     use super::{early_locale_plan_with, is_localization_disabled_for_value};
 
+    /// Keeps the early locale plan on primary, then fallback, then default.
+    ///
+    /// An invalid value counts as absent, so the next source is consulted
+    /// instead of failing startup.
     #[rstest]
     #[case::invalid_primary_uses_fallback("not_a_locale", "en-GB", "en-GB")]
     #[case::valid_primary_takes_precedence("en-GB", "fr-FR", "en-GB")]
@@ -237,6 +241,10 @@ mod tests {
         assert_eq!(selected.to_string(), expected);
     }
 
+    /// Proves the fallback source stays unread when the primary value parses.
+    ///
+    /// Deferring the read keeps locale selection lazy for callers that supply
+    /// an expensive fallback lookup.
     #[test]
     fn valid_primary_does_not_read_fallback_source() {
         let fallback_read = Cell::new(false);
@@ -252,6 +260,10 @@ mod tests {
         assert!(!fallback_read.get());
     }
 
+    /// Accepts only recognized truthy spellings for the switch.
+    ///
+    /// Empty, zero, and `false` values keep localization enabled so a
+    /// misconfigured value cannot silently change diagnostics.
     #[rstest]
     #[case(None, false)]
     #[case(Some(""), false)]

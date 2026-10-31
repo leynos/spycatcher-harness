@@ -226,6 +226,7 @@ fn verify_cassette_name_is(cli_layering_world: &CliLayeringWorld, cassette_name:
     assert_eq!(loaded_config.mode, config::Mode::Verify);
 }
 
+/// Asserts the loaded record configuration resolved to the expected upstream.
 #[then("record upstream base URL is {base_url}")]
 fn record_upstream_base_url_is(cli_layering_world: &CliLayeringWorld, base_url: String) {
     let base_url_value = trim_surrounding_quotes(&base_url);
@@ -274,6 +275,7 @@ fn fallback_locale_is(cli_layering_world: &CliLayeringWorld, fallback_locale: St
     );
 }
 
+/// Asserts loading failed and the diagnostic names the expected marker.
 #[then("command configuration loading fails with error containing {error_marker}")]
 fn command_loading_fails(cli_layering_world: &CliLayeringWorld, error_marker: String) {
     let outcome = cli_layering_world

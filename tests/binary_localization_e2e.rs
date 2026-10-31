@@ -4,15 +4,22 @@
 //! includes `main`, Clap argument parsing, layered configuration loading,
 //! language-loader construction, and user-facing error rendering.
 
-use std::process::{Command, ExitStatus, Output};
+use std::process::{Command, Output};
 
 #[path = "common/coverage_profile.rs"]
 mod coverage_profile;
+#[path = "binary_localization_e2e/support.rs"]
+mod support;
 
 use eyre::WrapErr as _;
 use rstest::rstest;
 
 use spycatcher_harness::cli::localizer::DISABLE_LOCALIZATION_ENV;
+
+use support::{
+    assert_default_locale_fallback_help, assert_falsy_diagnostic_help,
+    assert_primary_locale_fallback_help, assert_truthy_diagnostic_help, diagnostic_help,
+};
 
 /// Executes the binary with an empty child environment.
 /// For example, `localized_cli_output(&["--help"])` captures localized help on
@@ -52,18 +59,23 @@ fn localized_stdout(args: &[&str], subject: &str) -> eyre::Result<String> {
     String::from_utf8(output.stdout).wrap_err("localized stdout is not UTF-8")
 }
 
+/// Proves `--help` renders the bundled en-US catalogue copy.
 #[test]
 fn binary_emits_localized_help() -> eyre::Result<()> {
     insta::assert_snapshot!(localized_stdout(&["--help"], "help")?);
     Ok(())
 }
 
+/// Proves `--version` renders the localized version string, including the
+/// interpolated binary name.
 #[test]
 fn binary_emits_localized_version() -> eyre::Result<()> {
     insta::assert_snapshot!(localized_stdout(&["--version"], "version")?);
     Ok(())
 }
 
+/// Proves a parse failure keeps Clap's exit status and localized wording on
+/// stderr, with nothing on stdout.
 #[test]
 fn binary_emits_localized_unknown_argument_error() {
     let output = localized_cli_output(&["replay", "--not-a-flag"]).expect("binary should execute");
@@ -78,6 +90,10 @@ fn binary_emits_localized_unknown_argument_error() {
     insta::assert_snapshot!(stderr);
 }
 
+/// Proves the diagnostic switch restores stock Clap help text.
+///
+/// Support workflows rely on this to read help output that matches upstream
+/// Clap documentation rather than the translated catalogue.
 #[test]
 fn binary_can_disable_cli_localization_for_diagnostics() {
     let mut command = Command::new(env!("CARGO_BIN_EXE_spycatcher-harness"));
@@ -94,17 +110,21 @@ fn binary_can_disable_cli_localization_for_diagnostics() {
     assert!(!stdout.contains("records upstream LLM API traffic into cassettes"));
 }
 
+/// Proves startup diagnostics honour the early locale flags.
+///
+/// The child gets its own home and XDG roots so a developer's real
+/// configuration cannot change the expected error.
 #[test]
 fn binary_uses_locale_flags_for_startup_error_rendering() {
     let temp_dir = tempfile::tempdir().expect("temporary directory should be created");
     let mut command = Command::new(env!("CARGO_BIN_EXE_spycatcher-harness"));
-    command.env_clear().current_dir(temp_dir.path()).args([
-        "record",
-        "--locale",
-        "en-GB",
-        "--fallback-locale",
-        "en-US",
-    ]);
+    command
+        .env_clear()
+        .current_dir(temp_dir.path())
+        .env("HOME", temp_dir.path())
+        .env("XDG_CONFIG_HOME", temp_dir.path())
+        .env("XDG_CONFIG_DIRS", temp_dir.path())
+        .args(["record", "--locale", "en-GB", "--fallback-locale", "en-US"]);
     coverage_profile::preserve_coverage_profile(&mut command);
     let output = command.output().expect("binary should execute");
 
@@ -123,50 +143,6 @@ fn binary_uses_locale_flags_for_startup_error_rendering() {
         error_line,
         @"Error: failed to start harness: invalid configuration: \u{2068}upstream configuration is required for record mode\u{2069}"
     );
-}
-
-/// Captured streams and exit status from one isolated help subprocess.
-struct DiagnosticHelpOutput {
-    /// Exit status used to prove diagnostics do not turn help into an error.
-    status: ExitStatus,
-    /// Help text, kept separate from the warning stream.
-    stdout: String,
-    /// Application diagnostics emitted before CLI parsing.
-    stderr: String,
-}
-
-/// Runs help with explicitly selected child-only localization settings.
-/// For example, `diagnostic_help(Some("1"), None, None)` captures stock help
-/// and its diagnostic stderr stream without changing the test process's environment.
-fn diagnostic_help(
-    disable_localization: Option<&str>,
-    primary_locale: Option<&str>,
-    fallback_locale: Option<&str>,
-) -> eyre::Result<DiagnosticHelpOutput> {
-    let directory = tempfile::tempdir().wrap_err("create isolated help directory")?;
-    let mut command = Command::new(env!("CARGO_BIN_EXE_spycatcher-harness"));
-    command
-        .env_clear()
-        .current_dir(directory.path())
-        .arg("--help");
-    for (key, value) in [
-        (DISABLE_LOCALIZATION_ENV, disable_localization),
-        ("SPYCATCHER_HARNESS_LOCALE", primary_locale),
-        ("SPYCATCHER_HARNESS_FALLBACK_LOCALE", fallback_locale),
-    ] {
-        if let Some(configured_value) = value {
-            command.env(key, configured_value);
-        }
-    }
-    coverage_profile::preserve_coverage_profile(&mut command);
-    let output = command
-        .output()
-        .wrap_err("execute diagnostic help subprocess")?;
-    Ok(DiagnosticHelpOutput {
-        status: output.status,
-        stdout: String::from_utf8(output.stdout).wrap_err("help stdout is not UTF-8")?,
-        stderr: String::from_utf8(output.stderr).wrap_err("help stderr is not UTF-8")?,
-    })
 }
 
 /// Truthy diagnostic spellings retain stock help and expose the bypass warning.
@@ -214,182 +190,4 @@ fn binary_diagnostic_invalid_both_warns_and_preserves_default_help() -> eyre::Re
     let control = diagnostic_help(None, Some("en-US"), Some("en-US"))?;
     assert_default_locale_fallback_help(&output, &control);
     Ok(())
-}
-
-/// Checks stock help and visible bypass diagnostics after successful subprocess setup.
-#[track_caller]
-fn assert_truthy_diagnostic_help(output: &DiagnosticHelpOutput, control: &DiagnosticHelpOutput) {
-    assert_eq!(
-        output.status.code(),
-        Some(0),
-        "diagnostic help must exit zero"
-    );
-    assert_eq!(
-        control.status.code(),
-        Some(0),
-        "stock help control must exit zero"
-    );
-    assert_eq!(
-        output.stdout, control.stdout,
-        "truthy spellings must retain stock help"
-    );
-    assert!(
-        output
-            .stdout
-            .contains("Usage: spycatcher-harness <COMMAND>"),
-        "stock usage must remain",
-    );
-    assert!(
-        !output
-            .stdout
-            .contains("records upstream LLM API traffic into cassettes"),
-        "localization must be bypassed",
-    );
-    assert!(
-        !output.stdout.contains("CLI localization disabled"),
-        "warnings must not contaminate help stdout",
-    );
-    assert!(
-        output
-            .stderr
-            .contains("CLI localization disabled by diagnostic environment switch"),
-        "diagnostic switch warning missing: {}",
-        output.stderr,
-    );
-    assert!(
-        output.stderr.contains(DISABLE_LOCALIZATION_ENV),
-        "warning must identify the diagnostic environment switch: {}",
-        output.stderr,
-    );
-    assert!(
-        !output.stderr.contains('\u{1b}'),
-        "captured diagnostics must not contain ANSI escapes",
-    );
-}
-
-/// Checks localized help preservation and silence for absent or falsy switches.
-#[track_caller]
-fn assert_falsy_diagnostic_help(output: &DiagnosticHelpOutput, control: &DiagnosticHelpOutput) {
-    assert_eq!(
-        output.status.code(),
-        Some(0),
-        "localized help must exit zero"
-    );
-    assert_eq!(
-        control.status.code(),
-        Some(0),
-        "localized control must exit zero"
-    );
-    assert_eq!(
-        output.stdout, control.stdout,
-        "falsy switches must preserve localized help"
-    );
-    assert!(
-        output
-            .stdout
-            .contains("records upstream LLM API traffic into cassettes"),
-        "localized copy must remain",
-    );
-    assert!(
-        !output.stderr.contains("CLI localization disabled"),
-        "falsy switches must not emit disabled warnings: {}",
-        output.stderr,
-    );
-    assert!(
-        control.stderr.is_empty(),
-        "clean help control must be quiet: {}",
-        control.stderr
-    );
-}
-
-/// Checks a primary-locale warning without changing valid fallback help.
-#[track_caller]
-fn assert_primary_locale_fallback_help(
-    output: &DiagnosticHelpOutput,
-    control: &DiagnosticHelpOutput,
-) {
-    assert_eq!(
-        output.status.code(),
-        Some(0),
-        "fallback help must exit zero"
-    );
-    assert_eq!(
-        control.status.code(),
-        Some(0),
-        "valid fallback control must exit zero"
-    );
-    assert_eq!(
-        output.stdout, control.stdout,
-        "invalid primary must retain fallback help"
-    );
-    assert!(
-        output
-            .stderr
-            .contains("invalid primary early CLI locale; trying fallback locale"),
-        "invalid primary warning missing: {}",
-        output.stderr,
-    );
-    assert!(
-        !output.stderr.contains("invalid fallback early CLI locale"),
-        "valid fallback must not trigger a warning: {}",
-        output.stderr,
-    );
-    assert!(
-        control.stderr.is_empty(),
-        "valid locale control must be quiet: {}",
-        control.stderr
-    );
-    assert!(
-        !output.stdout.contains("invalid primary early CLI locale"),
-        "locale warnings belong on stderr",
-    );
-    assert!(
-        !output.stderr.contains('\u{1b}'),
-        "captured diagnostics must not contain ANSI escapes",
-    );
-}
-
-/// Checks both invalid-locale warnings while preserving default help.
-#[track_caller]
-fn assert_default_locale_fallback_help(
-    output: &DiagnosticHelpOutput,
-    control: &DiagnosticHelpOutput,
-) {
-    assert_eq!(
-        output.status.code(),
-        Some(0),
-        "default help after invalid locales must exit zero"
-    );
-    assert_eq!(
-        control.status.code(),
-        Some(0),
-        "en-US control must exit zero"
-    );
-    assert_eq!(
-        output.stdout, control.stdout,
-        "invalid locale settings must retain en-US help"
-    );
-    for warning in [
-        "invalid primary early CLI locale; trying fallback locale",
-        "invalid fallback early CLI locale; using en-US",
-    ] {
-        assert!(
-            output.stderr.contains(warning),
-            "locale warning missing ({warning}): {}",
-            output.stderr,
-        );
-        assert!(
-            !output.stdout.contains(warning),
-            "locale warnings belong on stderr"
-        );
-    }
-    assert!(
-        control.stderr.is_empty(),
-        "en-US control must be quiet: {}",
-        control.stderr
-    );
-    assert!(
-        !output.stderr.contains('\u{1b}'),
-        "captured diagnostics must not contain ANSI escapes",
-    );
 }

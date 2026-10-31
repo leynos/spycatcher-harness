@@ -386,10 +386,11 @@ The binary uses the process-backed CLI loader, which reads the process
 environment and normal file-discovery locations. An embedding caller that owns
 its argument, discovery, and environment sources can instead use
 `load_subcommand_config_from_iter_with_sources` from `spycatcher_harness::cli`.
-Pass the argument iterator, a `SubcommandFileContext` for the base directory
-and named discovery lookups, and a `SharedScanEnvSource` for prefixed
-configuration environment values. The loader applies the same subcommand
-mapping and `CLI > environment > config files > defaults` precedence.
+Pass the argument iterator, an `ortho_config::Localizer` for help and
+parse-error text, a `SubcommandFileContext` for the base directory and named
+discovery lookups, and a `SharedScanEnvSource` for prefixed configuration
+environment values. The loader applies the same subcommand mapping and
+`CLI > environment > config files > defaults` precedence.
 
 `MapEnv` can provide both source capabilities in isolated tests or embedded
 applications. Set absolute `XDG_CONFIG_HOME` and `XDG_CONFIG_DIRS` values in

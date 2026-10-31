@@ -78,6 +78,7 @@ fn noop_localizer_leaves_command_copy_unchanged() {
     );
 }
 
+/// Proves the Fluent localizer replaces Clap's stock about text.
 #[rstest]
 fn fluent_localizer_updates_command_copy() {
     let command = Command::new("spycatcher-harness")
@@ -220,6 +221,10 @@ fn localize_clap_error_uses_bundled_unknown_argument_text() {
     assert!(localized.to_string().contains("--unknown"));
 }
 
+/// Proves unparsable consumer resources degrade to stock copy.
+///
+/// A broken consumer catalogue must not panic or blank the CLI; falling back
+/// to the no-op localizer keeps startup usable.
 #[rstest]
 fn broken_consumer_resources_fall_back_to_noop_localizer() {
     let localizer = build_cli_localizer_from_resources(langid!("en-US"), ["cli-about = {"]);
@@ -227,21 +232,25 @@ fn broken_consumer_resources_fall_back_to_noop_localizer() {
     assert!(localizer.lookup("cli-about", None).is_none());
 }
 
+/// Generates a well-formed lowercase language subtag.
 fn language_subtag() -> impl Strategy<Value = String> {
     proptest::collection::vec(b'a'..=b'z', 2..=3)
         .prop_map(|bytes| bytes.into_iter().map(char::from).collect())
 }
 
+/// Generates a well-formed uppercase region subtag.
 fn region_subtag() -> impl Strategy<Value = String> {
     proptest::collection::vec(b'A'..=b'Z', 2)
         .prop_map(|bytes| bytes.into_iter().map(char::from).collect())
 }
 
+/// Generates a well-formed title-case script subtag.
 fn script_subtag() -> impl Strategy<Value = String> {
     (b'A'..=b'Z', proptest::collection::vec(b'a'..=b'z', 3))
         .prop_map(|(first, rest)| std::iter::once(first).chain(rest).map(char::from).collect())
 }
 
+/// Generates a registered or synthetic variant subtag.
 fn variant_subtag() -> impl Strategy<Value = String> {
     prop_oneof![
         Just(String::from("valencia")),
@@ -250,6 +259,7 @@ fn variant_subtag() -> impl Strategy<Value = String> {
     ]
 }
 
+/// Composes a well-formed BCP 47 identifier from generated subtags.
 fn valid_locale_text() -> impl Strategy<Value = String> {
     (
         language_subtag(),

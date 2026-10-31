@@ -18,6 +18,11 @@ mod coverage_profile;
 
 const RECORD_LOCALE_ENV: &str = "SPYCATCHER_HARNESS_CMDS_RECORD_LOCALIZATION__LOCALE";
 
+/// Proves the process-backed loader applies CLI over environment over file
+/// precedence for localization settings.
+///
+/// The child runs with an isolated home and XDG roots, so only the values
+/// written by this case can influence the result.
 #[rstest]
 #[case::defaults(None, None, None, "upstream configuration is required")]
 #[case::file_over_default(Some("from_file"), None, None, "from_file")]
@@ -55,6 +60,7 @@ fn process_backed_cli_preserves_configuration_precedence(
     command
         .env_clear()
         .current_dir(directory.path())
+        .env("HOME", directory.path())
         .env("XDG_CONFIG_HOME", config_root)
         .env("XDG_CONFIG_DIRS", config_root)
         .arg("record");
