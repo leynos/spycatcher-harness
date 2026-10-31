@@ -618,6 +618,14 @@ builds for a non-Linux target add no `mold`, though a caller's own `RUSTFLAGS`
 may still name it. Cranelift is not the development-profile backend here; the
 exception below records why.
 
+The development profile also follows the dev-build footprint standard:
+`.cargo/config.toml` sets `incremental = false` and `debug = 0` there, and the
+native Cargo key `[unstable] embed-metadata = false`, which
+`nightly-2026-07-31` and later pins use to avoid duplicated metadata in `.rlib`
+files; Cargo still produces the corresponding `.rmeta` metadata. Do not replace
+it with a raw `rustc` metadata flag; those broke build scripts.
+`tests/dev_build_footprint.rs` holds the three settings.
+
 Cargo applies a single `rustflags` source rather than merging them, and an
 assigned `RUSTFLAGS` replaces every source. So each source repeats the frontend
 flag, and the Makefile restates both flags as `STANDARD_RUSTFLAGS` for the
