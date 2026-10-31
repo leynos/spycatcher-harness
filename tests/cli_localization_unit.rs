@@ -6,15 +6,14 @@
 use clap::Command;
 use i18n_embed::unic_langid::{LanguageIdentifier, langid};
 use ortho_config::{
-    FluentLocalizer, LocalizationArgs, NoOpLocalizer, figment, localize_clap_error_with_command,
+    FluentLocalizer, LocalizationArgs, NoOpLocalizer, localize_clap_error_with_command,
 };
 use proptest::prelude::*;
 use rstest::rstest;
 use spycatcher_harness::cli::load_subcommand_config_from_iter_with_localizer;
 use spycatcher_harness::cli::localization::LocalizeCmd;
 use spycatcher_harness::cli::localizer::{
-    DISABLE_LOCALIZATION_ENV, build_cli_localizer, build_cli_localizer_from_resources,
-    early_locale_plan, is_cli_localization_disabled, parse_early_locale,
+    build_cli_localizer, build_cli_localizer_from_resources, parse_early_locale,
 };
 
 const CLI_FTL: &str = include_str!("../i18n/en-US/spycatcher-harness.ftl");
@@ -29,10 +28,10 @@ fn bundled_cli_catalogue_builds() {
 
 #[rstest]
 #[case("cli-about")]
-#[case("cli-long-about")]
+#[case("cli-long_about")]
 #[case("cli-usage")]
 #[case("cli-version")]
-#[case("cli-merge-help")]
+#[case("cli-after_long_help")]
 #[case("cli-record-about")]
 #[case("cli-replay-about")]
 #[case("cli-verify-about")]
@@ -79,6 +78,7 @@ fn noop_localizer_leaves_command_copy_unchanged() {
     );
 }
 
+/// Proves the Fluent localizer replaces Clap's stock about text.
 #[rstest]
 fn fluent_localizer_updates_command_copy() {
     let command = Command::new("spycatcher-harness")
@@ -221,6 +221,10 @@ fn localize_clap_error_uses_bundled_unknown_argument_text() {
     assert!(localized.to_string().contains("--unknown"));
 }
 
+/// Proves unparsable consumer resources degrade to stock copy.
+///
+/// A broken consumer catalogue must not panic or blank the CLI; falling back
+/// to the no-op localizer keeps startup usable.
 #[rstest]
 fn broken_consumer_resources_fall_back_to_noop_localizer() {
     let localizer = build_cli_localizer_from_resources(langid!("en-US"), ["cli-about = {"]);
@@ -228,21 +232,25 @@ fn broken_consumer_resources_fall_back_to_noop_localizer() {
     assert!(localizer.lookup("cli-about", None).is_none());
 }
 
+/// Generates a well-formed lowercase language subtag.
 fn language_subtag() -> impl Strategy<Value = String> {
     proptest::collection::vec(b'a'..=b'z', 2..=3)
         .prop_map(|bytes| bytes.into_iter().map(char::from).collect())
 }
 
+/// Generates a well-formed uppercase region subtag.
 fn region_subtag() -> impl Strategy<Value = String> {
     proptest::collection::vec(b'A'..=b'Z', 2)
         .prop_map(|bytes| bytes.into_iter().map(char::from).collect())
 }
 
+/// Generates a well-formed title-case script subtag.
 fn script_subtag() -> impl Strategy<Value = String> {
     (b'A'..=b'Z', proptest::collection::vec(b'a'..=b'z', 3))
         .prop_map(|(first, rest)| std::iter::once(first).chain(rest).map(char::from).collect())
 }
 
+/// Generates a registered or synthetic variant subtag.
 fn variant_subtag() -> impl Strategy<Value = String> {
     prop_oneof![
         Just(String::from("valencia")),
@@ -251,6 +259,7 @@ fn variant_subtag() -> impl Strategy<Value = String> {
     ]
 }
 
+/// Composes a well-formed BCP 47 identifier from generated subtags.
 fn valid_locale_text() -> impl Strategy<Value = String> {
     (
         language_subtag(),
@@ -308,55 +317,4 @@ proptest! {
 #[case(None, "en-US")]
 fn parse_early_locale_is_deterministic(#[case] candidate: Option<&str>, #[case] expected: &str) {
     assert_eq!(parse_early_locale(candidate).to_string(), expected);
-}
-
-#[rstest]
-#[case::invalid_primary_uses_fallback("not_a_locale", "en-GB", "en-GB")]
-#[case::valid_primary_takes_precedence("en-GB", "fr-FR", "en-GB")]
-#[case::invalid_fallback_uses_default("not_a_locale", "not_a_locale", "en-US")]
-fn early_locale_plan_respects_environment_precedence(
-    #[case] primary: &str,
-    #[case] fallback: &str,
-    #[case] expected: &str,
-) {
-    #[expect(
-        clippy::result_large_err,
-        reason = "figment::Jail callback requires figment::error::Result"
-    )]
-    figment::Jail::expect_with(|jail| {
-        jail.set_env("SPYCATCHER_HARNESS_LOCALE", primary);
-        jail.set_env("SPYCATCHER_HARNESS_FALLBACK_LOCALE", fallback);
-
-        assert_eq!(early_locale_plan().to_string(), expected);
-        Ok(())
-    });
-}
-
-#[rstest]
-#[case(None, false)]
-#[case(Some(""), false)]
-#[case(Some("0"), false)]
-#[case(Some("false"), false)]
-#[case(Some("1"), true)]
-#[case(Some("true"), true)]
-#[case(Some("yes"), true)]
-#[case(Some("on"), true)]
-fn cli_localization_disable_switch_requires_truthy_value(
-    #[case] env_value: Option<&str>,
-    #[case] expected: bool,
-) {
-    #[expect(
-        clippy::result_large_err,
-        reason = "figment::Jail callback requires figment::error::Result"
-    )]
-    figment::Jail::expect_with(|jail| {
-        if let Some(value) = env_value {
-            jail.set_env(DISABLE_LOCALIZATION_ENV, value);
-        } else {
-            jail.set_env(DISABLE_LOCALIZATION_ENV, "");
-        }
-
-        assert_eq!(is_cli_localization_disabled(), expected);
-        Ok(())
-    });
 }

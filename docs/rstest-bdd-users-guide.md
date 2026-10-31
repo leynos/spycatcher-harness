@@ -23,14 +23,13 @@ owner, the developer, and the tester.
 
 ## Toolchain requirements
 
-`rstest-bdd` targets Rust 1.88 or newer across every crate in the workspace.
-Each `Cargo.toml` declares `rust-version = "1.88"`, so `cargo` will refuse to
-compile the project on older compilers. The workspace uses the Rust 2024
-edition.
+The `rstest-bdd` crates target Rust 1.88 or newer. This application declares
+`rust-version = "1.89.0"` because its `ortho_config` 0.10.0 dependency requires
+that compiler floor. The application uses the Rust 2024 edition.
 
-`rstest-bdd` builds on stable Rust, but this repository currently pins a
-nightly toolchain via `rust-toolchain.toml` so contributors get consistent
-`rustfmt` and `clippy` behaviour while staying above the documented minimum.
+`rstest-bdd` builds on stable Rust, but this repository currently pins
+`nightly-2026-10-30` via `rust-toolchain.toml`, so contributors get consistent
+`rustfmt` and `clippy` behaviour while staying above the application's minimum.
 
 Step definitions may be synchronous functions (`fn`) or asynchronous functions
 (`async fn`). The framework no longer depends on the `async-trait` crate to

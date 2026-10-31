@@ -609,8 +609,11 @@ CLI localization responsibilities:
 - Configure CLI copy via `ortho_config::Localizer`, preferring
   `ortho_config::FluentLocalizer` for Fluent-backed messages.
 - Localize `clap` help, `--version`, and parse errors through the pre-parse
-  locale flow using the project-owned `LocalizeCmd::localize(&localizer)`
-  extension trait and `localize_clap_error_with_command(...)`.
+  locale flow with OrthoConfig's `LocalizeCmd::with_base("cli")` and
+  `parse_localized_command(...)`. The project adapter applies that pass one
+  command at a time so every command-copy lookup receives the legacy `$binary`
+  and `$version` interpolation arguments; the catalogue uses v0.10.0's
+  `long_about` and `after_long_help` suffix spellings.
 - Fall back to `NoOpLocalizer` if localization resources fail to load, or when
   `SPYCATCHER_HARNESS_DISABLE_LOCALIZATION` explicitly opts out of CLI
   localization, so the CLI remains usable while reporting localization setup
@@ -627,6 +630,14 @@ OrthoConfig also supports subcommand configuration merging (
 `load_and_merge_subcommand_for` / `SubcmdConfigMerge`) that reads per-command
 defaults from configuration under a `cmds` namespace and merges them beneath CLI
 args.[^9]
+
+The binary's process-backed loader remains the normal entry point. Tests and
+embedding callers can use `load_subcommand_config_from_iter_with_sources(...)`
+with a `SubcommandFileContext` and `MapEnv` to supply discovery and merge
+sources explicitly. This uses the same `cmds.record`, `cmds.replay`, and
+`cmds.verify` namespaces and preserves `CLI > environment > files > defaults`
+precedence. Explicit values remain present even when they equal the
+application's default.
 
 File format support notes:
 
@@ -1184,8 +1195,8 @@ annotation documenting this rationale.
 ### Layered subcommand loading scope (task 1.1.2)
 
 Task 1.1.2 implements layered loading with OrthoConfig's subcommand merge
-helpers (`load_and_merge_subcommand_for`) in a dedicated CLI adapter module (
-`src/cli.rs`). The implementation currently scopes file loading to the
+helpers (`load_and_merge_subcommand`) in the dedicated CLI adapter module
+(`src/cli/mod.rs`). The implementation currently scopes file loading to the
 `cmds.<subcommand>` namespace plus subcommand-specific environment variables:
 
 - `SPYCATCHER_HARNESS_CMDS_RECORD_*`
@@ -1193,7 +1204,10 @@ helpers (`load_and_merge_subcommand_for`) in a dedicated CLI adapter module (
 - `SPYCATCHER_HARNESS_CMDS_VERIFY_*`
 
 This keeps command selection explicit and deterministic while preserving the
-required precedence `CLI > env > config files > defaults`.
+required precedence `CLI > env > config files > defaults`. The source-aware
+adapter in `src/cli/source_loader.rs` supplies a temporary file base and
+injected environment for isolated configuration tests without changing the
+process-backed production path.
 
 The adapter maps merged command arguments into domain `HarnessConfig` values in
 one step before invoking `start_harness`, maintaining a clean boundary between

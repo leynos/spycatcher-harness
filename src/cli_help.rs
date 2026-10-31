@@ -37,6 +37,10 @@ mod tests {
 
     const CLI_FTL: &str = include_str!("../i18n/en-US/spycatcher-harness.ftl");
 
+    /// Keeps the localized merge help no less informative than stock Clap text.
+    ///
+    /// Every non-empty stock line must still appear, so a translation cannot
+    /// silently drop an option or a hint.
     #[test]
     fn localized_merge_help_matches_stock_merge_help_content() {
         let fluent = FluentLocalizer::builder(langid!("en-US"))
@@ -44,7 +48,7 @@ mod tests {
             .try_build()
             .expect("bundled CLI catalogue should build");
         let rendered_help = fluent
-            .lookup("cli-merge-help", None)
+            .lookup("cli-after_long_help", None)
             .expect("localized merge help should render");
 
         for expected in non_empty_lines(CLI_MERGE_HELP) {
@@ -55,6 +59,10 @@ mod tests {
         }
     }
 
+    /// Returns the trimmed, non-blank lines of `text`.
+    ///
+    /// Blank-line differences between stock and localized help are irrelevant
+    /// to the comparison, so they are dropped rather than asserted on.
     fn non_empty_lines(text: &str) -> Vec<&str> {
         text.lines()
             .map(str::trim)
