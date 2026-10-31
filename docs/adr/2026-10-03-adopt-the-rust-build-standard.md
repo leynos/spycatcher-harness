@@ -60,7 +60,7 @@ root cause.
 The toolchain pin moved from `nightly-2026-02-26` to `nightly-2026-10-30`. No
 Cranelift measurement was taken on the new pin, and none is required now: the
 exception stands on the 2026-09-28 and 2026-09-30 observations. This addendum
-defers the next measurement to the 2027-04-03 revisit date recorded in issue
-#146, and supersedes the "or when the toolchain pin changes" trigger in the
-decision above for this pin move. The developers' guide states the same
-deferral.
+defers the next measurement to the 2027-04-03 revisit date recorded in the
+tracking issue (number 146), and supersedes the "or when the toolchain pin
+changes" trigger in the decision above for this pin move. The developers' guide
+states the same deferral.
