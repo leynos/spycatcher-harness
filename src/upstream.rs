@@ -235,7 +235,7 @@ fn to_outbound_header(name: &str, value: &[u8]) -> HarnessResult<(HeaderName, He
 /// Rejects forwarding an inbound authorisation header, ignoring case.
 /// For example, `Authorization` is filtered before the configured bearer token is added.
 #[inline]
-fn should_forward_header(name: &str) -> bool {
+const fn should_forward_header(name: &str) -> bool {
     !name.eq_ignore_ascii_case("authorization")
 }
 
@@ -293,6 +293,10 @@ fn apply_extra_headers(
 }
 
 impl ChatCompletionsUpstream for ReqwestUpstreamClient {
+    /// Buffers the upstream body before returning the observed response.
+    ///
+    /// Non-streaming replay needs the whole body for canonical hashing, so the
+    /// bytes are collected here rather than handed back as a stream.
     async fn send_chat_completions(
         &self,
         request: ChatCompletionsRequest<'_>,
@@ -316,6 +320,10 @@ impl ChatCompletionsUpstream for ReqwestUpstreamClient {
         })
     }
 
+    /// Returns the upstream body as a chunk stream for SSE recording.
+    ///
+    /// The stream is boxed so the recorder can hold it behind the object-safe
+    /// upstream port without knowing the concrete response type.
     async fn stream_chat_completions(
         &self,
         request: ChatCompletionsRequest<'_>,

@@ -31,6 +31,25 @@ generated entries by hand.
 
 ## Build configuration
 
+### Toolchain requirements
+
+The crate declares `rust-version = "1.89.0"` and edition 2024. The floor is not
+arbitrary: `ortho_config` 0.10.0, which this project uses for layered
+subcommand configuration, requires a compiler at or above 1.89.0, so adopting
+that release also sets the application MSRV. CI enforces the floor by installing
+`1.89.0` and running
+`cargo +1.89.0 check --locked --workspace --all-targets --all-features`, which
+also proves the lockfile resolves on the oldest supported compiler.
+
+Development uses the nightly pinned in `rust-toolchain.toml`
+(`nightly-2026-10-30`) with the `rustfmt` and `clippy` components, so every
+contributor formats and lints with the same compiler. Keep that pin, the
+`rust-version` field, and this section in step whenever either moves.
+
+`cap-std` is built with its `fs_utf8` feature because path handling uses
+`cap_std::fs_utf8`, keeping filesystem access capability-oriented while
+treating paths as UTF-8.
+
 ### `serde_json` `preserve_order` feature
 
 The `serde_json` dependency is compiled with the `preserve_order` feature
@@ -229,15 +248,16 @@ merged arguments into `HarnessConfig` and validates locale overrides. Keep new
 CLI-only serialization shapes, help text, and localization selection policy in
 their support modules rather than growing `src/cli/mod.rs`.
 
-| Internal CLI module       | Purpose                                                                          |
-| ------------------------- | -------------------------------------------------------------------------------- |
-| `src/cli/mod.rs`          | Public loader entry points and parse/merge orchestration                         |
-| `src/cli/config_build.rs` | Private override application, locale validation and `HarnessConfig` construction |
-| `src/cli_args.rs`         | `LocalizationArgs` and `RecordUpstreamArgs` serializable merge shapes            |
-| `src/cli_help.rs`         | Stock long-form merge help used when CLI localization is disabled                |
-| `src/cli/localization.rs` | Localization override selection and validation                                   |
-| `src/cli/localize_cmd.rs` | Project-owned `LocalizeCmd` trait and localized `clap` parsing helper            |
-| `src/cli/localizer.rs`    | Early locale selection and Fluent-backed CLI localizer construction              |
+| Internal CLI module        | Purpose                                                                          |
+| -------------------------- | -------------------------------------------------------------------------------- |
+| `src/cli/mod.rs`           | Public loader entry points and parse/merge orchestration                         |
+| `src/cli/config_build.rs`  | Private override application, locale validation and `HarnessConfig` construction |
+| `src/cli/source_loader.rs` | Explicit file and environment sources for embedding and isolated tests           |
+| `src/cli_args.rs`          | `LocalizationArgs` and `RecordUpstreamArgs` serializable merge shapes            |
+| `src/cli_help.rs`          | Stock long-form merge help used when CLI localization is disabled                |
+| `src/cli/localization.rs`  | Localization override selection and validation                                   |
+| `src/cli/localize_cmd.rs`  | `LocalizeCmd` adapter, per-command `$binary`/`$version`, localized parser        |
+| `src/cli/localizer.rs`     | Early locale selection and Fluent-backed CLI localizer construction              |
 
 _Table 2: CLI adapter and support modules._
 
@@ -250,8 +270,20 @@ selected without consulting the fallback; if neither setting yields a supported
 identifier, the default is `en-US`. Parse failures warn: an invalid primary
 reports “trying fallback locale”, while an invalid fallback reports “using
 en-US”. Absent or non-Unicode values produce no candidate and no parse warning.
-`try_locale_from_env` is private and accepts a `LocaleEnvSetting`, so the
-setting's variable name and warning stay paired.
+The value-selection helper accepts lazy sources, so precedence and lazy
+fallback behaviour can be tested without mutating process environment state.
+
+### Injected configuration sources
+
+The normal CLI loader uses the process environment and current discovery
+context. Tests and embedding callers can use
+`load_subcommand_config_from_iter_with_sources` to pass a
+`SubcommandFileContext` and a `SharedScanEnvSource` explicitly. One `MapEnv`
+can back both capabilities: file discovery performs named lookups, while the
+subcommand merge scans only values under `SPYCATCHER_HARNESS_`. The independent
+capabilities keep file-path selection separate from configuration merging.
+Layer precedence and the `cmds.record`, `cmds.replay`, and `cmds.verify`
+namespaces match the process-backed path.
 
 CLI argument/help modules remain at `src/cli_args.rs` and `src/cli_help.rs`,
 reached through `../` paths from `src/cli/mod.rs`.
@@ -318,10 +350,12 @@ Test-module paths follow the source file that declares them:
   the extracted private `#[cfg(test)]` suites, wired by their parent modules.
 - `src/replay_tests/mod.rs` retains replay tests and its `concurrent_stream`
   child.
-- `tests/cli_layering_unit.rs` retains every property and parameterized test.
-  Its nested `tests/cli_layering/support.rs` contains the Jail loader, fixture
-  constants and locale strategies, with only parent-used items exposed through
-  `pub(super)`. This helper is not a separate Cargo integration-test crate.
+- `tests/cli_layering_unit.rs` retains the property and parameterized layering
+  coverage. Its nested `tests/cli_layering/support.rs` provides a temporary
+  configuration directory, a closed `MapEnv`, fixture constants, and locale
+  strategies, with only parent-used items exposed through `pub(super)`. The BDD
+  suite uses the same source-injected helper. It is not a separate Cargo
+  integration-test crate.
 - `tests/chat_completions_replay/harness_config.rs` is a private test-support
   module. Its `pub(super)` record/replay configuration builders are re-exported
   by `steps.rs` for chat replay and `stream_steps.rs`. The private

@@ -25,11 +25,14 @@ pub mod localization;
 mod localize_cmd;
 #[path = "localizer.rs"]
 pub mod localizer;
+mod source_loader;
 
 use cli_args::{LocalizationArgs, RecordUpstreamArgs};
 use cli_help::CLI_MERGE_HELP;
 use config_build::{to_record_config, to_replay_config, to_verify_config};
 use localize_cmd::try_parse_localized_from_iter;
+
+pub use source_loader::load_subcommand_config_from_iter_with_sources;
 
 /// Errors returned while loading merged command configuration.
 #[derive(Debug, Error)]

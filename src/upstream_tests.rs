@@ -120,6 +120,25 @@ async fn headers_skip_authorization_and_forward_expected(
     );
 }
 
+/// Proves the header filter is usable in a constant context.
+///
+/// The `const` item initializers and the `const` assertion block are evaluated
+/// at compile time, so this test fails to build if `should_forward_header`
+/// loses its `const` capability. Case-insensitive matching is checked in both
+/// directions.
+#[test]
+fn should_forward_header_evaluates_in_const_context() {
+    const REJECTS_AUTHORIZATION: bool = should_forward_header("Authorization");
+    const REJECTS_LOWERCASE_AUTHORIZATION: bool = should_forward_header("authorization");
+    const FORWARDS_CONTENT_TYPE: bool = should_forward_header("Content-Type");
+
+    const {
+        assert!(!REJECTS_AUTHORIZATION);
+        assert!(!REJECTS_LOWERCASE_AUTHORIZATION);
+        assert!(FORWARDS_CONTENT_TYPE);
+    }
+}
+
 #[rstest]
 fn apply_extra_headers_rejects_invalid_header_name() {
     let builder = Client::new().post("http://example.invalid/");
