@@ -17,10 +17,8 @@ fn sequential_mismatch_diagnostic_structure(
     #[case] canonical_wrong: serde_json::Value,
     #[case] expected_tokens: &[&str],
 ) {
-    let mut engine = match ReplayMatchEngine::new(sample_cassette, MatchMode::SequentialStrict) {
-        Ok(engine) => engine,
-        Err(e) => panic!("fixture cassette should have valid stable hashes: {e}"),
-    };
+    let mut engine = ReplayMatchEngine::new(sample_cassette, MatchMode::SequentialStrict)
+        .expect("fixture cassette should have valid stable hashes");
 
     let outcome = engine.next_match(observed_hash, &canonical_wrong);
     let diagnostic = expect_mismatch_diagnostic(
