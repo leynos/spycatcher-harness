@@ -76,7 +76,7 @@ fn system_clock_produces_rfc3339_string() {
         .now_rfc3339()
         .expect("system clock should produce an RFC 3339 timestamp");
 
-    assert!(!ts.is_empty());
+    assert_ne!(ts, "");
     assert!(ts.contains('T'));
 }
 #[rstest]

@@ -29,7 +29,7 @@ fn sequential_mismatch_diagnostic_structure(
         "hash_a",
         observed_hash,
     );
-    assert!(!diagnostic.diff_summary.is_empty());
+    assert_ne!(diagnostic.diff_summary, "");
 
     for token in expected_tokens {
         assert!(

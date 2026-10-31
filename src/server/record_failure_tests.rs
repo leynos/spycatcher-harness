@@ -27,6 +27,10 @@ struct FakeUpstream {
     response: ObservedResponse,
 }
 
+#[expect(
+    clippy::unused_async_trait_impl,
+    reason = "the test double returns canned data; the trait method is async"
+)]
 impl ChatCompletionsUpstream for FakeUpstream {
     async fn send_chat_completions(
         &self,
@@ -56,6 +60,10 @@ struct MalformedStreamUpstream {
     chunks: Vec<Vec<u8>>,
 }
 
+#[expect(
+    clippy::unused_async_trait_impl,
+    reason = "the test double returns canned data; the trait method is async"
+)]
 impl ChatCompletionsUpstream for MalformedStreamUpstream {
     async fn send_chat_completions(
         &self,

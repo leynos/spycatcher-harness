@@ -51,6 +51,10 @@ pub(crate) struct FakeUpstream {
     pub(crate) response: Result<ObservedResponse, ()>,
 }
 
+#[expect(
+    clippy::unused_async_trait_impl,
+    reason = "the test double returns canned data; the trait method is async"
+)]
 impl ChatCompletionsUpstream for FakeUpstream {
     async fn send_chat_completions(
         &self,

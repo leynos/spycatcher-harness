@@ -56,7 +56,7 @@ impl SseParser {
     /// left pending without a blank-line dispatch.
     pub(crate) fn finish(&mut self) -> Result<Vec<StreamEvent>, SseParseError> {
         let mut events = Vec::new();
-        if self.buffer.as_slice() == [b'\r'] {
+        if self.buffer.as_slice() == *b"\r" {
             self.buffer.clear();
             self.dispatch_event(&mut events);
         }
@@ -248,7 +248,7 @@ mod tests {
         let first = parser
             .feed(b"data: {\"id\":\"chunk\"}\r")
             .expect("first fragment should wait for CRLF completion");
-        assert!(first.is_empty());
+        assert_eq!(first.len(), 0);
 
         let second = parser
             .feed(b"\n\n")
@@ -305,7 +305,7 @@ mod tests {
             .feed(b"data: unfinished")
             .expect("pending line has not completed yet");
 
-        assert!(events.is_empty());
+        assert_eq!(events.len(), 0);
         assert!(matches!(
             parser.finish(),
             Err(SseParseError::IncompleteEvent)

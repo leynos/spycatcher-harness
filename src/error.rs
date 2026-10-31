@@ -165,6 +165,6 @@ mod tests {
         };
         let std_err: &dyn std::error::Error = &err;
         // Verify the trait object can be used.
-        assert!(!std_err.to_string().is_empty());
+        assert_ne!(std_err.to_string(), "");
     }
 }

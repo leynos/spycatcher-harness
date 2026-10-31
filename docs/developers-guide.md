@@ -654,4 +654,7 @@ issue #146 records, by re-running the workspace suite and the three
 panic-semantics tests under both backends on the then-supported nightly; if
 Cranelift passes, adopt it and update the routing contracts.
 
-Re-measure on the next toolchain pin.
+The pinned toolchain is now `nightly-2026-10-30`. No measurement has been taken
+on it: both observations above were made on `nightly-2026-02-26`, and the
+exception stands on them until the 2027-04-03 revisit, when the suite is
+re-measured under both backends.

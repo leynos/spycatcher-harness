@@ -80,10 +80,6 @@ fn ignore_paths_configured_as(canonical_hash_world: &CanonicalHashWorld, ignore_
 }
 
 #[when("both requests are canonicalized")]
-#[expect(
-    clippy::expect_used,
-    reason = "BDD steps enforce scenario preconditions with explicit messages"
-)]
 fn both_requests_are_canonicalized(canonical_hash_world: &CanonicalHashWorld) {
     let left_request = canonical_hash_world
         .left_request
@@ -153,10 +149,6 @@ fn ignore_paths_remove_metadata_drift_from_hashing(canonical_hash_world: Canonic
     let _ = canonical_hash_world;
 }
 
-#[expect(
-    clippy::expect_used,
-    reason = "BDD fixtures fail fast when the inline JSON cannot serialize"
-)]
 fn request(method: &str, query: &str, parsed_json: serde_json::Value) -> RecordedRequest {
     RecordedRequest {
         method: method.to_owned(),
