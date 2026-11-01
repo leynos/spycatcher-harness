@@ -267,7 +267,7 @@ pub(crate) fn sample_success_body() -> Value {
 
 pub(crate) fn present_env_name() -> Result<&'static str, Box<dyn Error>> {
     for candidate in ["HOME", "PWD", "USER", "PATH"] {
-        if std::env::var(candidate).is_ok() {
+        if crate::process_env::read_ambient(candidate).is_some() {
             return Ok(candidate);
         }
     }

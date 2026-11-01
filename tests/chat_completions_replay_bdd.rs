@@ -4,6 +4,8 @@ use rstest::fixture;
 use rstest_bdd_macros::scenario;
 
 mod chat_completions_replay;
+#[path = "common/process_env.rs"]
+mod process_env;
 #[path = "chat_completions_replay/record_helpers.rs"]
 mod record_helpers;
 

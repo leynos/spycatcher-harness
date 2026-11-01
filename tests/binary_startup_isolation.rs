@@ -11,6 +11,8 @@ use rstest::rstest;
 
 #[path = "common/coverage_profile.rs"]
 mod coverage_profile;
+#[path = "common/process_env.rs"]
+mod process_env;
 #[path = "binary_startup_isolation/support.rs"]
 mod support;
 

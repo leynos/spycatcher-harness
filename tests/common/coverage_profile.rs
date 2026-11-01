@@ -17,7 +17,7 @@ use std::process::Command;
 /// `LLVM_PROFILE_FILE` when `cargo llvm-cov` has set it, and leaves a plain
 /// `cargo test` child untouched.
 pub(crate) fn preserve_coverage_profile(command: &mut Command) {
-    if let Some(profile_file) = std::env::var_os("LLVM_PROFILE_FILE") {
+    if let Some(profile_file) = crate::process_env::read_ambient("LLVM_PROFILE_FILE") {
         command.env("LLVM_PROFILE_FILE", profile_file);
     }
 }

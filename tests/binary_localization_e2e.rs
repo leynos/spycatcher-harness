@@ -8,6 +8,8 @@ use std::process::{Command, Output};
 
 #[path = "common/coverage_profile.rs"]
 mod coverage_profile;
+#[path = "common/process_env.rs"]
+mod process_env;
 #[path = "binary_localization_e2e/support.rs"]
 mod support;
 

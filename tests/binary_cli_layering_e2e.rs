@@ -14,6 +14,8 @@ use rstest::rstest;
 
 #[path = "common/coverage_profile.rs"]
 mod coverage_profile;
+#[path = "common/process_env.rs"]
+mod process_env;
 
 const RECORD_LOCALE_ENV: &str = "SPYCATCHER_HARNESS_CMDS_RECORD_LOCALIZATION__LOCALE";
 

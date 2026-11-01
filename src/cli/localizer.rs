@@ -152,10 +152,23 @@ fn warn_invalid_early_locale(
 #[must_use]
 pub fn early_locale_plan() -> LanguageIdentifier {
     early_locale_plan_with(
-        || std::env::var(LOCALE_ENV).ok(),
-        || std::env::var(FALLBACK_LOCALE_ENV).ok(),
+        || read_process_env(LOCALE_ENV),
+        || read_process_env(FALLBACK_LOCALE_ENV),
     )
 }
+
+/// Reads one locale switch from the ambient process environment.
+///
+/// Early locale selection runs before any configuration source is loaded, so
+/// the process environment is its only input; the testable seams are the
+/// `early_locale_plan_with` and `is_localization_disabled_for_value` helpers,
+/// which take the already-read values instead.
+#[expect(
+    clippy::disallowed_methods,
+    reason = "early locale selection precedes configuration loading, so the ambient process \
+              environment is its only source"
+)]
+fn read_process_env(name: &str) -> Option<String> { std::env::var(name).ok() }
 
 /// Selects a locale from lazy source values so unit tests need no env mutation.
 fn early_locale_plan_with(
@@ -173,7 +186,7 @@ fn early_locale_plan_with(
 /// diagnostic switch is set to a truthy value.
 #[must_use]
 pub fn is_cli_localization_disabled() -> bool {
-    let value = std::env::var(DISABLE_LOCALIZATION_ENV).ok();
+    let value = read_process_env(DISABLE_LOCALIZATION_ENV);
     let is_disabled = is_localization_disabled_for_value(value.as_deref());
     if is_disabled {
         warn_localization_disabled();

@@ -49,7 +49,7 @@ const FORBIDDEN_EXTRA_HEADERS: &[&str] = &[
     "accept-encoding",
 ];
 
-/// Narrow environment lookup port used by record-mode request handling.
+/// Narrow environment lookup port used by environment-reading adapters.
 pub(crate) trait EnvProvider {
     /// Returns the value of an environment variable when it is present.
     fn read(&self, name: &str) -> Option<String>;
@@ -60,6 +60,13 @@ pub(crate) trait EnvProvider {
 pub(crate) struct ProcessEnvProvider;
 
 impl EnvProvider for ProcessEnvProvider {
+    /// Reads the ambient value, making this adapter the one sanctioned
+    /// process-environment boundary in production code.
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "this adapter is the process-environment boundary every other reader is injected \
+                  through"
+    )]
     fn read(&self, name: &str) -> Option<String> { std::env::var(name).ok() }
 }
 
