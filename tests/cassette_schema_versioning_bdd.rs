@@ -30,6 +30,8 @@ struct CassetteWorld {
 
 #[fixture]
 fn cassette_world() -> CassetteWorld {
+    // Keep the body multi-line: rstest re-emits it as a block expression,
+    // so a collapsed one-line body trips `unused_braces`.
     CassetteWorld::default()
 }
 

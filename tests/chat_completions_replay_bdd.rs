@@ -11,6 +11,8 @@ use chat_completions_replay::world::ReplayWorld;
 
 #[fixture]
 fn replay_world() -> ReplayWorld {
+    // Keep the body multi-line: rstest re-emits it as a block expression,
+    // so a collapsed one-line body trips `unused_braces`.
     ReplayWorld::default()
 }
 

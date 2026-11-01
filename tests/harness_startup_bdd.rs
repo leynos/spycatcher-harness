@@ -66,6 +66,8 @@ struct HarnessWorld {
 
 #[fixture]
 fn harness_world() -> HarnessWorld {
+    // Keep the body multi-line: rstest re-emits it as a block expression,
+    // so a collapsed one-line body trips `unused_braces`.
     HarnessWorld::default()
 }
 

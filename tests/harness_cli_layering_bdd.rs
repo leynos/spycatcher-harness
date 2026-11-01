@@ -44,6 +44,8 @@ struct CliLayeringWorld {
 
 #[fixture]
 fn cli_layering_world() -> CliLayeringWorld {
+    // Keep the body multi-line: rstest re-emits it as a block expression,
+    // so a collapsed one-line body trips `unused_braces`.
     CliLayeringWorld::default()
 }
 

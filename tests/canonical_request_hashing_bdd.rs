@@ -18,6 +18,8 @@ struct CanonicalHashWorld {
 
 #[fixture]
 fn canonical_hash_world() -> CanonicalHashWorld {
+    // Keep the body multi-line: rstest re-emits it as a block expression,
+    // so a collapsed one-line body trips `unused_braces`.
     CanonicalHashWorld::default()
 }
 
