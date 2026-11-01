@@ -1,21 +1,25 @@
 //! Helpers for record-mode proxying integration scenarios.
 
-use std::error::Error;
-use std::sync::{Arc, Mutex};
+use std::{
+    error::Error,
+    sync::{Arc, Mutex},
+};
 
-use axum::body::{Body, Bytes};
-use axum::extract::State;
-use axum::http::{HeaderMap, HeaderValue, Response, StatusCode};
-use axum::{Json, Router, routing::post};
+use axum::{
+    Json,
+    Router,
+    body::{Body, Bytes},
+    extract::State,
+    http::{HeaderMap, HeaderValue, Response, StatusCode},
+    routing::post,
+};
 use camino::{Utf8Path, Utf8PathBuf};
 use cap_std::{ambient_authority, fs_utf8::Dir};
 use futures_util::stream;
 use serde_json::{Value, json};
-use tokio::net::TcpListener;
-use tokio::sync::oneshot;
-use url::Url;
-
 use spycatcher_harness::cassette::Cassette;
+use tokio::{net::TcpListener, sync::oneshot};
+use url::Url;
 
 /// Response data observed by the integration test client.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -195,9 +199,7 @@ fn build_response(headers: HeaderMap, body: Body) -> Response<Body> {
     response
 }
 
-async fn wait_for_shutdown(shutdown_rx: oneshot::Receiver<()>) {
-    if shutdown_rx.await.is_err() {}
-}
+async fn wait_for_shutdown(shutdown_rx: oneshot::Receiver<()>) { if shutdown_rx.await.is_err() {} }
 
 pub(crate) fn send_request(
     runtime: &tokio::runtime::Runtime,
@@ -362,7 +364,8 @@ pub(crate) fn assert_upstream_bearer_token(
     Err(std::io::Error::other(format!(
         concat!(
             "expected upstream Authorization Bearer token to match configured API key; ",
-            "authorization_present={has_authorization} header_count={} header_names={header_names:?}",
+            "authorization_present={has_authorization} header_count={} \
+             header_names={header_names:?}",
         ),
         request.headers.len(),
         has_authorization = has_authorization,

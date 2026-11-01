@@ -1,8 +1,10 @@
 //! Helper functions for BDD test steps.
 
 use serde_json::Value;
-use spycatcher_harness::cassette::{MatchOutcome, RecordedResponse, ReplayMatchEngine};
-use spycatcher_harness::config::MatchMode;
+use spycatcher_harness::{
+    cassette::{MatchOutcome, RecordedResponse, ReplayMatchEngine},
+    config::MatchMode,
+};
 
 use super::world::MatchingWorld;
 

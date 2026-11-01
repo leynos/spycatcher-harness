@@ -1,8 +1,6 @@
 //! Source-injected configuration fixtures shared by CLI layering suites.
 
-use std::io::Write as _;
-use std::path::Path;
-use std::sync::Arc;
+use std::{io::Write as _, path::Path, sync::Arc};
 
 use cap_std::{
     ambient_authority,
@@ -10,11 +8,13 @@ use cap_std::{
 };
 use eyre::{Result, WrapErr as _, eyre};
 use ortho_config::{
-    MapEnv, NoOpLocalizer, SharedEnvSource, SharedScanEnvSource, SubcommandFileContext,
+    MapEnv,
+    NoOpLocalizer,
+    SharedEnvSource,
+    SharedScanEnvSource,
+    SubcommandFileContext,
 };
-
-use spycatcher_harness::HarnessConfig;
-use spycatcher_harness::cli::load_subcommand_config_from_iter_with_sources;
+use spycatcher_harness::{HarnessConfig, cli::load_subcommand_config_from_iter_with_sources};
 
 /// Loads a [`HarnessConfig`] from explicit file and environment fixtures.
 ///

@@ -1,12 +1,16 @@
 //! Unit tests for record-mode orchestration.
-use super::record_tests_helpers::*;
-use super::{ProxyBody, RecordError, RecordedResponse};
-use rstest::rstest;
-use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::{
+    sync::Arc,
+    time::{Duration, Instant},
+};
 
-use crate::config::UpstreamKind;
-use crate::server::record_metadata::{Clock, MetadataFactory, SessionMetadata, SystemClock};
+use rstest::rstest;
+
+use super::{ProxyBody, RecordError, RecordedResponse, record_tests_helpers::*};
+use crate::{
+    config::UpstreamKind,
+    server::record_metadata::{Clock, MetadataFactory, SessionMetadata, SystemClock},
+};
 
 #[rstest]
 #[tokio::test]

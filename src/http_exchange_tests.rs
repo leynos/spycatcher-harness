@@ -1,8 +1,8 @@
 //! Unit tests for header filtering and JSON parsing helpers.
 
-use super::*;
 use rstest::rstest;
 
+use super::*;
 use crate::config::RedactionConfig;
 
 /// Build a `HeaderMap` from raw byte pairs.
@@ -134,8 +134,9 @@ fn selected_forward_headers_preserve_raw_values() {
 mod prop_tests {
     //! Property tests for header selection invariants.
 
-    use super::*;
     use proptest::prelude::*;
+
+    use super::*;
 
     proptest! {
         /// Checks every hop-by-hop name stays excluded across generated legal

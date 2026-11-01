@@ -3,10 +3,8 @@
 //! Configured fallback validation precedes primary validation, while the resulting
 //! selection plan tries the primary locale before its fallback.
 
-use i18n_embed::fluent::FluentLanguageLoader;
-use i18n_embed::unic_langid::LanguageIdentifier;
-use spycatcher_harness::config::LocalizationConfig;
-use spycatcher_harness::i18n::HarnessLocalizations;
+use i18n_embed::{fluent::FluentLanguageLoader, unic_langid::LanguageIdentifier};
+use spycatcher_harness::{config::LocalizationConfig, i18n::HarnessLocalizations};
 use thiserror::Error;
 
 /// Errors returned while preparing startup localization.

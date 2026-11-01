@@ -1,8 +1,8 @@
 //! Contract tests for the dev-build footprint standard (DF-001 to DF-003).
 //!
 //! The default development profile (set in `.cargo/config.toml`) must not
-//! keep incremental state or debug information, and the pinned nightly must avoid duplicated metadata in
-//! `.rlib` files through the native Cargo key rather than a raw `rustc` flag.
+//! keep incremental state or debug information, and the pinned nightly must avoid duplicated
+//! metadata in `.rlib` files through the native Cargo key rather than a raw `rustc` flag.
 //! `nightly-2026-07-31` and later pins use `[unstable] embed-metadata = false`;
 //! the older `no-embed-metadata` key must not come back with them.
 //!

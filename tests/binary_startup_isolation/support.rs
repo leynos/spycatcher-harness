@@ -5,17 +5,17 @@
 //! directory nor the network. Keeping them in a submodule leaves the test file
 //! focused on the cases it specifies.
 
-use std::net::{SocketAddr, TcpListener};
-use std::process::{Command, Output};
+use std::{
+    net::{SocketAddr, TcpListener},
+    process::{Command, Output},
+};
 
-use cap_std::ambient_authority;
-use cap_std::fs::Dir;
 #[cfg(unix)]
 use cap_std::fs::PermissionsExt;
+use cap_std::{ambient_authority, fs::Dir};
 use eyre::{Result, WrapErr as _, ensure};
-use tempfile::TempDir;
-
 use spycatcher_harness::cli::localizer::DISABLE_LOCALIZATION_ENV;
+use tempfile::TempDir;
 
 use super::coverage_profile;
 
@@ -91,9 +91,7 @@ fn remove_read_permissions(directory: &Dir) -> Result<()> {
 
 /// Leaves permissions untouched on platforms without POSIX mode bits.
 #[cfg(not(unix))]
-fn remove_read_permissions(_directory: &Dir) -> Result<()> {
-    Ok(())
-}
+fn remove_read_permissions(_directory: &Dir) -> Result<()> { Ok(()) }
 
 /// Writes the XDG candidate that must never be reached past a failed primary.
 fn write_valid_xdg_candidate(directory: &Dir) -> Result<()> {

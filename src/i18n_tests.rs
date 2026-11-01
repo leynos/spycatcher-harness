@@ -1,9 +1,9 @@
 //! Unit tests for library-owned Fluent resources and injected rendering.
 
-use super::*;
-use i18n_embed::fluent::FluentLanguageLoader;
-use i18n_embed::unic_langid::LanguageIdentifier;
+use i18n_embed::{fluent::FluentLanguageLoader, unic_langid::LanguageIdentifier};
 use rstest::{fixture, rstest};
+
+use super::*;
 
 type SnapshotAssertion = fn(&str);
 

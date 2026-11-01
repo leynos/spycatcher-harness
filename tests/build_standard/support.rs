@@ -14,9 +14,8 @@ pub mod flags;
 #[path = "shell.rs"]
 mod shell;
 
-use shell::Line;
-
 pub use flags::{Flags, LINUX_SELECTOR, LINUX_TABLES, MOLD_FLAG, Read, THREADS_FLAG, sources};
+use shell::Line;
 
 /// A host the Makefile can be read as, through its `BUILD_HOST_OS` override,
 /// optionally building for another target through `CARGO_BUILD_TARGET`.
@@ -150,8 +149,8 @@ pub fn dry_run_with(
 /// Returns the `RUSTFLAGS` one command assigns, or `None` when it assigns none.
 ///
 /// The last assignment wins, as in the shell, so a later empty one cannot be
-/// hidden by an earlier non-empty one. Only a leading assignment counts: `RUSTFLAGS` after the command word is an
-/// argument. A single-quoted value is taken literally, any other is expanded
+/// hidden by an earlier non-empty one. Only a leading assignment counts: `RUSTFLAGS` after the
+/// command word is an argument. A single-quoted value is taken literally, any other is expanded
 /// by the modelled forms.
 ///
 /// # Errors

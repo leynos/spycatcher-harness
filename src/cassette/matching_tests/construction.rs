@@ -3,12 +3,19 @@
 use rstest::rstest;
 use serde_json::json;
 
-use crate::HarnessError;
-use crate::cassette::{
-    Cassette, Interaction, InteractionMetadata, RecordedRequest, RecordedResponse,
-    ReplayMatchEngine, StreamCanonicalPolicy,
+use crate::{
+    HarnessError,
+    cassette::{
+        Cassette,
+        Interaction,
+        InteractionMetadata,
+        RecordedRequest,
+        RecordedResponse,
+        ReplayMatchEngine,
+        StreamCanonicalPolicy,
+    },
+    config::MatchMode,
 };
-use crate::config::MatchMode;
 
 /// Builds a minimal interaction with an optional `stable_hash`.
 fn interaction_with_hash(stable_hash: Option<&str>) -> Interaction {

@@ -2,7 +2,11 @@
 
 use serde_json::{Value, json};
 use spycatcher_harness::cassette::{
-    Cassette, Interaction, InteractionMetadata, RecordedRequest, RecordedResponse,
+    Cassette,
+    Interaction,
+    InteractionMetadata,
+    RecordedRequest,
+    RecordedResponse,
 };
 
 pub(super) struct InteractionSpec<'a> {

@@ -26,17 +26,13 @@ fn successful_non_stream_proxying_records_one_interaction(proxy_world: ProxyWorl
     path = "tests/features/record_mode_proxying.feature",
     name = "Redacted headers are not persisted"
 )]
-fn redacted_headers_are_not_persisted(proxy_world: ProxyWorld) {
-    let _ = proxy_world;
-}
+fn redacted_headers_are_not_persisted(proxy_world: ProxyWorld) { let _ = proxy_world; }
 
 #[scenario(
     path = "tests/features/record_mode_proxying.feature",
     name = "Authorization is redacted by default"
 )]
-fn authorization_is_redacted_by_default(proxy_world: ProxyWorld) {
-    let _ = proxy_world;
-}
+fn authorization_is_redacted_by_default(proxy_world: ProxyWorld) { let _ = proxy_world; }
 
 #[scenario(
     path = "tests/features/record_mode_proxying.feature",

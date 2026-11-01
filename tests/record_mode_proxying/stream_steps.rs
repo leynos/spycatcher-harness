@@ -5,11 +5,16 @@ use std::error::Error;
 use rstest_bdd_macros::{given, then, when};
 use spycatcher_harness::cassette::{RecordedResponse, StreamEvent};
 
-use crate::record_mode_proxying::helpers::StubUpstream;
-use crate::record_mode_proxying::steps::{
-    STREAMING_REQUEST, cassette_from_world, first_upstream_request, send_request_to_harness,
+use crate::record_mode_proxying::{
+    helpers::StubUpstream,
+    steps::{
+        STREAMING_REQUEST,
+        cassette_from_world,
+        first_upstream_request,
+        send_request_to_harness,
+    },
+    world::ProxyWorld,
 };
-use crate::record_mode_proxying::world::ProxyWorld;
 
 #[given("a stub upstream that returns an OpenAI-style SSE stream")]
 fn a_stub_upstream_that_returns_an_openai_style_sse_stream(

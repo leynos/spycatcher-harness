@@ -125,9 +125,7 @@ fn field_value<'a>(line: &'a str, expected_field: &str) -> Option<&'a str> {
 ///
 /// For example, `strip_optional_space(" value")` returns `"value"`, while
 /// `strip_optional_space("  value")` returns `" value"`, retaining the second space.
-fn strip_optional_space(value: &str) -> &str {
-    value.strip_prefix(' ').unwrap_or(value)
-}
+fn strip_optional_space(value: &str) -> &str { value.strip_prefix(' ').unwrap_or(value) }
 
 /// Locates a complete line and its terminator, deferring a trailing CR.
 ///

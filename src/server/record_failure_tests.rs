@@ -1,25 +1,28 @@
 //! Failure-policy tests for record-mode orchestration.
 
-use super::record_tests_helpers::{cassette_fixture, load_cassette};
-use super::*;
+use std::sync::atomic::AtomicU64;
+
 use eyre::WrapErr;
 use futures_util::StreamExt;
 use rstest::rstest;
-use std::sync::atomic::AtomicU64;
 
-use crate::cassette::{InteractionMetadata, filesystem::FilesystemCassetteStore};
-use crate::http_exchange::{ObservedResponse, parse_json_bytes};
-use crate::protocol::CHAT_COMPLETIONS_PATH;
-use crate::server::record_metadata::MetadataFactory;
-use crate::upstream::StreamingObservedResponse;
+use super::{
+    record_tests_helpers::{cassette_fixture, load_cassette},
+    *,
+};
+use crate::{
+    cassette::{InteractionMetadata, filesystem::FilesystemCassetteStore},
+    http_exchange::{ObservedResponse, parse_json_bytes},
+    protocol::CHAT_COMPLETIONS_PATH,
+    server::record_metadata::MetadataFactory,
+    upstream::StreamingObservedResponse,
+};
 
 #[derive(Debug, Clone)]
 struct FakeEnvProvider(Option<String>);
 
 impl EnvProvider for FakeEnvProvider {
-    fn read(&self, _: &str) -> Option<String> {
-        self.0.clone()
-    }
+    fn read(&self, _: &str) -> Option<String> { self.0.clone() }
 }
 
 #[derive(Debug, Clone)]
@@ -196,7 +199,8 @@ async fn stream_parse_failure_still_returns_upstream_chunks_without_recording(
     let actual_failure_count = failure_count.load(Ordering::Relaxed);
     eyre::ensure!(
         actual_failure_count == 1,
-        "stream parsing failure should increment the failure count once; got {actual_failure_count}"
+        "stream parsing failure should increment the failure count once; got \
+         {actual_failure_count}"
     );
     let persisted = load_cassette(&cassette.path)?;
     eyre::ensure!(

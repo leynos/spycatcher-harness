@@ -4,22 +4,36 @@
 //! delegates to the record service, while `build_proxy_response` assembles
 //! the downstream HTTP response from a [`ProxyResponse`].
 
-use axum::body::Bytes;
-use axum::extract::{OriginalUri, State};
-use axum::http::{
-    HeaderMap, HeaderName, HeaderValue, Method, Response, StatusCode, Uri, header::CONTENT_TYPE,
+use axum::{
+    body::Bytes,
+    extract::{OriginalUri, State},
+    http::{
+        HeaderMap,
+        HeaderName,
+        HeaderValue,
+        Method,
+        Response,
+        StatusCode,
+        Uri,
+        header::CONTENT_TYPE,
+    },
 };
 use log::warn;
 use serde_json::json;
 use tracing::{debug, info};
 
-use crate::http_exchange::{
-    ObservedRequest, ProxyBody, ProxyResponse, parse_json_bytes, selected_forward_headers,
-    selected_request_headers,
-};
-use crate::protocol::CHAT_COMPLETIONS_PATH;
-
 use super::record::{RecordAppState, RecordError};
+use crate::{
+    http_exchange::{
+        ObservedRequest,
+        ProxyBody,
+        ProxyResponse,
+        parse_json_bytes,
+        selected_forward_headers,
+        selected_request_headers,
+    },
+    protocol::CHAT_COMPLETIONS_PATH,
+};
 
 /// Axum route handler for record-mode chat completions proxying.
 pub(crate) async fn record_chat_completions_handler(

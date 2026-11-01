@@ -4,16 +4,14 @@
 //! server and upstream adapters agree on what gets forwarded, returned, and
 //! persisted.
 
-use std::collections::HashSet;
-use std::fmt;
+use std::{collections::HashSet, fmt};
 
 use axum::http::HeaderMap;
 use futures_util::stream::BoxStream;
 use percent_encoding::{NON_ALPHANUMERIC, percent_encode};
 use serde_json::Value;
 
-use crate::HarnessResult;
-use crate::config::RedactionConfig;
+use crate::{HarnessResult, config::RedactionConfig};
 
 /// Connection-specific headers excluded from forwarding and cassette capture.
 /// Headers additionally named by `Connection` are excluded dynamically.
@@ -117,9 +115,7 @@ impl fmt::Debug for ProxyBody {
 
 /// Parses bytes as JSON, returning `None` when parsing fails.
 #[must_use]
-pub(crate) fn parse_json_bytes(bytes: &[u8]) -> Option<Value> {
-    serde_json::from_slice(bytes).ok()
-}
+pub(crate) fn parse_json_bytes(bytes: &[u8]) -> Option<Value> { serde_json::from_slice(bytes).ok() }
 
 /// Selects request headers that are meaningful for proxying and persistence.
 #[must_use]

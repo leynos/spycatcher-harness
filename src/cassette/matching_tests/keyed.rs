@@ -4,14 +4,25 @@ use rstest::rstest;
 use serde_json::json;
 
 use super::fixtures::{
-    assert_matched_response_eq, consume_all, duplicate_hash_cassette, expect_matched,
-    expect_mismatch_diagnostic, extract_response_id, sample_cassette,
+    assert_matched_response_eq,
+    consume_all,
+    duplicate_hash_cassette,
+    expect_matched,
+    expect_mismatch_diagnostic,
+    extract_response_id,
+    sample_cassette,
 };
-use crate::cassette::{
-    Cassette, DIAGNOSTIC_CONSUMED, DIAGNOSTIC_NO_MATCH, InteractionPosition, MatchOutcome,
-    ReplayMatchEngine,
+use crate::{
+    cassette::{
+        Cassette,
+        DIAGNOSTIC_CONSUMED,
+        DIAGNOSTIC_NO_MATCH,
+        InteractionPosition,
+        MatchOutcome,
+        ReplayMatchEngine,
+    },
+    config::MatchMode,
 };
-use crate::config::MatchMode;
 
 #[rstest]
 fn keyed_mode_three_correct_requests_in_order_match(sample_cassette: Cassette) {

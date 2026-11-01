@@ -44,8 +44,7 @@ const IO: &str = "harness-error-io";
 /// use i18n_embed::fluent::FluentLanguageLoader;
 /// use spycatcher_harness::i18n::HarnessLocalizations;
 ///
-/// let fallback = "en-US"
-///     .parse::<i18n_embed::unic_langid::LanguageIdentifier>()?;
+/// let fallback = "en-US".parse::<i18n_embed::unic_langid::LanguageIdentifier>()?;
 /// let loader = FluentLanguageLoader::new("spycatcher-harness", fallback.clone());
 /// i18n_embed::select(&loader, &HarnessLocalizations, &[fallback])?;
 /// # Ok::<(), Box<dyn std::error::Error>>(())
@@ -78,11 +77,12 @@ pub struct HarnessLocalizations;
 ///
 /// ```rust
 /// use i18n_embed::fluent::FluentLanguageLoader;
-/// use spycatcher_harness::i18n::{localize_harness_error, HarnessLocalizations};
-/// use spycatcher_harness::HarnessError;
+/// use spycatcher_harness::{
+///     HarnessError,
+///     i18n::{HarnessLocalizations, localize_harness_error},
+/// };
 ///
-/// let fallback = "en-US"
-///     .parse::<i18n_embed::unic_langid::LanguageIdentifier>()?;
+/// let fallback = "en-US".parse::<i18n_embed::unic_langid::LanguageIdentifier>()?;
 /// let loader = FluentLanguageLoader::new("spycatcher-harness", fallback.clone());
 /// i18n_embed::select(&loader, &HarnessLocalizations, &[fallback])?;
 ///
@@ -91,7 +91,10 @@ pub struct HarnessLocalizations;
 /// };
 /// let rendered = localize_harness_error(&loader, &error);
 ///
-/// assert_eq!(rendered, "invalid configuration: \u{2068}missing upstream\u{2069}");
+/// assert_eq!(
+///     rendered,
+///     "invalid configuration: \u{2068}missing upstream\u{2069}"
+/// );
 /// # Ok::<(), Box<dyn std::error::Error>>(())
 /// ```
 #[must_use]

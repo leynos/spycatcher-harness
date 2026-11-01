@@ -147,9 +147,7 @@ pub(crate) fn record_stream_delivery(
 /// For example, `bounded_event_count(42)` returns `42`. On 32- and 64-bit targets,
 /// `bounded_event_count(usize::MAX)` returns `u32::MAX`: an exactly representable
 /// maximum is retained, and a larger count is capped.
-fn bounded_event_count(event_count: usize) -> u32 {
-    u32::try_from(event_count).unwrap_or(u32::MAX)
-}
+fn bounded_event_count(event_count: usize) -> u32 { u32::try_from(event_count).unwrap_or(u32::MAX) }
 
 #[cfg(test)]
 mod tests {

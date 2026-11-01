@@ -13,8 +13,7 @@ use i18n_embed::unic_langid::langid;
 use ortho_config::localize_clap_error_with_command;
 use proptest::prelude::*;
 use rstest::rstest;
-use spycatcher_harness::cli::localization::LocalizeCmd;
-use spycatcher_harness::cli::localizer::build_cli_localizer;
+use spycatcher_harness::cli::{localization::LocalizeCmd, localizer::build_cli_localizer};
 
 /// Keep a raw command name paired with its raw option name before normalization.
 ///
@@ -35,17 +34,13 @@ struct CommandSpec {
     subcommands: Vec<Self>,
 }
 
-fn identifier() -> impl Strategy<Value = String> {
-    "[a-z][a-z0-9-]{1,8}".prop_map(String::from)
-}
+fn identifier() -> impl Strategy<Value = String> { "[a-z][a-z0-9-]{1,8}".prop_map(String::from) }
 
 /// Keep arbitrary raw identifiers outside the fixture's recognized long options.
 ///
 /// A raw `help` becomes `unknown-help`, preserving its text while avoiding both
 /// the built-in `--help` action and the fixture's `--known` option.
-fn unknown_argument_name(raw: &str) -> String {
-    format!("unknown-{raw}")
-}
+fn unknown_argument_name(raw: &str) -> String { format!("unknown-{raw}") }
 
 /// Localize genuinely unknown options even when their raw names are reserved.
 #[rstest]

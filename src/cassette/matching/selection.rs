@@ -2,12 +2,16 @@
 
 use serde_json::Value;
 
-use crate::cassette::diff::canonical_diff_summary;
-
 use super::{
-    DIAGNOSTIC_CONSUMED, DIAGNOSTIC_EXHAUSTED, DIAGNOSTIC_NO_MATCH, InteractionPosition,
-    MatchOutcome, MismatchDiagnostic, ReplayMatchEngine,
+    DIAGNOSTIC_CONSUMED,
+    DIAGNOSTIC_EXHAUSTED,
+    DIAGNOSTIC_NO_MATCH,
+    InteractionPosition,
+    MatchOutcome,
+    MismatchDiagnostic,
+    ReplayMatchEngine,
 };
+use crate::cassette::diff::canonical_diff_summary;
 
 impl ReplayMatchEngine {
     /// Selects the next sequential interaction or diagnoses a miss or exhaustion.
@@ -60,7 +64,8 @@ impl ReplayMatchEngine {
                 expected_hash: String::new(),
                 observed_hash: observed_hash.to_owned(),
                 diff_summary: format!(
-                    "{DIAGNOSTIC_NO_MATCH}: no interaction with hash {observed_hash} found in cassette"
+                    "{DIAGNOSTIC_NO_MATCH}: no interaction with hash {observed_hash} found in \
+                     cassette"
                 ),
             });
         };
@@ -81,7 +86,8 @@ impl ReplayMatchEngine {
             expected_hash: String::new(),
             observed_hash: observed_hash.to_owned(),
             diff_summary: format!(
-                "{DIAGNOSTIC_CONSUMED}: all interactions with hash {observed_hash} have already been consumed; cassette contains {} interaction(s) with this hash",
+                "{DIAGNOSTIC_CONSUMED}: all interactions with hash {observed_hash} have already \
+                 been consumed; cassette contains {} interaction(s) with this hash",
                 indices.len()
             ),
         })

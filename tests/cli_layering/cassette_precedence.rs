@@ -5,11 +5,12 @@
 //! other subcommands.
 
 use rstest::rstest;
-
 use spycatcher_harness::config;
 
-use super::cases::{CassetteNameCase, Subcommand};
-use super::support::{REPLAY_FILE_CONFIG, load_with_sources};
+use super::{
+    cases::{CassetteNameCase, Subcommand},
+    support::{REPLAY_FILE_CONFIG, load_with_sources},
+};
 
 /// Pins CLI over environment over file over default for cassette names.
 #[rstest]

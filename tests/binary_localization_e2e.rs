@@ -13,12 +13,13 @@ mod support;
 
 use eyre::WrapErr as _;
 use rstest::rstest;
-
 use spycatcher_harness::cli::localizer::DISABLE_LOCALIZATION_ENV;
-
 use support::{
-    assert_default_locale_fallback_help, assert_falsy_diagnostic_help,
-    assert_primary_locale_fallback_help, assert_truthy_diagnostic_help, diagnostic_help,
+    assert_default_locale_fallback_help,
+    assert_falsy_diagnostic_help,
+    assert_primary_locale_fallback_help,
+    assert_truthy_diagnostic_help,
+    diagnostic_help,
 };
 
 /// Executes the binary with an empty child environment.

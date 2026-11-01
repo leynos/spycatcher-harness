@@ -49,14 +49,10 @@ impl Flags {
 
     /// Returns whether the list is exactly `caller`'s flags, in order and with
     /// nothing added.
-    pub fn equals(&self, caller: &Self) -> bool {
-        self.0 == caller.0
-    }
+    pub fn equals(&self, caller: &Self) -> bool { self.0 == caller.0 }
 
     /// Returns whether the list names one flag.
-    pub fn names(&self, flag: &str) -> bool {
-        self.0.iter().any(|candidate| candidate == flag)
-    }
+    pub fn names(&self, flag: &str) -> bool { self.0.iter().any(|candidate| candidate == flag) }
 
     /// Returns whether the list holds `caller`'s flags as one unbroken run.
     pub fn carries(&self, caller: &Self) -> bool {
@@ -173,9 +169,7 @@ pub fn read(path: &Path) -> Read<String> {
 /// # Errors
 ///
 /// A read or parse failure names the file.
-pub fn config() -> Read<toml::Value> {
-    ConfigText(&read(Path::new(CONFIG))?).parse()
-}
+pub fn config() -> Read<toml::Value> { ConfigText(&read(Path::new(CONFIG))?).parse() }
 
 /// Returns every `rustflags` source in the configuration, by table name.
 pub fn sources() -> Read<Vec<(String, Flags)>> {

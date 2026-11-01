@@ -98,7 +98,10 @@ pub fn build_cli_localizer_from_resources(
 /// use spycatcher_harness::cli::localizer::parse_early_locale;
 ///
 /// assert_eq!(parse_early_locale(Some("en-GB")).to_string(), "en-GB");
-/// assert_eq!(parse_early_locale(Some("not_a_locale")).to_string(), "en-US");
+/// assert_eq!(
+///     parse_early_locale(Some("not_a_locale")).to_string(),
+///     "en-US"
+/// );
 /// ```
 #[must_use]
 pub fn parse_early_locale(candidate: Option<&str>) -> LanguageIdentifier {

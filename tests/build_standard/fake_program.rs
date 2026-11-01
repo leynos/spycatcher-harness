@@ -1,7 +1,9 @@
 //! Isolated executable fixtures whose writable descriptors stay out of the test process.
 
-use std::io;
-use std::process::{Command, Output};
+use std::{
+    io,
+    process::{Command, Output},
+};
 
 use camino::{Utf8Path, Utf8PathBuf};
 
@@ -15,9 +17,7 @@ pub(super) struct FakeProgram {
 
 impl FakeProgram {
     /// Returns the executable path; a fixture can pass `path()` to `Command::new`.
-    pub(super) fn path(&self) -> &Utf8Path {
-        &self.path
-    }
+    pub(super) fn path(&self) -> &Utf8Path { &self.path }
 }
 
 /// Creates an isolated executable without opening it for writing in this process.

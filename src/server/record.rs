@@ -4,29 +4,41 @@
 //! adapter-neutral exchange types defined here, delegating proxying and
 //! cassette assembly to small testable helpers.
 
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, Mutex};
-use std::time::Instant;
+use std::{
+    sync::{
+        Arc,
+        Mutex,
+        atomic::{AtomicU64, Ordering},
+    },
+    time::Instant,
+};
 
 use log::{error, info, warn};
 use tokio::task::spawn_blocking;
 
-use crate::cassette::{
-    CassetteAppender, IgnorePathConfig, Interaction, RecordedRequest, RecordedResponse,
-    filesystem::FilesystemCassetteStore,
-};
-use crate::config::{RedactionConfig, UpstreamConfig};
-use crate::http_exchange::{ObservedRequest, ProxyBody, ProxyResponse, redact_headers};
-use crate::protocol::{
-    CHAT_COMPLETIONS_PROTOCOL_ID, is_streaming_chat_completions_request, upstream_id,
-};
-use crate::server::record_metadata::{MetadataFactory, SessionMetadata};
-use crate::upstream::{
-    ChatCompletionsRequest, ChatCompletionsUpstream, EnvProvider, ProcessEnvProvider,
-    ReqwestUpstreamClient,
-};
 #[cfg(test)]
 use crate::{HarnessError, HarnessResult};
+use crate::{
+    cassette::{
+        CassetteAppender,
+        IgnorePathConfig,
+        Interaction,
+        RecordedRequest,
+        RecordedResponse,
+        filesystem::FilesystemCassetteStore,
+    },
+    config::{RedactionConfig, UpstreamConfig},
+    http_exchange::{ObservedRequest, ProxyBody, ProxyResponse, redact_headers},
+    protocol::{CHAT_COMPLETIONS_PROTOCOL_ID, is_streaming_chat_completions_request, upstream_id},
+    server::record_metadata::{MetadataFactory, SessionMetadata},
+    upstream::{
+        ChatCompletionsRequest,
+        ChatCompletionsUpstream,
+        EnvProvider,
+        ProcessEnvProvider,
+        ReqwestUpstreamClient,
+    },
+};
 
 /// Shared, lock-protected cassette store used by cloned record services.
 type SharedCassetteStore = Arc<Mutex<FilesystemCassetteStore>>;

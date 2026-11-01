@@ -6,9 +6,7 @@
 //! subcommand namespace (`cmds.record`, `cmds.replay`, `cmds.verify`).
 
 use clap::{CommandFactory, Parser, Subcommand};
-use ortho_config::load_and_merge_subcommand;
-use ortho_config::subcommand::Prefix;
-use ortho_config::{Localizer, NoOpLocalizer};
+use ortho_config::{Localizer, NoOpLocalizer, load_and_merge_subcommand, subcommand::Prefix};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
@@ -31,7 +29,6 @@ use cli_args::{LocalizationArgs, RecordUpstreamArgs};
 use cli_help::CLI_MERGE_HELP;
 use config_build::{to_record_config, to_replay_config, to_verify_config};
 use localize_cmd::try_parse_localized_from_iter;
-
 pub use source_loader::load_subcommand_config_from_iter_with_sources;
 
 /// Errors returned while loading merged command configuration.

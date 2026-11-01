@@ -2,15 +2,24 @@
 
 use rstest_bdd_macros::{given, then, when};
 use serde_json::json;
-use spycatcher_harness::cassette::{DIAGNOSTIC_EXHAUSTED, InteractionPosition, MatchOutcome};
-use spycatcher_harness::config::MatchMode;
-
-use super::fixtures::{InteractionSpec, build_cassette};
-use super::helpers::{
-    assert_slot_string_eq, check_matched_count, check_mode_order, check_response_set,
-    extract_response_id, initialize_engine, run_requests,
+use spycatcher_harness::{
+    cassette::{DIAGNOSTIC_EXHAUSTED, InteractionPosition, MatchOutcome},
+    config::MatchMode,
 };
-use super::world::MatchingWorld;
+
+use super::{
+    fixtures::{InteractionSpec, build_cassette},
+    helpers::{
+        assert_slot_string_eq,
+        check_matched_count,
+        check_mode_order,
+        check_response_set,
+        extract_response_id,
+        initialize_engine,
+        run_requests,
+    },
+    world::MatchingWorld,
+};
 
 #[given("a cassette with three recorded interactions")]
 #[expect(

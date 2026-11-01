@@ -49,9 +49,7 @@ fn write_json_object(output: &mut String, object: &serde_json::Map<String, Value
 }
 
 /// Appends `serde_json`'s numeric representation; `1.25` remains `1.25`.
-fn write_json_number(output: &mut String, number: &Number) {
-    output.push_str(&number.to_string());
-}
+fn write_json_number(output: &mut String, number: &Number) { output.push_str(&number.to_string()); }
 
 /// Quotes and escapes a JSON string; a newline is written as `\n`.
 fn write_json_string(output: &mut String, text: &str) {

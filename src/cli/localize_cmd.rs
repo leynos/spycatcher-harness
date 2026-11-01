@@ -7,7 +7,10 @@
 
 use clap::{Command, CommandFactory, Parser};
 use ortho_config::{
-    LanguageIdentifier, LocalizationArgs, LocalizeCmd as OrthoLocalizeCmd, Localizer,
+    LanguageIdentifier,
+    LocalizationArgs,
+    LocalizeCmd as OrthoLocalizeCmd,
+    Localizer,
     parse_localized_command,
 };
 
@@ -26,7 +29,10 @@ const ROOT_COMMAND_ID: &str = "cli";
 /// let command = Command::new("demo").about("Stock copy");
 /// let localized = command.localize(&NoOpLocalizer::new());
 ///
-/// assert_eq!(localized.get_about().map(ToString::to_string), Some("Stock copy".into()));
+/// assert_eq!(
+///     localized.get_about().map(ToString::to_string),
+///     Some("Stock copy".into())
+/// );
 /// ```
 pub trait LocalizeCmd {
     /// Returns `self` with localized copy applied where lookups exist.
@@ -64,7 +70,12 @@ impl LocalizeCmd for Command {
 ///     ["example", "--name", "case"],
 ///     &NoOpLocalizer::new(),
 /// )?;
-/// assert_eq!(parsed, Example { name: "case".into() });
+/// assert_eq!(
+///     parsed,
+///     Example {
+///         name: "case".into()
+///     }
+/// );
 /// # Ok::<(), clap::Error>(())
 /// ```
 ///
@@ -145,7 +156,5 @@ impl Localizer for CommandCopyLocalizer<'_> {
         self.localizer.lookup(id, Some(&compatible_args))
     }
 
-    fn locale(&self) -> Option<&LanguageIdentifier> {
-        self.localizer.locale()
-    }
+    fn locale(&self) -> Option<&LanguageIdentifier> { self.localizer.locale() }
 }

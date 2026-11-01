@@ -8,11 +8,15 @@ use rstest_bdd_macros::{given, then};
 use spycatcher_harness::cassette::{RecordedResponse, StreamEvent};
 
 use super::{
-    comment, data, make_replay_config, replay_response, stream_shaped_non_stream_cassette,
-    unique_cassette_path, write_cassette,
+    comment,
+    data,
+    make_replay_config,
+    replay_response,
+    stream_shaped_non_stream_cassette,
+    unique_cassette_path,
+    write_cassette,
 };
-use crate::chat_completions_replay::world::ReplayWorld;
-use crate::record_helpers::ClientResponse;
+use crate::{chat_completions_replay::world::ReplayWorld, record_helpers::ClientResponse};
 
 /// Constructs four recorded events and an independent expected wire transcript.
 /// For example, two frames fit below 64 KiB, the third crosses it, and the final

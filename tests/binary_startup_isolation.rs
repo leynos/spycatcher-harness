@@ -15,9 +15,15 @@ mod coverage_profile;
 mod support;
 
 use support::{
-    RecordStartupResources, StartupFailureScenario, assert_parse_failure_has_no_side_effects,
-    assert_record_startup_failure, assert_startup_failure, primary_candidate_remains_readable,
-    run_record_parse_failure, run_record_startup, write_startup_config_candidates,
+    RecordStartupResources,
+    StartupFailureScenario,
+    assert_parse_failure_has_no_side_effects,
+    assert_record_startup_failure,
+    assert_startup_failure,
+    primary_candidate_remains_readable,
+    run_record_parse_failure,
+    run_record_startup,
+    write_startup_config_candidates,
 };
 
 /// Proves parse failures report on stderr and leave stdout empty.

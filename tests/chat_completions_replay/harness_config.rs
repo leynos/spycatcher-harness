@@ -3,13 +3,13 @@
 //! Keep cassette-path decomposition and mode-specific defaults together so both
 //! step modules construct the same record and replay configurations.
 
-use std::error::Error;
-use std::net::SocketAddr;
+use std::{error::Error, net::SocketAddr};
 
+use spycatcher_harness::{
+    HarnessConfig,
+    config::{ListenAddr, Mode, UpstreamConfig, UpstreamKind},
+};
 use url::Url;
-
-use spycatcher_harness::HarnessConfig;
-use spycatcher_harness::config::{ListenAddr, Mode, UpstreamConfig, UpstreamKind};
 
 /// Builds a record-mode configuration using the supplied cassette and upstream.
 /// For example, `make_record_config(&"cassettes/demo.json".into(), upstream)`
@@ -105,8 +105,10 @@ mod tests {
         let (directory, name) = split_cassette_path(&path.into())?;
         if (directory.as_str(), name.as_str()) != (expected_directory, "demo.json") {
             return Err(format!(
-                "cassette path: expected ({expected_directory:?}, \"demo.json\"), got ({directory:?}, {name:?})"
-            ).into());
+                "cassette path: expected ({expected_directory:?}, \"demo.json\"), got \
+                 ({directory:?}, {name:?})"
+            )
+            .into());
         }
         Ok(())
     }

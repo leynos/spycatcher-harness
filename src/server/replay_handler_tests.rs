@@ -2,12 +2,13 @@
 
 use axum::http::{HeaderValue, Response, StatusCode, header::CONTENT_TYPE};
 
-use crate::cassette::{InteractionPosition, MismatchDiagnostic};
-use crate::protocol::{CHAT_COMPLETIONS_PATH, CHAT_COMPLETIONS_PROTOCOL_ID};
-use crate::replay::{ReplayBody, ReplayError, ReplayResponse};
-use crate::replay_observability::ReplayMetricLabels;
-
 use super::{build_replay_error_response, build_replay_response};
+use crate::{
+    cassette::{InteractionPosition, MismatchDiagnostic},
+    protocol::{CHAT_COMPLETIONS_PATH, CHAT_COMPLETIONS_PROTOCOL_ID},
+    replay::{ReplayBody, ReplayError, ReplayResponse},
+    replay_observability::ReplayMetricLabels,
+};
 
 type TestResult = Result<(), Box<dyn std::error::Error>>;
 

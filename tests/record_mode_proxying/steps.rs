@@ -1,21 +1,29 @@
 //! Step definitions for record-mode proxying scenarios.
 
-use std::error::Error;
-use std::net::SocketAddr;
-use std::sync::Arc;
+use std::{error::Error, net::SocketAddr, sync::Arc};
 
 use rstest_bdd_macros::{given, then, when};
+use spycatcher_harness::{
+    HarnessConfig,
+    config::{ListenAddr, Mode, RedactionConfig, UpstreamConfig, UpstreamKind},
+    start_harness,
+};
 use url::Url;
 
-use spycatcher_harness::config::{ListenAddr, Mode, RedactionConfig, UpstreamConfig, UpstreamKind};
-use spycatcher_harness::{HarnessConfig, start_harness};
-
-use crate::record_mode_proxying::helpers::{
-    CapturedRequest, StubUpstream, assert_cassette_matches_success_snapshot,
-    assert_upstream_bearer_token, load_cassette, present_env_name, sample_success_body,
-    send_request, unique_cassette_path,
+use crate::record_mode_proxying::{
+    helpers::{
+        CapturedRequest,
+        StubUpstream,
+        assert_cassette_matches_success_snapshot,
+        assert_upstream_bearer_token,
+        load_cassette,
+        present_env_name,
+        sample_success_body,
+        send_request,
+        unique_cassette_path,
+    },
+    world::ProxyWorld,
 };
-use crate::record_mode_proxying::world::ProxyWorld;
 
 const NON_STREAM_REQUEST: &[u8] =
     br#"{"model":"gpt-test","messages":[{"role":"user","content":"hi"}]}"#;

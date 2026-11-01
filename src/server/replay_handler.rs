@@ -4,24 +4,35 @@
 //! data and renders replay outcomes without exposing Axum types to cassette
 //! matching or replay policy.
 
-use axum::body::Bytes;
-use axum::extract::{OriginalUri, State};
-use axum::http::{
-    HeaderMap, HeaderName, HeaderValue, Method, Response, StatusCode, Uri, header::CONTENT_TYPE,
+use axum::{
+    body::Bytes,
+    extract::{OriginalUri, State},
+    http::{
+        HeaderMap,
+        HeaderName,
+        HeaderValue,
+        Method,
+        Response,
+        StatusCode,
+        Uri,
+        header::CONTENT_TYPE,
+    },
 };
 use serde_json::json;
 use tracing::{debug, info, info_span, warn};
 
-use crate::cassette::{InteractionPosition, MismatchDiagnostic};
-use crate::http_exchange::{ObservedRequest, parse_json_bytes, selected_request_headers};
-use crate::protocol::{
-    CHAT_COMPLETIONS_PATH, CHAT_COMPLETIONS_PROTOCOL_ID, is_streaming_chat_completions_request,
+use super::{replay::ReplayAppState, replay_stream::build_stream_body};
+use crate::{
+    cassette::{InteractionPosition, MismatchDiagnostic},
+    http_exchange::{ObservedRequest, parse_json_bytes, selected_request_headers},
+    protocol::{
+        CHAT_COMPLETIONS_PATH,
+        CHAT_COMPLETIONS_PROTOCOL_ID,
+        is_streaming_chat_completions_request,
+    },
+    replay::{ReplayBody, ReplayError, ReplayResponse},
+    replay_observability::MODE_REPLAY,
 };
-use crate::replay::{ReplayBody, ReplayError, ReplayResponse};
-use crate::replay_observability::MODE_REPLAY;
-
-use super::replay::ReplayAppState;
-use super::replay_stream::build_stream_body;
 
 /// Axum route handler for replay-mode chat completions playback.
 pub(crate) async fn replay_chat_completions_handler(

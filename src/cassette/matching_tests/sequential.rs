@@ -4,23 +4,27 @@ use rstest::rstest;
 use serde_json::json;
 
 use super::fixtures::{
-    assert_matched, assert_matched_response_eq, assert_mismatch_diagnostic, consume_all,
-    expect_mismatch_diagnostic, nth_response, sample_cassette, sequential_engine,
+    assert_matched,
+    assert_matched_response_eq,
+    assert_mismatch_diagnostic,
+    consume_all,
+    expect_mismatch_diagnostic,
+    nth_response,
+    sample_cassette,
+    sequential_engine,
 };
-use crate::cassette::{Cassette, DIAGNOSTIC_EXHAUSTED, InteractionPosition, ReplayMatchEngine};
-use crate::config::MatchMode;
+use crate::{
+    cassette::{Cassette, DIAGNOSTIC_EXHAUSTED, InteractionPosition, ReplayMatchEngine},
+    config::MatchMode,
+};
 
-fn canonical_a() -> serde_json::Value {
-    json!({"method": "POST", "path": "/v1/chat/completions"})
-}
+fn canonical_a() -> serde_json::Value { json!({"method": "POST", "path": "/v1/chat/completions"}) }
 
 fn canonical_b() -> serde_json::Value {
     json!({"method": "POST", "path": "/v1/chat/completions", "body": {"messages": [{"role": "user"}]}})
 }
 
-fn canonical_c() -> serde_json::Value {
-    json!({"method": "GET", "path": "/v1/models"})
-}
+fn canonical_c() -> serde_json::Value { json!({"method": "GET", "path": "/v1/models"}) }
 
 #[rstest]
 fn sequential_strict_three_correct_requests_match_in_order(sample_cassette: Cassette) {

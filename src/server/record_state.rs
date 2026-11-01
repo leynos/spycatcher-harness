@@ -3,15 +3,17 @@
 //! For example, startup opens the upstream client and initializes empty session
 //! counters here before request orchestration begins in the parent module.
 
-use std::sync::atomic::AtomicU64;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, atomic::AtomicU64};
 
 use super::{RecordAppState, RecordService};
-use crate::cassette::filesystem::FilesystemCassetteStore;
-use crate::config::HarnessConfig;
-use crate::server::record_metadata::SessionMetadata;
-use crate::upstream::{ProcessEnvProvider, ReqwestUpstreamClient};
-use crate::{HarnessError, HarnessResult};
+use crate::{
+    HarnessError,
+    HarnessResult,
+    cassette::filesystem::FilesystemCassetteStore,
+    config::HarnessConfig,
+    server::record_metadata::SessionMetadata,
+    upstream::{ProcessEnvProvider, ReqwestUpstreamClient},
+};
 
 impl RecordAppState {
     /// Builds record-mode state from validated harness configuration.

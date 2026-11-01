@@ -42,7 +42,8 @@ pub enum HarnessError {
 
     /// A replayed request did not match the expected interaction.
     #[error(
-        "request mismatch at interaction {interaction_id}: expected {expected_hash}, observed {observed_hash}"
+        "request mismatch at interaction {interaction_id}: expected {expected_hash}, observed \
+         {observed_hash}"
     )]
     RequestMismatch {
         /// Zero-based index of the expected interaction.
@@ -100,8 +101,9 @@ pub enum HarnessError {
 mod tests {
     //! Unit tests for harness error display formatting.
 
-    use super::*;
     use rstest::rstest;
+
+    use super::*;
 
     #[rstest]
     #[case::invalid_config(

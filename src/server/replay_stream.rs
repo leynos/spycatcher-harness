@@ -7,9 +7,14 @@ use axum::body::{Body, Bytes};
 use futures_util::{StreamExt, stream};
 use tracing::{debug, debug_span};
 
-use crate::cassette::StreamEvent;
-use crate::replay_observability::{
-    MODE_REPLAY, ReplayMetricLabels, StreamDeliveryMode, record_stream_delivery,
+use crate::{
+    cassette::StreamEvent,
+    replay_observability::{
+        MODE_REPLAY,
+        ReplayMetricLabels,
+        StreamDeliveryMode,
+        record_stream_delivery,
+    },
 };
 
 /// Soft size limit for eager stream replay buffers.

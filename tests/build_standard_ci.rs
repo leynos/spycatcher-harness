@@ -54,9 +54,7 @@ const INSTALL_STEP: &str =
     "      - name: Install mold linker\n        run: sudo apt-get install --yes mold\n";
 
 /// The coverage job of a workflow text.
-fn coverage_job(workflow: &str) -> Job<'_> {
-    Job::containing(workflow, "generate-coverage@")
-}
+fn coverage_job(workflow: &str) -> Job<'_> { Job::containing(workflow, "generate-coverage@") }
 
 /// The one validator of the install order: mold is installed, and before every
 /// gate step that may link. It is the check on the real workflow and on every
@@ -145,15 +143,18 @@ fn the_validator_rejects_a_missing_or_late_install(
 #[case::quoted_echo("      - run: echo \"x && sudo apt-get install mold\"\n", false)]
 #[case::description_text("      - description: sudo apt-get install mold\n", false)]
 #[case::input_quoted_true(
-    "      - uses: leynos/shared-actions/.github/actions/setup-rust@abc\n        with:\n          install-mold: 'true'\n",
+    "      - uses: leynos/shared-actions/.github/actions/setup-rust@abc\n        with:\n          \
+     install-mold: 'true'\n",
     true
 )]
 #[case::input_not_exactly_true(
-    "      - uses: leynos/shared-actions/.github/actions/setup-rust@abc\n        with:\n          install-mold: untrue\n",
+    "      - uses: leynos/shared-actions/.github/actions/setup-rust@abc\n        with:\n          \
+     install-mold: untrue\n",
     false
 )]
 #[case::input_in_env_not_with(
-    "      - uses: leynos/shared-actions/.github/actions/setup-rust@abc\n        env:\n          install-mold: true\n",
+    "      - uses: leynos/shared-actions/.github/actions/setup-rust@abc\n        env:\n          \
+     install-mold: true\n",
     false
 )]
 #[case::lookalike_action(
@@ -165,7 +166,8 @@ fn the_validator_rejects_a_missing_or_late_install(
     true
 )]
 #[case::setup_rust_input(
-    "      - uses: leynos/shared-actions/.github/actions/setup-rust@abc\n        with:\n          install-mold: true\n",
+    "      - uses: leynos/shared-actions/.github/actions/setup-rust@abc\n        with:\n          \
+     install-mold: true\n",
     true
 )]
 #[case::unrelated_action_input(
@@ -197,11 +199,13 @@ fn the_install_reader_counts_only_runnable_installs(#[case] step: &str, #[case] 
     "folded scalar"
 )]
 #[case::comment_after_false(
-    "      - uses: leynos/shared-actions/.github/actions/setup-rust@abc\n        with:\n          install-mold: false # true\n",
+    "      - uses: leynos/shared-actions/.github/actions/setup-rust@abc\n        with:\n          \
+     install-mold: false # true\n",
     "trailing comment"
 )]
 #[case::comment_after_true(
-    "      - uses: leynos/shared-actions/.github/actions/setup-rust@abc\n        with:\n          install-mold: true # needed\n",
+    "      - uses: leynos/shared-actions/.github/actions/setup-rust@abc\n        with:\n          \
+     install-mold: true # needed\n",
     "trailing comment"
 )]
 fn the_reader_rejects_a_form_it_does_not_recognise(#[case] step: &str, #[case] error: &str) {

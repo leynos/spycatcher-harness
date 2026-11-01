@@ -13,22 +13,33 @@ pub(crate) mod filesystem;
 pub(crate) mod matching;
 mod stream_canonical;
 
-use std::io::{Read, Write};
-use std::num::ParseIntError;
-use std::str::FromStr;
+use std::{
+    io::{Read, Write},
+    num::ParseIntError,
+    str::FromStr,
+};
 
-use serde::{Deserialize, Serialize};
-use serde_json::Value;
-
-use crate::{HarnessError, HarnessResult};
 pub use canonical::{
-    CanonicalError, CanonicalRequest, IgnorePathConfig, canonicalize, stable_hash,
+    CanonicalError,
+    CanonicalRequest,
+    IgnorePathConfig,
+    canonicalize,
+    stable_hash,
 };
 pub use matching::{
-    DIAGNOSTIC_CONSUMED, DIAGNOSTIC_EXHAUSTED, DIAGNOSTIC_NO_MATCH, InteractionPosition,
-    MatchOutcome, MismatchDiagnostic, ReplayMatchEngine,
+    DIAGNOSTIC_CONSUMED,
+    DIAGNOSTIC_EXHAUSTED,
+    DIAGNOSTIC_NO_MATCH,
+    InteractionPosition,
+    MatchOutcome,
+    MismatchDiagnostic,
+    ReplayMatchEngine,
 };
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
 pub use stream_canonical::{StreamCanonicalPolicy, canonicalize_events};
+
+use crate::{HarnessError, HarnessResult};
 
 /// Schema version used to encode and validate cassette documents.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -41,15 +52,11 @@ impl CassetteFormatVersion {
 
     /// Returns the numeric schema version stored on disk.
     #[must_use]
-    pub const fn as_u32(self) -> u32 {
-        self.0
-    }
+    pub const fn as_u32(self) -> u32 { self.0 }
 
     /// Returns whether this version can be consumed by this build.
     #[must_use]
-    pub const fn is_supported(self) -> bool {
-        self.0 == Self::SUPPORTED.0
-    }
+    pub const fn is_supported(self) -> bool { self.0 == Self::SUPPORTED.0 }
 }
 
 impl std::fmt::Display for CassetteFormatVersion {
@@ -59,23 +66,17 @@ impl std::fmt::Display for CassetteFormatVersion {
 }
 
 impl From<CassetteFormatVersion> for u32 {
-    fn from(value: CassetteFormatVersion) -> Self {
-        value.0
-    }
+    fn from(value: CassetteFormatVersion) -> Self { value.0 }
 }
 
 impl From<u32> for CassetteFormatVersion {
-    fn from(value: u32) -> Self {
-        Self(value)
-    }
+    fn from(value: u32) -> Self { Self(value) }
 }
 
 impl FromStr for CassetteFormatVersion {
     type Err = ParseIntError;
 
-    fn from_str(source: &str) -> Result<Self, Self::Err> {
-        source.parse::<u32>().map(Self)
-    }
+    fn from_str(source: &str) -> Result<Self, Self::Err> { source.parse::<u32>().map(Self) }
 }
 
 /// A single recorded agent session persisted on disk.
@@ -98,9 +99,7 @@ impl Cassette {
     }
 
     /// Appends an interaction without mutating earlier entries.
-    pub fn append(&mut self, interaction: Interaction) {
-        self.interactions.push(interaction);
-    }
+    pub fn append(&mut self, interaction: Interaction) { self.interactions.push(interaction); }
 
     /// Validates that the cassette can be consumed by this build.
     ///
@@ -165,9 +164,7 @@ impl Cassette {
 }
 
 impl Default for Cassette {
-    fn default() -> Self {
-        Self::new()
-    }
+    fn default() -> Self { Self::new() }
 }
 
 /// Domain-owned reader port for loading an existing cassette.

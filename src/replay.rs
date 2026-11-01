@@ -5,18 +5,24 @@
 //! owned replay response for the inbound HTTP adapter to render.
 
 use std::sync::{
-    Arc, Mutex,
+    Arc,
+    Mutex,
     atomic::{AtomicU64, Ordering},
 };
 
 use tracing::{debug, error, info, warn};
 
-use crate::cassette::{MatchOutcome, MismatchDiagnostic, RecordedResponse, ReplayMatchEngine};
-use crate::http_exchange::ObservedRequest;
-use crate::protocol::{CHAT_COMPLETIONS_PATH, is_streaming_chat_completions_request};
-use crate::replay_observability::{
-    ReplayMetricLabels, record_replay_commit_failure, record_replay_mismatch,
-    record_replay_rejection, record_replay_request,
+use crate::{
+    cassette::{MatchOutcome, MismatchDiagnostic, RecordedResponse, ReplayMatchEngine},
+    http_exchange::ObservedRequest,
+    protocol::{CHAT_COMPLETIONS_PATH, is_streaming_chat_completions_request},
+    replay_observability::{
+        ReplayMetricLabels,
+        record_replay_commit_failure,
+        record_replay_mismatch,
+        record_replay_rejection,
+        record_replay_request,
+    },
 };
 
 #[path = "replay_request.rs"]

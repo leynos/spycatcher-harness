@@ -1,9 +1,11 @@
 //! Concurrent record-mode stress test.
-use super::record_tests_helpers::*;
 use eyre::WrapErr;
 
-use crate::http_exchange::{ObservedRequest, parse_json_bytes};
-use crate::protocol::CHAT_COMPLETIONS_PATH;
+use super::record_tests_helpers::*;
+use crate::{
+    http_exchange::{ObservedRequest, parse_json_bytes},
+    protocol::CHAT_COMPLETIONS_PATH,
+};
 
 /// Adds request context and debug detail to a concurrent record error.
 fn report_concurrent_request_error(error: &super::RecordError) -> eyre::Report {

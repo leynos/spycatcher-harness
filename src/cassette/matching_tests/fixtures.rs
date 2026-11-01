@@ -3,11 +3,20 @@
 use rstest::fixture;
 use serde_json::json;
 
-use crate::cassette::{
-    Cassette, Interaction, InteractionMetadata, InteractionPosition, MatchOutcome,
-    MismatchDiagnostic, RecordedRequest, RecordedResponse, ReplayMatchEngine,
+use crate::{
+    cassette::{
+        Cassette,
+        Interaction,
+        InteractionMetadata,
+        InteractionPosition,
+        MatchOutcome,
+        MismatchDiagnostic,
+        RecordedRequest,
+        RecordedResponse,
+        ReplayMatchEngine,
+    },
+    config::MatchMode,
 };
-use crate::config::MatchMode;
 
 fn openai_metadata(recorded_at: &str, relative_offset_ms: u64) -> InteractionMetadata {
     InteractionMetadata {
@@ -182,9 +191,7 @@ pub(super) fn expect_matched(outcome: MatchOutcome<'_>) -> Interaction {
 
 /// Asserts the outcome is Matched (discarding the interaction value).
 #[track_caller]
-pub(super) fn assert_matched(outcome: MatchOutcome<'_>) {
-    let _ = expect_matched(outcome);
-}
+pub(super) fn assert_matched(outcome: MatchOutcome<'_>) { let _ = expect_matched(outcome); }
 
 /// Returns the mismatch diagnostic or panics if the outcome was matched.
 #[track_caller]

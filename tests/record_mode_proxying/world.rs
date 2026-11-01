@@ -5,7 +5,6 @@ use std::sync::Arc;
 use camino::Utf8PathBuf;
 use rstest_bdd::Slot;
 use rstest_bdd_macros::ScenarioState;
-
 use spycatcher_harness::{HarnessConfig, HarnessResult, RunningHarness};
 
 use crate::record_mode_proxying::helpers::{ClientResponse, StubUpstream};

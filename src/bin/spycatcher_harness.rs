@@ -7,8 +7,7 @@
 
 use eyre::{WrapErr, eyre};
 use i18n_embed::fluent::FluentLanguageLoader;
-use spycatcher_harness::i18n::localize_harness_error;
-use spycatcher_harness::start_harness;
+use spycatcher_harness::{i18n::localize_harness_error, start_harness};
 
 #[path = "spycatcher_harness/cli_startup.rs"]
 mod cli_startup;
@@ -19,10 +18,9 @@ mod startup_localization;
 
 use cli_startup::load_config_or_display_output;
 use process_output::initialize_tracing;
-use startup_localization::build_language_loader;
-
 #[cfg(test)]
 use spycatcher_harness::config::LocalizationConfig;
+use startup_localization::build_language_loader;
 #[cfg(test)]
 use startup_localization::plan_locale_selection;
 
@@ -70,8 +68,7 @@ mod tests {
 
     use proptest::prelude::*;
     use rstest::rstest;
-    use spycatcher_harness::HarnessError;
-    use spycatcher_harness::i18n::localize_harness_error;
+    use spycatcher_harness::{HarnessError, i18n::localize_harness_error};
 
     use super::*;
 
@@ -188,7 +185,8 @@ mod tests {
         Some(String::from("en-GB")),
         String::from("not_a_locale"),
         "fallback_locale",
-        "invalid localization field `fallback_locale` value `not_a_locale`: Parser error: Invalid subtag"
+        "invalid localization field `fallback_locale` value `not_a_locale`: Parser error: Invalid \
+         subtag"
     )]
     fn plan_locale_selection_rejects_invalid_field(
         #[case] locale: Option<String>,

@@ -4,7 +4,16 @@ use std::sync::{Arc, Mutex};
 
 use axum::body::to_bytes;
 use metrics::{
-    Counter, CounterFn, Gauge, Histogram, Key, KeyName, Metadata, Recorder, SharedString, Unit,
+    Counter,
+    CounterFn,
+    Gauge,
+    Histogram,
+    Key,
+    KeyName,
+    Metadata,
+    Recorder,
+    SharedString,
+    Unit,
 };
 use proptest::prelude::*;
 use rstest::rstest;
@@ -290,9 +299,7 @@ impl Recorder for StreamMetricRecorder {
         }))
     }
 
-    fn register_gauge(&self, _key: &Key, _metadata: &Metadata<'_>) -> Gauge {
-        Gauge::noop()
-    }
+    fn register_gauge(&self, _key: &Key, _metadata: &Metadata<'_>) -> Gauge { Gauge::noop() }
 
     fn register_histogram(&self, _key: &Key, _metadata: &Metadata<'_>) -> Histogram {
         Histogram::noop()
