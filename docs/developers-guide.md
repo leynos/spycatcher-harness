@@ -488,6 +488,21 @@ wrapping environment variable lookup. `ProcessEnvProvider` delegates to
 `std::env::var`. Tests inject `FakeEnvProvider` to simulate absent or preset
 API keys without mutating process state.
 
+`clippy.toml` denies `std::env::var`, `std::env::var_os`, `std::env::vars`,
+`std::env::vars_os`, `std::env::set_var`, `std::env::remove_var`, and
+`std::env::set_current_dir`, so any direct use of those seven methods fails
+`make lint`. Three boundaries may read process state, and each carries an
+item-scoped `#[expect(clippy::disallowed_methods, reason = "...")]`:
+`ProcessEnvProvider` is the production read adapter, `read_process_env` in
+`src/cli/localizer.rs` performs the early locale lookup that precedes
+configuration loading, and `read_ambient` in `tests/common/process_env.rs` lets
+suites mirror ambient values into `env_clear`ed child processes. Every other
+caller takes an injected `EnvProvider`, a stub environment, or an explicit base
+directory, and a child process that needs another working directory uses
+`Command::current_dir` rather than `std::env::set_current_dir`. Add a boundary
+only when no seam can reach the value, and route new callers through the
+existing seam otherwise.
+
 ### `ChatCompletionsUpstream` and `ReqwestUpstreamClient` (`src/upstream.rs`)
 
 `ChatCompletionsUpstream` is a two-method async trait that forwards a

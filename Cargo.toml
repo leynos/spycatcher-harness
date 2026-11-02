@@ -55,6 +55,7 @@ allow_attributes                    = "deny"
 allow_attributes_without_reason     = "deny"
 blanket_clippy_restriction_lints    = "deny"
 cognitive_complexity                = "deny"
+disallowed_methods                  = "deny"
 needless_pass_by_value              = "deny"
 implicit_hasher                     = "deny"
 

@@ -321,23 +321,25 @@ pub(crate) fn sample_success_body() -> Value {
 }
 
 pub(crate) fn present_env_name() -> Result<&'static str, Box<dyn Error>> {
-    for candidate in ["HOME", "PWD", "USER", "PATH"] {
-        if std::env::var(candidate).is_ok() {
-            return Ok(candidate);
-        }
-    }
+    let Some(name) =
+        crate::env_candidates::first_utf8_ambient(crate::env_candidates::STABLE_CANDIDATES)
+    else {
+        return Err(Box::new(std::io::Error::other(
+            "expected at least one stable UTF-8 environment variable for integration tests",
+        )));
+    };
 
-    Err(Box::new(std::io::Error::other(
-        "expected at least one stable environment variable for integration tests",
-    )))
+    Ok(name)
 }
 
 /// Returns the value of the present-in-process env var used in record-mode tests.
 pub(crate) fn present_env_value() -> Result<String, Box<dyn std::error::Error>> {
     let name = present_env_name()?;
-    std::env::var(name).map_err(|error| {
-        std::io::Error::other(format!("env var {name:?} must be set for tests: {error}")).into()
-    })
+    let value = crate::process_env::read_ambient(name)
+        .ok_or_else(|| format!("env var {name:?} must be set for tests"))?;
+    value
+        .into_string()
+        .map_err(|_| format!("env var {name:?} must be valid UTF-8").into())
 }
 
 pub(crate) fn assert_upstream_bearer_token(

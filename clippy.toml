@@ -6,3 +6,12 @@ excessive-nesting-threshold = 4        # default is off
 
 allow-expect-in-tests = true
 
+disallowed-methods = [
+  { path = "std::env::var", reason = "inject an environment reader" },
+  { path = "std::env::var_os", reason = "inject an environment reader" },
+  { path = "std::env::vars", reason = "inject an environment reader" },
+  { path = "std::env::vars_os", reason = "inject an environment reader" },
+  { path = "std::env::set_var", reason = "use a stub environment in tests" },
+  { path = "std::env::remove_var", reason = "use a stub environment in tests" },
+  { path = "std::env::set_current_dir", reason = "inject a base-directory seam; confine CWD changes to Command::current_dir" },
+]
