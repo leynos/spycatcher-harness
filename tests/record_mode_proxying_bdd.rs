@@ -3,6 +3,8 @@
 use rstest::fixture;
 use rstest_bdd_macros::scenario;
 
+#[path = "common/env_candidates.rs"]
+mod env_candidates;
 #[path = "common/process_env.rs"]
 mod process_env;
 mod record_mode_proxying;

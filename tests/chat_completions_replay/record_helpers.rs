@@ -266,13 +266,13 @@ pub(crate) fn sample_success_body() -> Value {
 }
 
 pub(crate) fn present_env_name() -> Result<&'static str, Box<dyn Error>> {
-    for candidate in ["HOME", "PWD", "USER", "PATH"] {
-        if crate::process_env::read_ambient(candidate).is_some() {
-            return Ok(candidate);
-        }
-    }
+    let Some(name) =
+        crate::env_candidates::first_utf8_ambient(crate::env_candidates::STABLE_CANDIDATES)
+    else {
+        return Err(Box::new(std::io::Error::other(
+            "expected at least one stable UTF-8 environment variable for integration tests",
+        )));
+    };
 
-    Err(Box::new(std::io::Error::other(
-        "expected at least one stable environment variable for integration tests",
-    )))
+    Ok(name)
 }
