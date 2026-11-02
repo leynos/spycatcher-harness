@@ -95,16 +95,8 @@ helpers stay fallible even when they live in a test module.
 
 Clippy limits cognitive complexity to 9, arguments to 4, function lines to 70,
 and nesting to 4. The seven `std::env` entries under `disallowed-methods` in
-`clippy.toml` require production code to take an injected `EnvProvider`, tests
-to use a stub environment, and directory-sensitive code to accept an explicit
-base path; a child process that needs a different working directory uses
-`Command::current_dir` rather than `std::env::set_current_dir`. Three reasoned
-boundaries satisfy that policy: `ProcessEnvProvider` in `src/upstream.rs` is
-the production adapter, `read_process_env` in `src/cli/localizer.rs` serves
-early locale selection that precedes configuration loading, and `read_ambient`
-in `tests/common/process_env.rs` lets suites mirror ambient values into
-`env_clear`ed children. Add a fourth only when a boundary is unavoidable, and
-route callers through the existing seam otherwise.
+`clippy.toml` enforce the environment-access policy documented alongside the
+`EnvProvider` seam in this guide.
 
 `[lints.rust]` forbids `unsafe` and denies `unknown_lints` and
 `renamed_and_removed_lints`, so a misspelt lint name or a lint the pinned
