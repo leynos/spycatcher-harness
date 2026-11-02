@@ -130,27 +130,34 @@ project:
   - `make check-fmt` executes:
 
     ```sh
-    cargo fmt --workspace -- --check
+    cargo fmt --all -- --check
     ```
 
-    validating formatting across the entire workspace without modifying files.
-  - `make lint` executes:
-
-    ```sh
-    cargo clippy --workspace --all-targets --all-features -- -D warnings
-    ```
-
-    linting every target with all features enabled and denying all Clippy
-    warnings.
+    validating Rust formatting for the whole crate without modifying files,
+    then `mdtablefix --check` over the tracked and untracked Markdown files.
+  - `make lint` executes three steps: `cargo doc --no-deps` with
+    `RUSTDOCFLAGS="$(RUSTDOC_FLAGS)"`, then `cargo clippy` over
+    `--all-targets --all-features` with the warning-denying development flags,
+    then the Whitaker Dylint suite over the same target and feature set.
   - `make test` executes:
 
     ```sh
-    cargo test --workspace
+    cargo nextest run --all-targets --all-features
     ```
 
-    running the full workspace test suite. Use `make fmt`
-    (`cargo fmt --workspace`) to apply formatting fixes reported by the
-    formatter check.
+    falling back to `cargo test` when `cargo-nextest` is unavailable, then
+    `cargo test --doc --workspace --all-features` for the documentation tests.
+
+    Use `make fmt` to apply the Rust, Markdown table, and Markdown lint fixes
+    the formatting checks report.
+- The lint tables in `Cargo.toml` and the thresholds and restrictions in
+  `clippy.toml` are authoritative; a new package must reproduce or inherit that
+  baseline rather than start from a partial copy. See the developer's guide,
+  [Rust lint baseline](docs/developers-guide.md#rust-lint-baseline), for the
+  selected estate baseline, the consumer additions, and the exception rules.
+- Rustdoc runs with `RUSTDOC_FLAGS` set to `--cfg docsrs -D warnings` by
+  default. Supply any additional flags through that variable rather than
+  editing the recipe.
 - Clippy warnings MUST be disallowed.
 - Fix any warnings emitted during tests in the code itself rather than
   silencing them.
