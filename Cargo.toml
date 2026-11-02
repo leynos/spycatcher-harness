@@ -58,6 +58,8 @@ cognitive_complexity                = "deny"
 disallowed_methods                  = "deny"
 needless_pass_by_value              = "deny"
 implicit_hasher                     = "deny"
+missing_assert_message              = "deny"
+missing_docs_in_private_items       = "deny"
 
 # 2. debugging leftovers
 dbg_macro                           = "deny"
@@ -111,7 +113,16 @@ error_impl_error                    = "deny"
 result_large_err                    = "deny"
 
 [lints.rust]
+unknown_lints                       = "deny"
+renamed_and_removed_lints           = "deny"
+unsafe_code                         = "forbid"
 missing_docs                        = "deny"
 
 [lints.rustdoc]
 missing_crate_level_docs            = "deny"
+broken_intra_doc_links              = "deny"
+private_intra_doc_links             = "deny"
+bare_urls                           = "deny"
+invalid_html_tags                   = "deny"
+invalid_codeblock_attributes        = "deny"
+unescaped_backticks                 = "deny"

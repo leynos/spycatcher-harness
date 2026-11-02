@@ -69,6 +69,42 @@ comment inside the block; the comment also prevents the formatter from
 collapsing the body again. Do not disable `fn_single_line`, and do not suppress
 the lint.
 
+### Rust lint baseline
+
+The `[lints.*]` tables in the root `Cargo.toml` and the thresholds and
+restrictions in `clippy.toml` are the authoritative lint configuration. This
+repository is a single package rather than a workspace, so the tables are the
+crate-level `[lints.clippy]`, `[lints.rust]`, and `[lints.rustdoc]` forms; a
+new package must reproduce or inherit that baseline instead of starting from a
+partial copy. Consult those two files for the inventory itself.
+
+The selected estate baseline is the Concordat canon, extended for this
+repository with `missing_assert_message` and `missing_docs_in_private_items`.
+Clippy exempts test functions from `missing_assert_message`, so the lint
+constrains production assertions only; this crate currently places every
+assertion inside test code, which is why the lint reports nothing today.
+`missing_docs_in_private_items` requires a doc comment on every private item,
+constants and struct fields included.
+
+Fix findings at source. `#[allow]` is never the resolution, and `#[expect]` is
+retained only for a verified macro-expansion artefact, genuinely floating-point
+arithmetic, or the sanctioned process-environment readers described below, with
+a narrow scope and a stated reason. Recognized test bodies may extract values
+with `.expect("reason")`; fixtures, BDD step functions, and setup or lookup
+helpers stay fallible even when they live in a test module.
+
+Clippy limits cognitive complexity to 9, arguments to 4, function lines to 70,
+and nesting to 4. The seven `std::env` entries under `disallowed-methods` in
+`clippy.toml` enforce the environment-access policy documented alongside the
+`EnvProvider` seam in this guide.
+
+`[lints.rust]` forbids `unsafe` and denies `unknown_lints` and
+`renamed_and_removed_lints`, so a misspelt lint name or a lint the pinned
+nightly has renamed fails the build instead of silently disabling enforcement.
+`[lints.rustdoc]` denies the documentation lints `cargo doc` reports, and
+`make lint` runs that documentation build before Clippy with `RUSTDOC_FLAGS`
+set to `--cfg docsrs -D warnings` by default.
+
 ### `serde_json` `preserve_order` feature
 
 The `serde_json` dependency is compiled with the `preserve_order` feature
