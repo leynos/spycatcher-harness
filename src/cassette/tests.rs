@@ -1,8 +1,9 @@
 //! Unit tests for cassette schema round-trips and validation.
 
-use super::*;
 use rstest::{fixture, rstest};
 use serde_json::json;
+
+use super::*;
 
 #[rstest]
 fn non_stream_interaction_round_trips_without_loss(sample_non_stream_interaction: Interaction) {

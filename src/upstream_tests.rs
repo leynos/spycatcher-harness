@@ -1,7 +1,8 @@
 //! Unit tests for upstream URL construction and request building.
 
-use super::*;
 use rstest::rstest;
+
+use super::*;
 
 #[rstest]
 #[case(
@@ -167,9 +168,11 @@ type CapturedRequest = std::sync::Arc<std::sync::Mutex<Vec<u8>>>;
 type CaptureThread = std::thread::JoinHandle<Result<(), String>>;
 
 fn spawn_capturing_server() -> (std::net::SocketAddr, CapturedRequest, CaptureThread) {
-    use std::io::{Read, Write};
-    use std::net::TcpListener;
-    use std::sync::{Arc, Mutex};
+    use std::{
+        io::{Read, Write},
+        net::TcpListener,
+        sync::{Arc, Mutex},
+    };
 
     let listener = match TcpListener::bind("127.0.0.1:0") {
         Ok(listener) => listener,
@@ -292,8 +295,9 @@ async fn send_chat_completions_uses_bearer_auth_and_skips_inbound_authorization(
 mod prop_tests {
     //! Property tests for upstream URL construction.
 
-    use super::*;
     use proptest::prelude::*;
+
+    use super::*;
 
     proptest! {
         #[test]

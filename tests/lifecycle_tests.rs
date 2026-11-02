@@ -1,14 +1,20 @@
 //! Integration tests for harness lifecycle startup and shutdown behaviour.
 
-use std::net::SocketAddr;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::{
+    net::SocketAddr,
+    sync::atomic::{AtomicUsize, Ordering},
+};
 
 use camino::Utf8PathBuf;
 use cap_std::{ambient_authority, fs_utf8::Dir};
 use rstest::rstest;
-use spycatcher_harness::cassette::CassetteFormatVersion;
-use spycatcher_harness::config::{self, HarnessConfig};
-use spycatcher_harness::{HarnessError, HarnessResult, start_harness};
+use spycatcher_harness::{
+    HarnessError,
+    HarnessResult,
+    cassette::CassetteFormatVersion,
+    config::{self, HarnessConfig},
+    start_harness,
+};
 use uuid::Uuid;
 
 static NEXT_TEST_CASSETTE: AtomicUsize = AtomicUsize::new(1);

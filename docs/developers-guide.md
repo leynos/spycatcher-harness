@@ -50,6 +50,25 @@ contributor formats and lints with the same compiler. Keep that pin, the
 `cap_std::fs_utf8`, keeping filesystem access capability-oriented while
 treating paths as UTF-8.
 
+### Formatting baseline
+
+`.rustfmt.toml` is the authoritative Rust formatting configuration, and
+`make check-fmt` enforces it with `cargo fmt --all -- --check`. The nightly pin
+supplies the `unstable_features` the profile relies on: crate-granular and
+grouped imports, a horizontal-or-vertical import layout, wrapped comments,
+formatted string literals and macro matchers, lowercase hex literals,
+field-init and `?` shorthands, and single-line bodies for functions whose body
+is one short expression (`fn_single_line`).
+
+`fn_single_line` collides with `rstest`. A fixture body is re-emitted by the
+macro as a block expression, so a body collapsed onto the signature line is
+reported as redundant braces by `unused_braces` inside the expansion. An
+item-level expectation cannot silence it because the diagnostic belongs to the
+expanded item. Keep `#[fixture]` bodies multi-line and record the reason in a
+comment inside the block; the comment also prevents the formatter from
+collapsing the body again. Do not disable `fn_single_line`, and do not suppress
+the lint.
+
 ### `serde_json` `preserve_order` feature
 
 The `serde_json` dependency is compiled with the `preserve_order` feature

@@ -4,25 +4,31 @@
 //! non-stream recording path while sharing the same cassette store and metadata
 //! policies as `RecordService`.
 
-use std::sync::atomic::Ordering;
-use std::time::Instant;
+use std::{sync::atomic::Ordering, time::Instant};
 
 use axum::body::Bytes;
-use futures_util::StreamExt;
-use futures_util::stream::{self, BoxStream};
+use futures_util::{
+    StreamExt,
+    stream::{self, BoxStream},
+};
 use log::{error, info};
 
 use super::{RecordError, RecordService};
-use crate::cassette::{
-    IgnorePathConfig, Interaction, RecordedRequest, RecordedResponse, StreamTiming,
+use crate::{
+    HarnessError,
+    HarnessResult,
+    cassette::{IgnorePathConfig, Interaction, RecordedRequest, RecordedResponse, StreamTiming},
+    http_exchange::{ObservedRequest, ProxyBody, ProxyResponse, redact_headers},
+    protocol::{CHAT_COMPLETIONS_PROTOCOL_ID, upstream_id},
+    server::record_metadata::MetadataFactory,
+    sse::{SseParseError, SseParser},
+    upstream::{
+        ChatCompletionsRequest,
+        ChatCompletionsUpstream,
+        EnvProvider,
+        StreamingObservedResponse,
+    },
 };
-use crate::http_exchange::{ObservedRequest, ProxyBody, ProxyResponse, redact_headers};
-use crate::protocol::{CHAT_COMPLETIONS_PROTOCOL_ID, upstream_id};
-use crate::server::record_metadata::MetadataFactory;
-use crate::sse::{SseParseError, SseParser};
-use crate::upstream::StreamingObservedResponse;
-use crate::upstream::{ChatCompletionsRequest, ChatCompletionsUpstream, EnvProvider};
-use crate::{HarnessError, HarnessResult};
 
 mod state;
 
@@ -268,7 +274,8 @@ fn log_stream_build_failure<U, E, M>(
 }
 
 /// Preserves an SSE parser error as the source of an upstream request failure.
-/// For example, `IncompleteEvent` becomes `UpstreamRequestFailed` with that parser error as its source.
+/// For example, `IncompleteEvent` becomes `UpstreamRequestFailed` with that parser error as its
+/// source.
 fn stream_parse_failure(error: SseParseError) -> HarnessError {
     HarnessError::UpstreamRequestFailed {
         source: Box::new(error),
@@ -277,6 +284,4 @@ fn stream_parse_failure(error: SseParseError) -> HarnessError {
 
 /// Converts elapsed milliseconds to `u64`, saturating if the duration is too large.
 /// For example, `u128::MAX` becomes `u64::MAX`.
-fn millis_u64(value: u128) -> u64 {
-    u64::try_from(value).unwrap_or(u64::MAX)
-}
+fn millis_u64(value: u128) -> u64 { u64::try_from(value).unwrap_or(u64::MAX) }

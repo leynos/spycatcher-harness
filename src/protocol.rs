@@ -57,11 +57,14 @@ mod tests {
     mod prop_tests {
         //! Property tests for protocol request-shape invariants.
 
-        use super::*;
-        use crate::cassette::{IgnorePathConfig, RecordedRequest};
-        use crate::config::RedactionConfig;
-        use crate::http_exchange::{parse_json_bytes, redact_headers};
         use proptest::prelude::*;
+
+        use super::*;
+        use crate::{
+            cassette::{IgnorePathConfig, RecordedRequest},
+            config::RedactionConfig,
+            http_exchange::{parse_json_bytes, redact_headers},
+        };
 
         proptest! {
             #[test]

@@ -7,9 +7,14 @@
 use proptest::prelude::*;
 use rstest::rstest;
 
-use super::cases::{LocalizationPrecedenceCase, Subcommand};
-use super::support::{
-    REPLAY_LOCALIZATION_FILE_CONFIG, load_with_sources, optional_locale_text, valid_locale_text,
+use super::{
+    cases::{LocalizationPrecedenceCase, Subcommand},
+    support::{
+        REPLAY_LOCALIZATION_FILE_CONFIG,
+        load_with_sources,
+        optional_locale_text,
+        valid_locale_text,
+    },
 };
 
 proptest! {

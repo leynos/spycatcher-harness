@@ -4,7 +4,6 @@
 //! nested `[cmds.<subcommand>]` tables for record and verify.
 
 use rstest::rstest;
-
 use spycatcher_harness::config;
 
 use super::support::load_with_sources;

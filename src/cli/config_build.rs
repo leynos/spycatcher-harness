@@ -2,8 +2,13 @@
 
 use camino::Utf8PathBuf;
 
-use super::localization::{CommonOverrides, validate_language_identifier};
-use super::{CliConfigError, RecordArgs, ReplayArgs, VerifyArgs};
+use super::{
+    CliConfigError,
+    RecordArgs,
+    ReplayArgs,
+    VerifyArgs,
+    localization::{CommonOverrides, validate_language_identifier},
+};
 use crate::{HarnessConfig, config};
 
 /// Builds [`HarnessConfig`] from common overrides, `mode`, and optional upstream.

@@ -3,8 +3,10 @@
 use tracing::error;
 
 use super::ReplayError;
-use crate::cassette::{IgnorePathConfig, RecordedRequest};
-use crate::http_exchange::ObservedRequest;
+use crate::{
+    cassette::{IgnorePathConfig, RecordedRequest},
+    http_exchange::ObservedRequest,
+};
 
 /// Builds the recorded request and populates its canonical matching fields.
 /// For example, an observed `get /health?b=2&a=1` with no parsed JSON produces

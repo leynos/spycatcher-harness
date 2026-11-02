@@ -3,10 +3,11 @@
 #[path = "source_loader.rs"]
 mod source_loader;
 
+use proptest::{
+    prop_oneof,
+    strategy::{Just, Strategy},
+};
 pub(super) use source_loader::{load_from_base, load_with_sources};
-
-use proptest::prop_oneof;
-use proptest::strategy::{Just, Strategy};
 
 /// Replay cassette-name file fixture for checking overrides of `from_file`.
 pub(super) const REPLAY_FILE_CONFIG: &str = "[cmds.replay]\ncassette_name = \"from_file\"\n";

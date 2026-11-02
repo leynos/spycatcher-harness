@@ -7,8 +7,14 @@ use axum::body::to_bytes;
 use proptest::prelude::*;
 
 use super::{
-    EAGER_STREAM_LIMIT_BYTES, StreamEvent, StreamMetricRecorder, build_stream_body, data, labels,
-    serialize_event, stream_event_with_newlines,
+    EAGER_STREAM_LIMIT_BYTES,
+    StreamEvent,
+    StreamMetricRecorder,
+    build_stream_body,
+    data,
+    labels,
+    serialize_event,
+    stream_event_with_newlines,
 };
 
 /// Generates varied comment/data sequences on both sides of a padding event.

@@ -1,23 +1,27 @@
 //! State and chunk processing for recorded streaming responses.
 
-use std::sync::atomic::Ordering;
-use std::time::Instant;
+use std::{sync::atomic::Ordering, time::Instant};
 
 use axum::body::Bytes;
-use futures_util::StreamExt;
-use futures_util::stream::BoxStream;
+use futures_util::{StreamExt, stream::BoxStream};
 use log::error;
 
 use super::{
-    RecordService, log_stream_build_failure, millis_u64, persist_interaction, stream_parse_failure,
+    RecordService,
+    log_stream_build_failure,
+    millis_u64,
+    persist_interaction,
+    stream_parse_failure,
 };
-use crate::HarnessResult;
-use crate::cassette::StreamEvent;
-use crate::http_exchange::ObservedRequest;
-use crate::protocol::{CHAT_COMPLETIONS_PROTOCOL_ID, upstream_id};
-use crate::server::record_metadata::MetadataFactory;
-use crate::sse::SseParser;
-use crate::upstream::{ChatCompletionsUpstream, EnvProvider};
+use crate::{
+    HarnessResult,
+    cassette::StreamEvent,
+    http_exchange::ObservedRequest,
+    protocol::{CHAT_COMPLETIONS_PROTOCOL_ID, upstream_id},
+    server::record_metadata::MetadataFactory,
+    sse::SseParser,
+    upstream::{ChatCompletionsUpstream, EnvProvider},
+};
 
 /// Holds the parsed and raw data needed to build a completed stream recording.
 pub(super) struct CompletedStream {

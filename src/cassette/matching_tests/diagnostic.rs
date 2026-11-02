@@ -4,8 +4,10 @@ use rstest::rstest;
 use serde_json::json;
 
 use super::fixtures::{expect_mismatch_diagnostic, sample_cassette};
-use crate::cassette::{Cassette, InteractionPosition, ReplayMatchEngine};
-use crate::config::MatchMode;
+use crate::{
+    cassette::{Cassette, InteractionPosition, ReplayMatchEngine},
+    config::MatchMode,
+};
 
 #[rstest]
 #[case("wrong", json!({"method": "GET"}), &[])]

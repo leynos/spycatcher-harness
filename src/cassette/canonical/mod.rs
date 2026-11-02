@@ -9,15 +9,15 @@ mod hex;
 mod json;
 mod query;
 
+use hex::encode_hex;
+use json::{canonical_request_value, canonicalize_body, serialize_json_canonical};
+use query::canonicalize_query;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 use thiserror::Error;
 
 use super::RecordedRequest;
-use hex::encode_hex;
-use json::{canonical_request_value, canonicalize_body, serialize_json_canonical};
-use query::canonicalize_query;
 
 /// Configuration for request-body fields ignored during canonicalization.
 ///

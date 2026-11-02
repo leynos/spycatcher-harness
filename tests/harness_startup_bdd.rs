@@ -2,18 +2,20 @@
 //!
 //! Step definitions and scenario bindings for the feature file at
 //! `tests/features/harness_startup.feature`.
-use std::net::SocketAddr;
-use std::sync::Arc;
+use std::{net::SocketAddr, sync::Arc};
 
 use camino::Utf8PathBuf;
 use eyre::WrapErr;
 use rstest::fixture;
 use rstest_bdd::Slot;
 use rstest_bdd_macros::{ScenarioState, given, scenario, then, when};
-
-use spycatcher_harness::config::ListenAddr;
 use spycatcher_harness::{
-    HarnessConfig, HarnessError, HarnessResult, RunningHarness, start_harness,
+    HarnessConfig,
+    HarnessError,
+    HarnessResult,
+    RunningHarness,
+    config::ListenAddr,
+    start_harness,
 };
 
 #[path = "support/bdd_fixtures.rs"]
@@ -160,7 +162,8 @@ fn the_cassette_path_matches_the_configured_directory_and_name(
         .ok_or_else(|| eyre::eyre!("expected_cassette_path must be set"))?;
     eyre::ensure!(
         path == expected,
-        "cassette path should match the configured test directory and cassette name: got {path}, expected {expected}",
+        "cassette path should match the configured test directory and cassette name: got {path}, \
+         expected {expected}",
     );
     Ok(())
 }
@@ -246,9 +249,7 @@ fn the_harness_port_is_non_zero(harness_world: &HarnessWorld) -> eyre::Result<()
     path = "tests/features/harness_startup.feature",
     name = "Start harness with valid configuration"
 )]
-fn start_harness_with_valid_configuration(harness_world: HarnessWorld) {
-    let _ = harness_world;
-}
+fn start_harness_with_valid_configuration(harness_world: HarnessWorld) { let _ = harness_world; }
 
 #[scenario(
     path = "tests/features/harness_startup.feature",
@@ -262,9 +263,7 @@ fn start_harness_with_empty_cassette_name_fails(harness_world: HarnessWorld) {
     path = "tests/features/harness_startup.feature",
     name = "Shutdown a running harness"
 )]
-fn shutdown_a_running_harness(harness_world: HarnessWorld) {
-    let _ = harness_world;
-}
+fn shutdown_a_running_harness(harness_world: HarnessWorld) { let _ = harness_world; }
 
 #[scenario(
     path = "tests/features/harness_startup.feature",

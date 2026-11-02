@@ -9,16 +9,30 @@ use camino::Utf8Path;
 use cap_std::{ambient_authority, fs_utf8::Dir};
 use rstest_bdd_macros::{given, then, when};
 use spycatcher_harness::cassette::{
-    Cassette, IgnorePathConfig, Interaction, InteractionMetadata, RecordedRequest,
-    RecordedResponse, StreamCanonicalPolicy, StreamEvent, canonicalize_events,
+    Cassette,
+    IgnorePathConfig,
+    Interaction,
+    InteractionMetadata,
+    RecordedRequest,
+    RecordedResponse,
+    StreamCanonicalPolicy,
+    StreamEvent,
+    canonicalize_events,
 };
 
-use crate::chat_completions_replay::steps::{
-    STREAMING_REQUEST, make_replay_config, send_replay_request, send_request_to_record_harness,
+use crate::{
+    chat_completions_replay::{
+        steps::{
+            STREAMING_REQUEST,
+            make_replay_config,
+            send_replay_request,
+            send_request_to_record_harness,
+        },
+        support::{assert_response_error_kind, replay_response},
+        world::ReplayWorld,
+    },
+    record_helpers::{StubUpstream, load_cassette, unique_cassette_path},
 };
-use crate::chat_completions_replay::support::{assert_response_error_kind, replay_response};
-use crate::chat_completions_replay::world::ReplayWorld;
-use crate::record_helpers::{StubUpstream, load_cassette, unique_cassette_path};
 
 #[given("a stub upstream that returns an OpenRouter stream for replay")]
 fn a_stub_upstream_that_returns_an_open_router_stream_for_replay(

@@ -3,8 +3,10 @@
 //! For example, a recorded 200 response keeps its status and body in
 //! `ReplayResponse`, while an unmatched request carries a `ReplayError`.
 
-use crate::cassette::{MismatchDiagnostic, StreamEvent};
-use crate::protocol::CHAT_COMPLETIONS_PROTOCOL_ID;
+use crate::{
+    cassette::{MismatchDiagnostic, StreamEvent},
+    protocol::CHAT_COMPLETIONS_PROTOCOL_ID,
+};
 
 /// Contextual fields shared by replay-mode observability events.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -29,9 +31,7 @@ impl ReplayContext {
 impl Default for ReplayContext {
     /// Creates context for an unknown cassette using the chat-completions protocol.
     /// For example, `ReplayContext::default().cassette` is `"unknown"`.
-    fn default() -> Self {
-        Self::new("unknown".to_owned())
-    }
+    fn default() -> Self { Self::new("unknown".to_owned()) }
 }
 
 /// Replay response data independent of the inbound HTTP framework.

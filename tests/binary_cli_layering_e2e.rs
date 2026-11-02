@@ -4,8 +4,7 @@
 //! process-backed file, environment, and explicit CLI inputs retain their
 //! precedence without mutating the test process environment.
 
-use std::io::Write as _;
-use std::process::Command;
+use std::{io::Write as _, process::Command};
 
 use cap_std::{
     ambient_authority,

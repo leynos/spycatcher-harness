@@ -37,19 +37,26 @@ impl StreamCanonicalPolicy {
 /// # Examples
 ///
 /// ```rust
-/// use spycatcher_harness::cassette::{
-///     StreamCanonicalPolicy, StreamEvent, canonicalize_events,
-/// };
+/// use spycatcher_harness::cassette::{StreamCanonicalPolicy, StreamEvent, canonicalize_events};
 ///
 /// let events = vec![
-///     StreamEvent::Comment { text: "OPENROUTER PROCESSING".to_owned() },
-///     StreamEvent::Data { raw: "[DONE]".to_owned(), parsed_json: None },
+///     StreamEvent::Comment {
+///         text: "OPENROUTER PROCESSING".to_owned(),
+///     },
+///     StreamEvent::Data {
+///         raw: "[DONE]".to_owned(),
+///         parsed_json: None,
+///     },
 /// ];
 /// let canonical = canonicalize_events(&events, StreamCanonicalPolicy::ignore_comments());
 ///
-/// assert_eq!(canonical, vec![
-///     StreamEvent::Data { raw: "[DONE]".to_owned(), parsed_json: None },
-/// ]);
+/// assert_eq!(
+///     canonical,
+///     vec![StreamEvent::Data {
+///         raw: "[DONE]".to_owned(),
+///         parsed_json: None
+///     },]
+/// );
 /// ```
 #[must_use]
 pub fn canonicalize_events(

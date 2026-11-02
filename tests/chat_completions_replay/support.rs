@@ -2,8 +2,7 @@
 
 use std::error::Error;
 
-use crate::chat_completions_replay::world::ReplayWorld;
-use crate::record_helpers::ClientResponse;
+use crate::{chat_completions_replay::world::ReplayWorld, record_helpers::ClientResponse};
 
 pub(crate) fn response_error(
     body: &serde_json::Value,

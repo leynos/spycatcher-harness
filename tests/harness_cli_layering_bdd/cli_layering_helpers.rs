@@ -77,9 +77,7 @@ pub(super) fn push_env(cli_layering_world: &CliLayeringWorld, key: &str, value: 
 /// let t = trim_surrounding_quotes("\"en-GB\"");
 /// assert_eq!(t, "en-GB");
 /// ```
-pub(super) fn trim_surrounding_quotes(value: &str) -> String {
-    value.trim_matches('"').to_owned()
-}
+pub(super) fn trim_surrounding_quotes(value: &str) -> String { value.trim_matches('"').to_owned() }
 
 /// Supported subcommands used by BDD command-builder helpers.
 #[derive(Clone, Copy)]

@@ -5,9 +5,7 @@ use std::sync::Arc;
 use camino::Utf8PathBuf;
 use rstest_bdd::Slot;
 use rstest_bdd_macros::ScenarioState;
-
-use spycatcher_harness::cassette::StreamEvent;
-use spycatcher_harness::{HarnessConfig, RunningHarness};
+use spycatcher_harness::{HarnessConfig, RunningHarness, cassette::StreamEvent};
 
 use crate::record_helpers::{ClientResponse, StubUpstream};
 #[path = "../support/test_utils.rs"]

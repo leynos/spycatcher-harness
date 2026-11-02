@@ -22,7 +22,6 @@
 use rstest::fixture;
 use rstest_bdd::Slot;
 use rstest_bdd_macros::{ScenarioState, given, scenario, then, when};
-
 use spycatcher_harness::{HarnessConfig, config};
 
 #[path = "harness_cli_layering_bdd/cli_layering_helpers.rs"]

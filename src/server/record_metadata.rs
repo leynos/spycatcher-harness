@@ -3,17 +3,21 @@
 //! These types keep wall-clock access behind small injectable boundaries so
 //! record-mode orchestration can be tested deterministically.
 
-use std::fmt::Debug;
-use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::{
+    fmt::Debug,
+    sync::Arc,
+    time::{Duration, Instant},
+};
 
-use time::OffsetDateTime;
-use time::format_description::well_known::Rfc3339;
+use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 
-use crate::cassette::InteractionMetadata;
-use crate::config::UpstreamKind;
-use crate::protocol::{CHAT_COMPLETIONS_PROTOCOL_ID, upstream_id};
-use crate::{HarnessError, HarnessResult};
+use crate::{
+    HarnessError,
+    HarnessResult,
+    cassette::InteractionMetadata,
+    config::UpstreamKind,
+    protocol::{CHAT_COMPLETIONS_PROTOCOL_ID, upstream_id},
+};
 
 /// Timestamp and relative-offset factory for recorded interactions.
 pub(crate) trait MetadataFactory: Clone + Send + Sync + 'static {

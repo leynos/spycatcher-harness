@@ -1,26 +1,30 @@
 //! Shared test infrastructure for record-mode unit tests.
-use super::*;
+use std::sync::atomic::AtomicU64;
+
 use camino::{Utf8Path, Utf8PathBuf};
 use eyre::WrapErr;
 use futures_util::StreamExt;
-use std::sync::atomic::AtomicU64;
 
-use crate::cassette::{
-    Cassette, CassetteReader, InteractionMetadata, filesystem::FilesystemCassetteStore,
+use super::*;
+use crate::{
+    cassette::{
+        Cassette,
+        CassetteReader,
+        InteractionMetadata,
+        filesystem::FilesystemCassetteStore,
+    },
+    config::UpstreamKind,
+    http_exchange::{ObservedResponse, parse_json_bytes},
+    protocol::CHAT_COMPLETIONS_PATH,
+    server::record_metadata::{Clock, MetadataFactory},
+    upstream::StreamingObservedResponse,
 };
-use crate::config::UpstreamKind;
-use crate::http_exchange::{ObservedResponse, parse_json_bytes};
-use crate::protocol::CHAT_COMPLETIONS_PATH;
-use crate::server::record_metadata::{Clock, MetadataFactory};
-use crate::upstream::StreamingObservedResponse;
 
 #[derive(Debug, Clone)]
 pub(crate) struct FakeEnvProvider(pub(crate) Option<String>);
 
 impl EnvProvider for FakeEnvProvider {
-    fn read(&self, _: &str) -> Option<String> {
-        self.0.clone()
-    }
+    fn read(&self, _: &str) -> Option<String> { self.0.clone() }
 }
 
 #[derive(Debug, Clone)]
@@ -41,9 +45,7 @@ impl MetadataFactory for FakeMetadataFactory {
 pub(crate) struct FixedClock;
 
 impl Clock for FixedClock {
-    fn now_rfc3339(&self) -> HarnessResult<String> {
-        Ok("2024-01-01T00:00:00Z".to_owned())
-    }
+    fn now_rfc3339(&self) -> HarnessResult<String> { Ok("2024-01-01T00:00:00Z".to_owned()) }
 }
 
 #[derive(Debug, Clone)]

@@ -3,9 +3,14 @@
 use rstest::{fixture, rstest};
 use serde_json::json;
 
-use super::canonicalize;
-use super::stable_hash;
-use super::{CanonicalError, CanonicalRequest, IgnorePathConfig, RecordedRequest};
+use super::{
+    CanonicalError,
+    CanonicalRequest,
+    IgnorePathConfig,
+    RecordedRequest,
+    canonicalize,
+    stable_hash,
+};
 
 #[fixture]
 fn request_with_json_body() -> RecordedRequest {

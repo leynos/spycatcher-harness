@@ -6,18 +6,21 @@
 use std::net::SocketAddr;
 
 use axum::Router;
-use tokio::net::TcpListener;
-use tokio::sync::oneshot;
-use tokio::task::JoinHandle;
+use tokio::{net::TcpListener, sync::oneshot, task::JoinHandle};
 
-use crate::cassette::filesystem::FilesystemCassetteStore;
-use crate::config::HarnessConfig;
-use crate::protocol::CHAT_COMPLETIONS_PATH;
-use crate::server::record::RecordAppState;
-use crate::server::record_handler::record_chat_completions_handler;
-use crate::server::replay::ReplayAppState;
-use crate::server::replay_handler::replay_chat_completions_handler;
-use crate::{HarnessError, HarnessResult};
+use crate::{
+    HarnessError,
+    HarnessResult,
+    cassette::filesystem::FilesystemCassetteStore,
+    config::HarnessConfig,
+    protocol::CHAT_COMPLETIONS_PATH,
+    server::{
+        record::RecordAppState,
+        record_handler::record_chat_completions_handler,
+        replay::ReplayAppState,
+        replay_handler::replay_chat_completions_handler,
+    },
+};
 
 /// Runtime handle for a bound harness HTTP server.
 #[derive(Debug)]

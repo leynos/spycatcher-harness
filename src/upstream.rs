@@ -4,17 +4,23 @@
 //! authentication and forward them to the configured provider without leaking
 //! client-library types into cassette logic.
 
+use std::time::Duration;
+
 use axum::http::{HeaderName, HeaderValue};
-use futures_util::StreamExt;
-use futures_util::stream::BoxStream;
+use futures_util::{StreamExt, stream::BoxStream};
 use reqwest::{Client, Url};
 
-use crate::config::UpstreamConfig;
-use crate::http_exchange::{
-    ObservedResponse, parse_json_bytes, selected_response_headers, selected_response_proxy_headers,
+use crate::{
+    HarnessError,
+    HarnessResult,
+    config::UpstreamConfig,
+    http_exchange::{
+        ObservedResponse,
+        parse_json_bytes,
+        selected_response_headers,
+        selected_response_proxy_headers,
+    },
 };
-use crate::{HarnessError, HarnessResult};
-use std::time::Duration;
 
 /// Request timeout applied to the Reqwest client.
 ///
@@ -54,9 +60,7 @@ pub(crate) trait EnvProvider {
 pub(crate) struct ProcessEnvProvider;
 
 impl EnvProvider for ProcessEnvProvider {
-    fn read(&self, name: &str) -> Option<String> {
-        std::env::var(name).ok()
-    }
+    fn read(&self, name: &str) -> Option<String> { std::env::var(name).ok() }
 }
 
 /// Narrow outbound port for chat completions proxy requests.
@@ -235,9 +239,7 @@ fn to_outbound_header(name: &str, value: &[u8]) -> HarnessResult<(HeaderName, He
 /// Rejects forwarding an inbound authorisation header, ignoring case.
 /// For example, `Authorization` is filtered before the configured bearer token is added.
 #[inline]
-const fn should_forward_header(name: &str) -> bool {
-    !name.eq_ignore_ascii_case("authorization")
-}
+const fn should_forward_header(name: &str) -> bool { !name.eq_ignore_ascii_case("authorization") }
 
 /// Checks the configured-header denylist without regard to case.
 /// For example, `Content-Length` cannot override Reqwest's framing.

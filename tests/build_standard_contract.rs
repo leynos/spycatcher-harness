@@ -23,8 +23,15 @@ mod support;
 
 use rstest::rstest;
 use support::{
-    Flags, Host, LINUX_SELECTOR, LINUX_TABLES, MOLD_FLAG, THREADS_FLAG, check_development_targets,
-    make_rustflags, sources,
+    Flags,
+    Host,
+    LINUX_SELECTOR,
+    LINUX_TABLES,
+    MOLD_FLAG,
+    THREADS_FLAG,
+    check_development_targets,
+    make_rustflags,
+    sources,
 };
 
 /// Makefile targets that build for development. A command in one either
@@ -33,7 +40,8 @@ use support::{
 const DEVELOPMENT_TARGETS: [&str; 4] = ["test", "typecheck", "lint", "build"];
 
 /// Makefile targets that ship, so every command assigns `RUSTFLAGS` and none
-/// adds a standard flag (a caller's own value is forwarded untouched). Coverage runs in CI, outwith the Makefile.
+/// adds a standard flag (a caller's own value is forwarded untouched). Coverage runs in CI, outwith
+/// the Makefile.
 const HELD_OUT_TARGETS: [&str; 1] = ["release"];
 
 /// Development targets that must assign `RUSTFLAGS` in at least one command,

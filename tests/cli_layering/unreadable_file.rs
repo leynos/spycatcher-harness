@@ -5,7 +5,6 @@ use cap_std::{
     fs_utf8::{Dir, Permissions, PermissionsExt, camino::Utf8Path},
 };
 use eyre::{Result, WrapErr as _, eyre};
-
 use spycatcher_harness::HarnessConfig;
 
 /// Returns the loader result when the runner enforces mode-000 permissions.

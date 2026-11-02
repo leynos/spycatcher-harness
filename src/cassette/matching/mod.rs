@@ -4,9 +4,12 @@ use std::collections::HashMap;
 
 use serde_json::Value;
 
-use crate::cassette::{Cassette, Interaction, StreamCanonicalPolicy};
-use crate::config::MatchMode;
-use crate::{HarnessError, HarnessResult};
+use crate::{
+    HarnessError,
+    HarnessResult,
+    cassette::{Cassette, Interaction, StreamCanonicalPolicy},
+    config::MatchMode,
+};
 
 mod selection;
 
@@ -106,10 +109,16 @@ impl ReplayMatchEngine {
     /// # Examples
     ///
     /// ```rust
-    /// use spycatcher_harness::cassette::{Cassette, MatchOutcome, ReplayMatchEngine};
-    /// use spycatcher_harness::config::MatchMode;
-    /// let mut engine = ReplayMatchEngine::new(Cassette::new(), MatchMode::SequentialStrict).expect("empty cassette should create replay match engine");
-    /// assert!(matches!(engine.next_match("missing", &serde_json::json!({})), MatchOutcome::Mismatch(_)));
+    /// use spycatcher_harness::{
+    ///     cassette::{Cassette, MatchOutcome, ReplayMatchEngine},
+    ///     config::MatchMode,
+    /// };
+    /// let mut engine = ReplayMatchEngine::new(Cassette::new(), MatchMode::SequentialStrict)
+    ///     .expect("empty cassette should create replay match engine");
+    /// assert!(matches!(
+    ///     engine.next_match("missing", &serde_json::json!({})),
+    ///     MatchOutcome::Mismatch(_)
+    /// ));
     /// ```
     ///
     /// # Errors
@@ -125,10 +134,14 @@ impl ReplayMatchEngine {
     /// # Examples
     ///
     /// ```rust
-    /// use spycatcher_harness::cassette::{Cassette, ReplayMatchEngine, StreamCanonicalPolicy};
-    /// use spycatcher_harness::config::MatchMode;
+    /// use spycatcher_harness::{
+    ///     cassette::{Cassette, ReplayMatchEngine, StreamCanonicalPolicy},
+    ///     config::MatchMode,
+    /// };
     /// let policy = StreamCanonicalPolicy::ignore_comments();
-    /// let engine = ReplayMatchEngine::with_policy(Cassette::new(), MatchMode::SequentialStrict, policy).expect("empty cassette should create replay match engine with stream policy");
+    /// let engine =
+    ///     ReplayMatchEngine::with_policy(Cassette::new(), MatchMode::SequentialStrict, policy)
+    ///         .expect("empty cassette should create replay match engine with stream policy");
     /// assert_eq!(engine.stream_policy(), policy);
     /// ```
     ///
@@ -191,13 +204,13 @@ impl ReplayMatchEngine {
     /// # use spycatcher_harness::cassette::{Cassette, ReplayMatchEngine, StreamCanonicalPolicy};
     /// # use spycatcher_harness::config::MatchMode;
     /// let policy = StreamCanonicalPolicy::ignore_comments();
-    /// let engine = ReplayMatchEngine::with_policy(Cassette::new(), MatchMode::SequentialStrict, policy).expect("empty cassette should create replay match engine with stream policy");
+    /// let engine =
+    ///     ReplayMatchEngine::with_policy(Cassette::new(), MatchMode::SequentialStrict, policy)
+    ///         .expect("empty cassette should create replay match engine with stream policy");
     /// assert_eq!(engine.stream_policy(), policy);
     /// ```
     #[must_use]
-    pub const fn stream_policy(&self) -> StreamCanonicalPolicy {
-        self.stream_policy
-    }
+    pub const fn stream_policy(&self) -> StreamCanonicalPolicy { self.stream_policy }
 
     /// Attempts to match an incoming request against the cassette.
     ///
@@ -209,8 +222,12 @@ impl ReplayMatchEngine {
     /// ```rust
     /// # use spycatcher_harness::cassette::{Cassette, MatchOutcome, ReplayMatchEngine};
     /// # use spycatcher_harness::config::MatchMode;
-    /// let mut engine = ReplayMatchEngine::new(Cassette::new(), MatchMode::SequentialStrict).expect("empty cassette should create replay match engine");
-    /// assert!(matches!(engine.next_match("abc123", &serde_json::json!({})), MatchOutcome::Mismatch(_)));
+    /// let mut engine = ReplayMatchEngine::new(Cassette::new(), MatchMode::SequentialStrict)
+    ///     .expect("empty cassette should create replay match engine");
+    /// assert!(matches!(
+    ///     engine.next_match("abc123", &serde_json::json!({})),
+    ///     MatchOutcome::Mismatch(_)
+    /// ));
     /// ```
     pub fn next_match<'a>(
         &'a mut self,

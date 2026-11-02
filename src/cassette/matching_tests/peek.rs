@@ -4,17 +4,20 @@ use rstest::rstest;
 use serde_json::json;
 
 use super::fixtures::{
-    assert_matched_response_eq, assert_mismatch_diagnostic, duplicate_hash_cassette,
-    expect_matched, extract_response_id, nth_response, sample_cassette,
+    assert_matched_response_eq,
+    assert_mismatch_diagnostic,
+    duplicate_hash_cassette,
+    expect_matched,
+    extract_response_id,
+    nth_response,
+    sample_cassette,
 };
-use crate::cassette::{
-    Cassette, InteractionPosition, MatchOutcome, RecordedResponse, ReplayMatchEngine,
+use crate::{
+    cassette::{Cassette, InteractionPosition, MatchOutcome, RecordedResponse, ReplayMatchEngine},
+    config::MatchMode,
 };
-use crate::config::MatchMode;
 
-fn canonical_a() -> serde_json::Value {
-    json!({"method": "POST", "path": "/v1/chat/completions"})
-}
+fn canonical_a() -> serde_json::Value { json!({"method": "POST", "path": "/v1/chat/completions"}) }
 
 #[rstest]
 fn sequential_peek_match_does_not_advance_cursor(sample_cassette: Cassette) {

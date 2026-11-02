@@ -13,9 +13,7 @@ struct Text<'a>(&'a str);
 
 impl<'a> Text<'a> {
     /// Returns the number of leading spaces.
-    fn indent(self) -> usize {
-        self.0.len() - self.0.trim_start().len()
-    }
+    fn indent(self) -> usize { self.0.len() - self.0.trim_start().len() }
 
     /// Returns whether the line is blank or a comment, and so evidence of nothing.
     fn is_inert(self) -> bool {
@@ -24,14 +22,10 @@ impl<'a> Text<'a> {
     }
 
     /// Returns whether the line begins a YAML sequence item, a workflow step.
-    fn starts_step(self) -> bool {
-        self.0.trim_start().starts_with("- ")
-    }
+    fn starts_step(self) -> bool { self.0.trim_start().starts_with("- ") }
 
     /// Returns the line without its indent or a leading `- `.
-    fn key_text(self) -> &'a str {
-        self.0.trim().trim_start_matches("- ")
-    }
+    fn key_text(self) -> &'a str { self.0.trim().trim_start_matches("- ") }
 
     /// Returns whether the line, as a one-line command, runs `apt` or `apt-get`
     /// to install mold: the command itself, not an `echo` of one.
@@ -199,9 +193,7 @@ impl<'a> Job<'a> {
     }
 
     /// Returns whether the step carries an `if:` condition, so it may be skipped.
-    fn is_conditional(&self, at: usize) -> bool {
-        self.step_has(at, |key| key.starts_with("if:"))
-    }
+    fn is_conditional(&self, at: usize) -> bool { self.step_has(at, |key| key.starts_with("if:")) }
 
     /// Returns whether the step runs the shared setup-rust action: its `uses:`
     /// value names that action's path exactly, not any text that contains it.

@@ -4,7 +4,6 @@ use rstest::fixture;
 use rstest_bdd::Slot;
 use rstest_bdd_macros::{ScenarioState, given, scenario, then, when};
 use serde_json::json;
-
 use spycatcher_harness::cassette::{IgnorePathConfig, RecordedRequest, canonicalize, stable_hash};
 
 #[derive(Default, ScenarioState)]
@@ -26,10 +25,9 @@ fn canonical_hash_world() -> CanonicalHashWorld {
 macro_rules! given_request_pair {
     (
         $step:literal,
-        $fn_name:ident,
-        left:  { method: $lm:literal, query: $lq:literal, body: $lb:tt },
-        right: { method: $rm:literal, query: $rq:literal, body: $rb:tt }
-        $(,)?
+        $fn_name:ident,left:
+        { method: $lm:literal,query: $lq:literal,body: $lb:tt },right:
+        { method: $rm:literal,query: $rq:literal,body: $rb:tt } $(,)?
     ) => {
         #[given($step)]
         fn $fn_name(canonical_hash_world: &CanonicalHashWorld) {

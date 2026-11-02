@@ -4,12 +4,15 @@
 //! service. It deliberately owns no upstream configuration or HTTP client so
 //! replay mode cannot perform outbound provider calls.
 
-use crate::HarnessResult;
-use crate::cassette::{CassetteReader, ReplayMatchEngine, filesystem::FilesystemCassetteStore};
-use crate::config::HarnessConfig;
-use crate::protocol::CHAT_COMPLETIONS_PROTOCOL_ID;
-use crate::replay::{ReplayContext, ReplayService};
 use log::info;
+
+use crate::{
+    HarnessResult,
+    cassette::{CassetteReader, ReplayMatchEngine, filesystem::FilesystemCassetteStore},
+    config::HarnessConfig,
+    protocol::CHAT_COMPLETIONS_PROTOCOL_ID,
+    replay::{ReplayContext, ReplayService},
+};
 
 /// Shared replay-mode application state for the inbound server.
 #[derive(Debug, Clone)]

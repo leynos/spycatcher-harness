@@ -6,8 +6,11 @@
 use camino::Utf8Path;
 use cap_std::{ambient_authority, fs_utf8::Dir};
 
-use crate::cassette::{Cassette, CassetteAppender, CassetteReader, Interaction};
-use crate::{HarnessError, HarnessResult};
+use crate::{
+    HarnessError,
+    HarnessResult,
+    cassette::{Cassette, CassetteAppender, CassetteReader, Interaction},
+};
 
 /// Filesystem-backed cassette store used by record and replay startup paths.
 #[derive(Debug)]
@@ -151,9 +154,7 @@ impl FilesystemCassetteStore {
 }
 
 impl CassetteReader for FilesystemCassetteStore {
-    fn load(&self) -> HarnessResult<Cassette> {
-        Ok(self.cassette.clone())
-    }
+    fn load(&self) -> HarnessResult<Cassette> { Ok(self.cassette.clone()) }
 }
 
 impl CassetteAppender for FilesystemCassetteStore {
@@ -236,16 +237,24 @@ fn cassette_name(cassette_path: &Utf8Path) -> HarnessResult<String> {
 #[cfg(test)]
 mod tests {
     //! Filesystem cassette adapter tests.
-    use super::*;
-    use crate::HarnessError;
-    use crate::cassette::{
-        InteractionMetadata, RecordedRequest, RecordedResponse, StreamEvent, StreamTiming,
-    };
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
     use camino::Utf8PathBuf;
     use rstest::rstest;
     use serde_json::json;
-    use std::sync::atomic::{AtomicUsize, Ordering};
     use uuid::Uuid;
+
+    use super::*;
+    use crate::{
+        HarnessError,
+        cassette::{
+            InteractionMetadata,
+            RecordedRequest,
+            RecordedResponse,
+            StreamEvent,
+            StreamTiming,
+        },
+    };
     static NEXT_TEST_DIR: AtomicUsize = AtomicUsize::new(1);
 
     #[rstest]

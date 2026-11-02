@@ -7,11 +7,14 @@ use std::sync::Arc;
 
 use eyre::WrapErr;
 use ortho_config::{Localizer, NoOpLocalizer};
-use spycatcher_harness::HarnessConfig;
-use spycatcher_harness::cli::localizer::{
-    build_cli_localizer, early_locale_plan, is_cli_localization_disabled,
+use spycatcher_harness::{
+    HarnessConfig,
+    cli::{
+        CliConfigError,
+        load_subcommand_config_with_localizer,
+        localizer::{build_cli_localizer, early_locale_plan, is_cli_localization_disabled},
+    },
 };
-use spycatcher_harness::cli::{CliConfigError, load_subcommand_config_with_localizer};
 
 use super::process_output::{write_display_output, write_error_output};
 

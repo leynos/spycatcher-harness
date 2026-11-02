@@ -9,7 +9,7 @@
 //! # Quick start
 //!
 //! ```rust,no_run
-//! use spycatcher_harness::{start_harness, HarnessConfig};
+//! use spycatcher_harness::{HarnessConfig, start_harness};
 //!
 //! # async fn example() -> spycatcher_harness::HarnessResult<()> {
 //! let cfg = HarnessConfig::default();
@@ -34,15 +34,16 @@ pub mod server;
 mod sse;
 pub mod upstream;
 
-pub use config::HarnessConfig;
-pub use error::{HarnessError, HarnessResult};
-
 use std::net::SocketAddr;
 
 use camino::Utf8PathBuf;
+pub use config::HarnessConfig;
+pub use error::{HarnessError, HarnessResult};
 
-use crate::cassette::{filesystem::FilesystemCassetteStore, filesystem::probe_record_write_access};
-use crate::server::ServerHandle;
+use crate::{
+    cassette::filesystem::{FilesystemCassetteStore, probe_record_write_access},
+    server::ServerHandle,
+};
 
 /// A running harness instance.
 ///
@@ -96,7 +97,7 @@ impl RunningHarness {
 /// # Examples
 ///
 /// ```rust,no_run
-/// use spycatcher_harness::{start_harness, HarnessConfig};
+/// use spycatcher_harness::{HarnessConfig, start_harness};
 ///
 /// # async fn example() -> spycatcher_harness::HarnessResult<()> {
 /// let cfg = HarnessConfig::default();

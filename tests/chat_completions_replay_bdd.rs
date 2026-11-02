@@ -28,9 +28,7 @@ fn non_stream_replay_returns_recorded_response_without_upstream_access(replay_wo
     path = "tests/features/chat_completions_replay.feature",
     name = "Replay mismatch returns a conflict diagnostic"
 )]
-fn replay_mismatch_returns_conflict_diagnostic(replay_world: ReplayWorld) {
-    let _ = replay_world;
-}
+fn replay_mismatch_returns_conflict_diagnostic(replay_world: ReplayWorld) { let _ = replay_world; }
 
 #[scenario(
     path = "tests/features/chat_completions_replay.feature",

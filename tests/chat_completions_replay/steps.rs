@@ -1,22 +1,35 @@
 //! Step definitions for chat completions replay scenarios.
 
-use std::error::Error;
-use std::sync::Arc;
+use std::{error::Error, sync::Arc};
 
 use rstest_bdd_macros::{given, then, when};
-
-use spycatcher_harness::config::{UpstreamConfig, UpstreamKind};
-use spycatcher_harness::{HarnessConfig, RunningHarness, start_harness};
+use spycatcher_harness::{
+    HarnessConfig,
+    RunningHarness,
+    config::{UpstreamConfig, UpstreamKind},
+    start_harness,
+};
 
 pub(super) use super::harness_config::{make_record_config, make_replay_config};
-
-use crate::chat_completions_replay::support::{
-    assert_response_error_kind, replay_response, response_error, response_error_kind,
-};
-use crate::chat_completions_replay::world::ReplayWorld;
-use crate::record_helpers::{
-    ClientResponse, StubUpstream, load_cassette, present_env_name, sample_success_body,
-    send_request, unique_cassette_path,
+use crate::{
+    chat_completions_replay::{
+        support::{
+            assert_response_error_kind,
+            replay_response,
+            response_error,
+            response_error_kind,
+        },
+        world::ReplayWorld,
+    },
+    record_helpers::{
+        ClientResponse,
+        StubUpstream,
+        load_cassette,
+        present_env_name,
+        sample_success_body,
+        send_request,
+        unique_cassette_path,
+    },
 };
 
 const BASELINE_REQUEST: &[u8] =

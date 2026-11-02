@@ -8,9 +8,13 @@ use eyre::WrapErr;
 use rstest::fixture;
 use rstest_bdd::Slot;
 use rstest_bdd_macros::{ScenarioState, given, scenario, then, when};
-use spycatcher_harness::cassette::Cassette;
 use spycatcher_harness::{
-    HarnessConfig, HarnessError, HarnessResult, RunningHarness, start_harness,
+    HarnessConfig,
+    HarnessError,
+    HarnessResult,
+    RunningHarness,
+    cassette::Cassette,
+    start_harness,
 };
 
 #[path = "support/bdd_fixtures.rs"]

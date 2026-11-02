@@ -4,8 +4,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use serde_json::{Map, Value, json};
 
-use super::CanonicalError;
-use super::CanonicalRequest;
+use super::{CanonicalError, CanonicalRequest};
 
 mod serialize;
 use self::serialize::write_json_canonical;
@@ -211,9 +210,7 @@ struct PointerToken(String);
 
 impl PointerToken {
     /// Borrows the decoded segment; stored `a/b` is returned without pointer escaping.
-    fn as_str(&self) -> &str {
-        &self.0
-    }
+    fn as_str(&self) -> &str { &self.0 }
 }
 
 /// Formats decoded tokens as an escaped JSON Pointer; `a/b` becomes `/a~1b`.

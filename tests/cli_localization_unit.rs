@@ -6,14 +6,17 @@
 use clap::Command;
 use i18n_embed::unic_langid::{LanguageIdentifier, langid};
 use ortho_config::{
-    FluentLocalizer, LocalizationArgs, NoOpLocalizer, localize_clap_error_with_command,
+    FluentLocalizer,
+    LocalizationArgs,
+    NoOpLocalizer,
+    localize_clap_error_with_command,
 };
 use proptest::prelude::*;
 use rstest::rstest;
-use spycatcher_harness::cli::load_subcommand_config_from_iter_with_localizer;
-use spycatcher_harness::cli::localization::LocalizeCmd;
-use spycatcher_harness::cli::localizer::{
-    build_cli_localizer, build_cli_localizer_from_resources, parse_early_locale,
+use spycatcher_harness::cli::{
+    load_subcommand_config_from_iter_with_localizer,
+    localization::LocalizeCmd,
+    localizer::{build_cli_localizer, build_cli_localizer_from_resources, parse_early_locale},
 };
 
 const CLI_FTL: &str = include_str!("../i18n/en-US/spycatcher-harness.ftl");
@@ -113,7 +116,7 @@ fn fluent_localizer_updates_command_copy() {
 fn fluent_localizer_updates_subcommand_copy() {
     let localizer = FluentLocalizer::builder(langid!("en-US"))
         .with_consumer_resources([
-            "cli-about = Root localized\ncli-replay-about = Replay localized by catalogue\n",
+            "cli-about = Root localized\ncli-replay-about = Replay localized by catalogue\n"
         ])
         .try_build()
         .expect("test CLI catalogue should build");

@@ -5,10 +5,12 @@
 //! by the process-backed loader.
 
 use clap::CommandFactory;
-use ortho_config::subcommand::Prefix;
 use ortho_config::{
-    Localizer, SharedScanEnvSource, SubcommandFileContext,
+    Localizer,
+    SharedScanEnvSource,
+    SubcommandFileContext,
     load_and_merge_subcommand_with_sources_at,
+    subcommand::Prefix,
 };
 use serde::{Serialize, de::DeserializeOwned};
 
@@ -27,9 +29,15 @@ const CONFIG_PREFIX: &str = "SPYCATCHER_HARNESS_";
 /// # Examples
 ///
 /// ```rust,no_run
-/// use std::path::Path;
-/// use std::sync::Arc;
-/// use ortho_config::{MapEnv, NoOpLocalizer, SharedEnvSource, SharedScanEnvSource, SubcommandFileContext};
+/// use std::{path::Path, sync::Arc};
+///
+/// use ortho_config::{
+///     MapEnv,
+///     NoOpLocalizer,
+///     SharedEnvSource,
+///     SharedScanEnvSource,
+///     SubcommandFileContext,
+/// };
 /// use spycatcher_harness::cli::load_subcommand_config_from_iter_with_sources;
 ///
 /// let source = Arc::new(MapEnv::new());

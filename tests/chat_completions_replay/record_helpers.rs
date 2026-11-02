@@ -1,21 +1,25 @@
 //! Replay-focused integration helpers for chat completions BDD scenarios.
 
-use std::error::Error;
-use std::sync::{Arc, Mutex};
+use std::{
+    error::Error,
+    sync::{Arc, Mutex},
+};
 
-use axum::body::{Body, Bytes};
-use axum::extract::State;
-use axum::http::{HeaderMap, HeaderValue, Response, StatusCode};
-use axum::{Json, Router, routing::post};
+use axum::{
+    Json,
+    Router,
+    body::{Body, Bytes},
+    extract::State,
+    http::{HeaderMap, HeaderValue, Response, StatusCode},
+    routing::post,
+};
 use camino::{Utf8Path, Utf8PathBuf};
 use cap_std::{ambient_authority, fs_utf8::Dir};
 use futures_util::stream;
 use serde_json::{Value, json};
-use tokio::net::TcpListener;
-use tokio::sync::oneshot;
-use url::Url;
-
 use spycatcher_harness::cassette::Cassette;
+use tokio::{net::TcpListener, sync::oneshot};
+use url::Url;
 
 /// Response data observed by the integration test client.
 #[derive(Debug, Clone, PartialEq, Eq)]

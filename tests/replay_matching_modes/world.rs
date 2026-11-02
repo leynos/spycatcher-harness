@@ -3,8 +3,10 @@
 use rstest::fixture;
 use rstest_bdd::Slot;
 use rstest_bdd_macros::ScenarioState;
-use spycatcher_harness::cassette::{Cassette, InteractionPosition, ReplayMatchEngine};
-use spycatcher_harness::config::MatchMode;
+use spycatcher_harness::{
+    cassette::{Cassette, InteractionPosition, ReplayMatchEngine},
+    config::MatchMode,
+};
 
 /// Test world state for replay matching mode BDD scenarios.
 ///

@@ -3,9 +3,14 @@
 use rstest::rstest;
 
 use super::{
-    Host, assignment, dry_run, dry_run_with, expand_value,
+    Host,
+    assignment,
+    dry_run,
+    dry_run_with,
+    expand_value,
     flags::{ConfigText, Flags, Source, read},
-    make_rustflags, rustflags_in,
+    make_rustflags,
+    rustflags_in,
     shell::Line,
 };
 

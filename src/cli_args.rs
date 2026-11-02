@@ -69,9 +69,7 @@ fn default_record_base_url() -> Url {
 
 /// Returns the default environment variable name used to supply the `OpenRouter`
 /// API key.
-fn default_record_api_key_env() -> String {
-    String::from("OPENROUTER_API_KEY")
-}
+fn default_record_api_key_env() -> String { String::from("OPENROUTER_API_KEY") }
 
 impl From<RecordUpstreamArgs> for config::UpstreamConfig {
     fn from(value: RecordUpstreamArgs) -> Self {

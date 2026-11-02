@@ -3,14 +3,23 @@
 #[path = "concurrent_stream.rs"]
 mod concurrent_stream;
 
-use super::*;
-use crate::cassette::{
-    Cassette, CassetteFormatVersion, IgnorePathConfig, Interaction, InteractionMetadata,
-    RecordedRequest, RecordedResponse, StreamEvent,
-};
-use crate::config::MatchMode;
-use crate::protocol::CHAT_COMPLETIONS_PATH;
 use rstest::rstest;
+
+use super::*;
+use crate::{
+    cassette::{
+        Cassette,
+        CassetteFormatVersion,
+        IgnorePathConfig,
+        Interaction,
+        InteractionMetadata,
+        RecordedRequest,
+        RecordedResponse,
+        StreamEvent,
+    },
+    config::MatchMode,
+    protocol::CHAT_COMPLETIONS_PATH,
+};
 
 #[rstest]
 fn matching_non_stream_request_returns_recorded_response() {

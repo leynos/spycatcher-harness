@@ -5,8 +5,7 @@
 //! tests without specifying every field. Configuration loading via
 //! `OrthoConfig` is introduced in task 1.1.2.
 
-use std::collections::BTreeMap;
-use std::net::SocketAddr;
+use std::{collections::BTreeMap, net::SocketAddr};
 
 use camino::Utf8PathBuf;
 use url::Url;
@@ -86,21 +85,15 @@ pub struct ListenAddr(SocketAddr);
 impl ListenAddr {
     /// Returns the inner [`SocketAddr`].
     #[must_use]
-    pub const fn as_socket_addr(self) -> SocketAddr {
-        self.0
-    }
+    pub const fn as_socket_addr(self) -> SocketAddr { self.0 }
 }
 
 impl Default for ListenAddr {
-    fn default() -> Self {
-        Self(SocketAddr::from(([127, 0, 0, 1], 8787)))
-    }
+    fn default() -> Self { Self(SocketAddr::from(([127, 0, 0, 1], 8787))) }
 }
 
 impl From<SocketAddr> for ListenAddr {
-    fn from(addr: SocketAddr) -> Self {
-        Self(addr)
-    }
+    fn from(addr: SocketAddr) -> Self { Self(addr) }
 }
 
 /// Operating mode for the harness.
@@ -233,8 +226,9 @@ impl Default for ReplayConfig {
 mod tests {
     //! Unit tests for harness configuration defaults and validation.
 
-    use super::*;
     use rstest::rstest;
+
+    use super::*;
 
     #[rstest]
     fn default_config_has_non_empty_cassette_name() {
