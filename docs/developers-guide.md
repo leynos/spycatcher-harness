@@ -333,6 +333,8 @@ matching semantics, stream persistence, or process output.
 | `src/cassette/canonical/json/serialize.rs`           | Canonical JSON writing, escaping and ordering for `json/mod.rs`                                         |
 | `src/cassette/matching/selection.rs`                 | Candidate selection and sequential/keyed cursor or consumption updates for `matching/mod.rs`            |
 | `src/replay_request.rs`                              | Observed-request canonicalization and matching-field access for `src/replay.rs`                         |
+| `src/replay_types.rs`                                | Adapter-neutral replay context, response, body and error contracts re-exported by `src/replay.rs`       |
+| `src/server/record_state.rs`                         | Record-mode service construction from validated configuration for `record.rs`                           |
 | `src/server/record_stream/state.rs`                  | Stream accumulation, chunk parsing, finalization and completed-record append for `record_stream/mod.rs` |
 | `src/bin/spycatcher_harness/process_output.rs`       | Locked stdout/stderr writes and flushing for the sole binary entry point                                |
 | `src/bin/spycatcher_harness/cli_startup.rs`          | CLI localizer selection, parse-span lifetime, and configuration-result exit orchestration               |
