@@ -27,6 +27,7 @@ use spycatcher_harness::{HarnessConfig, config};
 
 #[path = "harness_cli_layering_bdd/cli_layering_helpers.rs"]
 mod cli_layering_helpers;
+
 #[path = "cli_layering/source_loader.rs"]
 mod source_loader;
 
@@ -43,6 +44,8 @@ struct CliLayeringWorld {
 
 #[fixture]
 fn cli_layering_world() -> CliLayeringWorld {
+    // Keep the body multi-line: rstest re-emits it as a block expression,
+    // so a collapsed one-line body trips `unused_braces`.
     CliLayeringWorld::default()
 }
 
@@ -139,12 +142,15 @@ fn config_sets_record_upstream_base_url(cli_layering_world: &CliLayeringWorld, b
     append_config(
         cli_layering_world,
         &format!(
-            "[cmds.record]\n\
-             cassette_name = \"record_cfg\"\n\
-             [cmds.record.upstream]\n\
-             kind = \"openrouter\"\n\
-             base_url = \"{base_url_value}\"\n\
-             api_key_env = \"TEST_KEY\"\n"
+            concat!(
+                "[cmds.record]\n",
+                "cassette_name = \"record_cfg\"\n",
+                "[cmds.record.upstream]\n",
+                "kind = \"openrouter\"\n",
+                "base_url = \"{base_url_value}\"\n",
+                "api_key_env = \"TEST_KEY\"\n",
+            ),
+            base_url_value = base_url_value,
         ),
     );
 }

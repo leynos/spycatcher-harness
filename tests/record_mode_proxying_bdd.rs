@@ -9,6 +9,8 @@ use record_mode_proxying::world::ProxyWorld;
 
 #[fixture]
 fn proxy_world() -> ProxyWorld {
+    // Keep the body multi-line: rstest re-emits it as a block expression,
+    // so a collapsed one-line body trips `unused_braces`.
     ProxyWorld::default()
 }
 

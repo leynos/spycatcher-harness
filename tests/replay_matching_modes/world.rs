@@ -34,5 +34,7 @@ pub struct MatchingWorld {
 /// isolated state for Given/When/Then steps.
 #[fixture]
 pub fn matching_world() -> MatchingWorld {
+    // Keep the body multi-line: rstest re-emits it as a block expression,
+    // so a collapsed one-line body trips `unused_braces`.
     MatchingWorld::default()
 }
