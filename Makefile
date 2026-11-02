@@ -38,8 +38,10 @@ DEBUG_RUSTFLAGS = RUSTFLAGS="$${RUSTFLAGS:+$$RUSTFLAGS }$(STANDARD_RUSTFLAGS)"
 # Gate targets also deny warnings, so they compose the caller's flags, the
 # warning policy and the standard flags in one place.
 GATE_RUSTFLAGS = RUSTFLAGS="$${RUSTFLAGS:+$$RUSTFLAGS }$(RUST_FLAGS) $(STANDARD_RUSTFLAGS)"
+# A caller's flags compose with the baseline rather than replacing it, so
+# `make lint RUSTDOC_FLAGS=...` cannot silently drop the warning policy.
 RUSTDOC_FLAGS ?=
-RUSTDOC_FLAGS := --cfg docsrs -D warnings $(RUSTDOC_FLAGS)
+override RUSTDOC_FLAGS := --cfg docsrs -D warnings $(RUSTDOC_FLAGS)
 CARGO_FLAGS ?= --all-targets --all-features
 CLIPPY_FLAGS ?= $(CARGO_FLAGS) -- $(RUST_FLAGS)
 TEST_FLAGS ?= $(CARGO_FLAGS)
