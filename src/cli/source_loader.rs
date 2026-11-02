@@ -17,7 +17,8 @@ use serde::{Serialize, de::DeserializeOwned};
 use super::{Cli, CliConfigError, Commands, RecordArgs, ReplayArgs, VerifyArgs};
 
 /// Prefix applied to environment variables scanned for this application.
-/// For example, `SPYCATCHER_HARNESS_LOCALE` becomes the `locale` setting.
+/// For example, `SPYCATCHER_HARNESS_CMDS_REPLAY_LOCALIZATION__LOCALE` becomes
+/// the `cmds.replay.localization.locale` setting.
 const CONFIG_PREFIX: &str = "SPYCATCHER_HARNESS_";
 
 /// Loads a selected subcommand using explicit file and environment sources.
