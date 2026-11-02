@@ -163,6 +163,14 @@ pub fn early_locale_plan() -> LanguageIdentifier {
 /// the process environment is its only input; the testable seams are the
 /// `early_locale_plan_with` and `is_localization_disabled_for_value` helpers,
 /// which take the already-read values instead.
+///
+/// # Examples
+///
+/// When `SPYCATCHER_HARNESS_LOCALE` is set to `en-GB`,
+/// `read_process_env("SPYCATCHER_HARNESS_LOCALE")` returns
+/// `Some("en-GB".to_owned())`. When the variable is absent, the same call
+/// returns `None`, and locale selection falls through to the fallback setting
+/// or the built-in default.
 #[expect(
     clippy::disallowed_methods,
     reason = "early locale selection precedes configuration loading, so the ambient process \
