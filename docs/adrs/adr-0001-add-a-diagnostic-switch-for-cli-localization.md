@@ -7,7 +7,7 @@ CLI help and parse-error output.
 
 ## Date
 
-2026-06-04
+2026-11-03
 
 ## Context and problem statement
 
@@ -41,3 +41,12 @@ not an application preference.
 Future non-English CLI catalogues must continue to pass the same fallback
 tests, so this switch remains a reliable way to recover stock `clap`
 diagnostics.
+
+## Addendum, 2026-11-03: canonical filename and status summary
+
+This decision was published as ADR 001 at
+`docs/adr/2026-06-04-cli-localization-disable-switch.md`. Its canonical path
+now uses ADR 0001 to follow the four-digit filename convention; the ordinal
+remains 1. The expanded Status summary records the original acceptance date and
+decision. This is a documentation-format update, not a change to the accepted
+decision.

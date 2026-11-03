@@ -27,8 +27,9 @@ documentation set.
   driven testing practices used by the project.
 - [Rust doctest dry guide](rust-doctest-dry-guide.md) explains the doctest
   approach used by the Rust codebase.
-- [Reliable testing through dependency injection](reliable-testing-in-rust-via-dependency-injection.md)
-  describes testable boundaries and dependency injection.
+- [Reliable testing through dependency
+  injection](reliable-testing-in-rust-via-dependency-injection.md) describes
+  testable boundaries and dependency injection.
 - [Localizable Rust libraries with Fluent](localizable-rust-libraries-with-fluent.md)
   explains loader-injected localization for Rust libraries.
 - [Complexity antipatterns and refactoring strategies](complexity-antipatterns-and-refactoring-strategies.md)

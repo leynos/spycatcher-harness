@@ -7,7 +7,7 @@ LLVM as a documented exception.
 
 ## Date
 
-2026-10-03
+2026-11-03
 
 ## Context and problem statement
 
@@ -65,3 +65,12 @@ defers the next measurement to the 2027-04-03 revisit date recorded in the
 tracking issue (number 146), and supersedes the "or when the toolchain pin
 changes" trigger in the decision above for this pin move. The developers' guide
 states the same deferral.
+
+## Addendum, 2026-11-03: canonical filename and status summary
+
+This decision was published as ADR 002 at
+`docs/adr/2026-10-03-adopt-the-rust-build-standard.md`. Its canonical path now
+uses ADR 0002 to follow the four-digit filename convention; the ordinal remains
+2. The expanded Status summary records the original acceptance date and
+decision. This is a documentation-format update, not a change to the accepted
+decision.

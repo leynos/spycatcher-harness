@@ -248,13 +248,13 @@ _Table 1: Obligations when moving from v0.8.0 to v0.9.0._
 
 ### Before
 
-```rust,no_run
+```rust,ignore
 <old code>
 ```
 
 ### After
 
-```rust,no_run
+```rust,ignore
 <new code>
 ```
 
