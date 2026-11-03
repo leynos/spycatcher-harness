@@ -47,6 +47,9 @@ const REQUEST_COUNT: usize = 4;
 /// Bounds every progress assertion so a regression fails instead of hanging.
 const PROGRESS_TIMEOUT: Duration = Duration::from_secs(10);
 
+/// Short bound proving the stream end stays pending while the lock is held.
+const PENDING_PROBE_TIMEOUT: Duration = Duration::from_millis(250);
+
 /// Upstream body shared by the response-preservation assertions.
 const UPSTREAM_BODY: &[u8] = br#"{"id":"ok"}"#;
 
@@ -246,6 +249,20 @@ async fn assert_first_chunk(body: &mut RecordedBody, expected: &[u8]) -> eyre::R
 
 /// Proves that end-of-stream stays pending while another task makes progress.
 async fn assert_stream_end_stays_pending(body: &mut RecordedBody) -> eyre::Result<()> {
+    assert_unrelated_task_progresses(body).await?;
+    // The progress branch above can win before the stream is polled again, so
+    // check once more while the cassette lock is still held. A stream that
+    // ends here would mean persistence did not wait for the lock.
+    let end = tokio::time::timeout(PENDING_PROBE_TIMEOUT, body.next()).await;
+    eyre::ensure!(
+        end.is_err(),
+        "end of stream should remain pending while the cassette write is blocked; got {end:?}"
+    );
+    Ok(())
+}
+
+/// Proves an unrelated task completes while the stream-end poll is outstanding.
+async fn assert_unrelated_task_progresses(body: &mut RecordedBody) -> eyre::Result<()> {
     // Polling the stream again finalizes the recording, which blocks on the
     // held cassette lock. An unrelated task must still be able to complete.
     let (progress_tx, progress_rx) = oneshot::channel();
