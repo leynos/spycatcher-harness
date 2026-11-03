@@ -375,5 +375,9 @@ pub(crate) mod record_tests_helpers;
 mod concurrent_tests;
 
 #[cfg(test)]
+#[path = "record_blocking_tests.rs"]
+mod blocking_tests;
+
+#[cfg(test)]
 #[path = "record_tests.rs"]
 mod tests;
