@@ -1,5 +1,15 @@
 # Spycatcher harness design
 
+## Document status and authority
+
+- **Status:** Living design describing current behaviour and intended evolution.
+- **Scope:** Architecture for recording, replaying, and validating LLM API
+  interactions in the Spycatcher harness.
+- **Audience:** Maintainers and integrators.
+- **Decision authority:**
+  [ADR 0001](adrs/adr-0001-add-a-diagnostic-switch-for-cli-localization.md)
+  governs the diagnostic switch for CLI localization.
+
 ## Context and problem statement
 
 End-to-end (E2E) tests that exercise agent flows against real Large Language

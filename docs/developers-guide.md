@@ -755,7 +755,7 @@ recipes to this, and `tests/build_standard_ci.rs` holds the CI install order.
 ### Cranelift exception
 
 The decision is recorded in
-[ADR 002](adr/2026-10-03-adopt-the-rust-build-standard.md).
+[ADR 0002](adrs/adr-0002-adopt-the-rust-build-standard.md).
 
 Two observations on the pinned `nightly-2026-02-26`, neither of which
 establishes a compiler root cause:

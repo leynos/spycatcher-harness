@@ -49,7 +49,8 @@ harness.shutdown().await?;
 # }
 ```
 
-See [docs/users-guide.md](docs/users-guide.md) for user-facing configuration and
+See [documentation contents](docs/contents.md) for the documentation map,
+[docs/users-guide.md](docs/users-guide.md) for user-facing configuration, and
 [docs/developers-guide.md](docs/developers-guide.md) for implementation notes.
 
 For localized error messages, see the

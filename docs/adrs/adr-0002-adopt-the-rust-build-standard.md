@@ -1,8 +1,9 @@
-# Architectural decision record (ADR) 002: Adopt the Rust build standard
+# Architectural decision record (ADR) 0002: Adopt the Rust build standard
 
 ## Status
 
-Accepted
+Accepted on 2026-10-03: apply the estate Rust build standard while retaining
+LLVM as a documented exception.
 
 ## Date
 

@@ -1,8 +1,9 @@
-# Architectural decision record (ADR) 001: Add a diagnostic switch for CLI localization
+# Architectural decision record (ADR) 0001: Add a diagnostic switch for CLI localization
 
 ## Status
 
-Accepted
+Accepted on 2026-06-04: add a diagnostic environment switch that forces stock
+CLI help and parse-error output.
 
 ## Date
 

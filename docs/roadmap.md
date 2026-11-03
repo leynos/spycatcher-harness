@@ -1,8 +1,9 @@
 # Spycatcher harness roadmap
 
-This roadmap defines implementation work for the Spycatcher harness based on
-`docs/spycatcher-harness-design.md`. Tasks are written as measurable delivery
-units with explicit dependencies and completion criteria.
+This roadmap defines implementation work for the Spycatcher harness based on the
+[design document](spycatcher-harness-design.md). Tasks are written as
+measurable delivery units with explicit dependencies and completion criteria.
+See [documentation contents](contents.md) for the full documentation map.
 
 ## 1. Deterministic record and replay foundation
 
