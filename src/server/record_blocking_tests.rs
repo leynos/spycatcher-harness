@@ -288,12 +288,18 @@ async fn await_metadata_signal(signals: &mut UnboundedReceiver<()>) -> eyre::Res
     Ok(())
 }
 
-/// Asserts that a proxied response preserves the upstream status and body.
+/// Asserts that a proxied response preserves the upstream status, headers, and body.
 fn assert_preserved_response(response: &ProxyResponse) -> eyre::Result<()> {
     eyre::ensure!(
         response.status == 200,
         "upstream status should be preserved; got {}",
         response.status
+    );
+    let expected_headers = vec![("content-type".to_owned(), b"application/json".to_vec())];
+    eyre::ensure!(
+        response.headers == expected_headers,
+        "upstream headers should be preserved; got {:?}",
+        response.headers
     );
     let ProxyBody::Buffered(body) = &response.body else {
         eyre::bail!("expected buffered response");
