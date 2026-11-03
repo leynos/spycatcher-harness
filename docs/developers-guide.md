@@ -140,8 +140,10 @@ tokio = { version = "1.52.1", features = ["rt", "rt-multi-thread", "macros", "ne
 ```
 
 The server uses Tokio tasks and networking for the Axum runtime, graceful
-shutdown, and blocking cassette writes (`src/server/record.rs`). The
-`rt-multi-thread` feature is also required by the concurrency regression test
+shutdown, and blocking cassette writes; see
+[Async cassette I/O](#async-cassette-io-srcserverrecordrs) for the request-time
+write boundary. The `rt-multi-thread` feature is also required by the
+concurrency regression test
 `concurrent_requests_are_recorded_without_data_loss`, which runs
 `RecordService::handle_chat_completions` on a multi-threaded test runtime to
 verify record-mode persistence under concurrent requests.
@@ -565,7 +567,9 @@ to its private `src/server/record_stream/state.rs` child. That child owns
 stream accumulation, `SseParser` finalization, and completed-record append. It
 appends `RecordedResponse::Stream` only after the upstream stream finishes
 cleanly. Do not hold the cassette-store mutex across `.await`; use the existing
-`append_interaction` boundary so filesystem writes stay inside `spawn_blocking`.
+`append_interaction` boundary described in
+[Async cassette I/O](#async-cassette-io-srcserverrecordrs) so filesystem writes
+stay inside `spawn_blocking`.
 
 Future streaming protocol work should keep this split: parser state and
 protocol event classification stay outside HTTP adapters, while Axum response
@@ -593,6 +597,46 @@ pub(crate) const UPSTREAM_TIMEOUT: Duration = Duration::from_secs(30);
 chat completion requests sent to the adapter's chat/completions endpoint, which
 is built from `config.base_url` plus `chat/completions`, so stalled upstreams
 do not block graceful shutdown indefinitely.
+
+### Async cassette I/O (`src/server/record.rs`)
+
+`RecordService::append_interaction` is the only request-time mutation boundary
+for the cassette store. Both `store.lock()` and `CassetteAppender::append` run
+inside `tokio::task::spawn_blocking`, so filesystem writes execute on Tokio's
+blocking pool instead of an async executor worker. A shared
+`std::sync::Mutex<FilesystemCassetteStore>` serializes writes for concurrent
+requests, and its guard is never held across an `.await`.
+
+Interaction build failures, such as canonical-field population or metadata
+creation errors, are reported before the blocking task starts. Inside the
+blocking closure, a poisoned store lock, a cassette append error, and a failed
+blocking-task join all map to `RecordError::Internal`. The non-stream path
+treats that as a recording failure: it logs the error, increments the failure
+counter once, and still returns the upstream response unchanged. The streaming
+path delays end-of-stream until persistence completes, so `finish_recording`
+waits for the append before the body reports completion.
+
+Dropping a request future does not cancel a blocking write that has already
+started: `spawn_blocking` tasks run to completion, and the write holds the
+store mutex until it finishes. The store traits (`CassetteAppender` and
+`CassetteReader`) remain synchronous on purpose. Their callers choose where
+blocking work runs, which keeps the filesystem adapter free of runtime policy
+and lets unit tests call the store directly.
+
+Startup store construction is still synchronous. `start_record_server` calls
+`FilesystemCassetteStore::open_or_create_for_record`, and record-mode startup
+calls `probe_record_write_access`, before the listener binds. The binary runs
+both on a current-thread runtime in `src/bin/spycatcher_harness.rs`, so the
+executor is blocked briefly. That is accepted because no requests are in flight
+yet, and failing early on an unwritable cassette target is preferable to
+failing on the first request. Do not move request-time writes back onto the
+executor; wrap new cassette mutations in `append_interaction`, or add an
+equivalent `spawn_blocking` boundary.
+
+The responsiveness regressions hold the store mutex from a standard thread and
+run on Tokio's single-threaded runtime, so a regression that writes on the
+executor stalls the only worker. See the [Review residuals](#review-residuals)
+for the named tests.
 
 ### Record metadata plumbing (`src/server/record_metadata.rs`)
 
@@ -698,9 +742,16 @@ Current record-mode review residuals are tracked as deliberate follow-ups:
   `#33`.
 - Performance: header-selection duplication has been removed through
   `select_headers_unified` and `build_disallowed_set`.
-- Concurrency: functional concurrent recording coverage exists in
-  `concurrent_requests_are_recorded_without_data_loss`; remaining resource-use
-  concerns are fixture hygiene, not request-state correctness.
+- Concurrency: functional concurrent-persistence correctness is covered by
+  `concurrent_requests_are_recorded_without_data_loss`. Executor responsiveness
+  while a cassette write is blocked is covered separately by
+  `non_stream_requests_progress_while_the_cassette_write_is_blocked` and
+  `stream_chunks_are_forwarded_while_the_cassette_write_is_blocked`. Store
+  boundary failures are covered by
+  `store_boundary_failures_preserve_the_upstream_response`. Blocking-task panic
+  coverage, where a `spawn_blocking` join fails, remains open because no
+  deterministic injection point exists without a storage seam. Remaining
+  resource-use concerns are fixture hygiene, not request-state correctness.
 - Test storage: record-service unit tests use `TempDir` cassette paths,
   including tests that reload persisted cassette contents. A post-test
   verification checks that `target/test-record-service/` remains empty.

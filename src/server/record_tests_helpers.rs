@@ -1,5 +1,5 @@
 //! Shared test infrastructure for record-mode unit tests.
-use std::sync::atomic::AtomicU64;
+use std::sync::{Arc, Mutex, atomic::AtomicU64};
 
 use camino::{Utf8Path, Utf8PathBuf};
 use eyre::WrapErr;
@@ -132,6 +132,16 @@ pub(crate) fn service_fixture(
     upstream: FakeUpstream,
     env_provider: FakeEnvProvider,
 ) -> eyre::Result<RecordService<FakeUpstream, FakeEnvProvider, FakeMetadataFactory>> {
+    service_with_metadata(cassette_path, upstream, env_provider, FakeMetadataFactory)
+}
+
+/// Builds a record service with an injected metadata factory.
+pub(crate) fn service_with_metadata<M: MetadataFactory>(
+    cassette_path: &Utf8Path,
+    upstream: FakeUpstream,
+    env_provider: FakeEnvProvider,
+    metadata: M,
+) -> eyre::Result<RecordService<FakeUpstream, FakeEnvProvider, M>> {
     let cassette_store = FilesystemCassetteStore::open_or_create_for_record(cassette_path)
         .wrap_err("cassette should open for recording")?;
 
@@ -139,7 +149,7 @@ pub(crate) fn service_fixture(
         cassette_store: Arc::new(Mutex::new(cassette_store)),
         upstream_client: upstream,
         env_provider,
-        metadata: FakeMetadataFactory,
+        metadata,
         upstream: UpstreamConfig::default(),
         redaction: RedactionConfig {
             drop_headers: vec!["authorization".to_owned()],
