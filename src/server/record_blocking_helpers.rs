@@ -44,7 +44,7 @@ use crate::{
 const HOLD_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// How long tests wait for request-side progress while the store is held.
-const PROGRESS_TIMEOUT: Duration = Duration::from_secs(5);
+pub(crate) const PROGRESS_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// Metadata factory that signals every interaction it builds.
 ///

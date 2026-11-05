@@ -4,15 +4,16 @@
 //! runs on Tokio's single-threaded runtime. If cassette I/O happened on the
 //! executor, the only worker would block and these tests would fail.
 
-use std::sync::Arc;
+use std::{sync::Arc, time::Duration};
 
 use eyre::WrapErr;
-use futures_util::{StreamExt, TryStreamExt, stream::BoxStream};
+use futures_util::{StreamExt, stream::BoxStream};
 use rstest::rstest;
 
 use super::{
     blocking_helpers::{
         BlockedCassetteWrite,
+        PROGRESS_TIMEOUT,
         block_cassette_temp_path,
         cassette_store_handle,
         poison_store_lock,
@@ -41,6 +42,12 @@ const NON_STREAM_BODY: &[u8] = br#"{"id":"ok"}"#;
 
 /// One SSE event that the stream recorder accepts and persists.
 const STREAM_BODY: &[u8] = b"data: {\"id\":\"chunk-1\"}\n\n";
+
+/// How long a stream poll may stay pending before it counts as blocked.
+///
+/// This is a negative probe: the write is already known to be blocked, so a
+/// short bound distinguishes "still pending" from "the executor is wedged".
+const PENDING_PROBE_TIMEOUT: Duration = Duration::from_millis(250);
 
 /// A store failure that must not replace a successful upstream response.
 #[derive(Debug, Clone, Copy)]
@@ -145,38 +152,25 @@ async fn stream_chunks_are_forwarded_while_the_cassette_write_is_blocked() -> ey
         "the first chunk should be forwarded unchanged; got {first_chunk:?}"
     );
 
-    let (completed_tx, mut completed_rx) = tokio::sync::oneshot::channel();
-    tokio::spawn(async move {
-        _ = completed_tx.send(drain_stream(body).await);
-    });
-
-    // The build signal means the drain task has reached the append boundary.
-    metadata.wait_for_builds(1).await?;
-
-    let progress_rx = spawn_progress_signal();
-
+    // Streaming builds its interaction only once the upstream stream ends, so
+    // this poll drives the recorder into the append boundary. The build signal
+    // then confirms the executor reached that boundary while the store lock is
+    // still held; an executor-thread write would stall before the signal.
     tokio::select! {
         biased;
-        completion = &mut completed_rx => {
-            eyre::bail!(
-                "stream must not complete while the cassette write is blocked; got {completion:?}"
-            );
-        }
-        result = progress_rx => {
-            result.wrap_err(
-                "an unrelated task should make progress while the cassette write is blocked",
-            )?;
-        }
+        built = metadata.wait_for_builds(1) => built?,
+        result = body.next() => eyre::bail!(
+            "stream should stay pending while the cassette write is blocked; got {result:?}"
+        ),
     }
+
+    assert_stream_end_stays_pending(&mut body).await?;
 
     holder.release();
     let is_explicit = holder.join()?;
     eyre::ensure!(is_explicit, "holder must observe an explicit release");
 
-    completed_rx
-        .await
-        .wrap_err("stream drain task should report its outcome")?
-        .map_err(|message| eyre::eyre!("stream should finish cleanly: {message}"))?;
+    assert_stream_completed(&mut body).await?;
 
     eyre::ensure!(
         service.counters() == (1, 0),
@@ -231,23 +225,33 @@ async fn store_boundary_failures_preserve_the_upstream_response(
     Ok(())
 }
 
-/// Spawns a task that signals once the executor schedules it.
-fn spawn_progress_signal() -> tokio::sync::oneshot::Receiver<()> {
-    let (progress_tx, progress_rx) = tokio::sync::oneshot::channel();
-    tokio::spawn(async move {
-        tokio::task::yield_now().await;
-        _ = progress_tx.send(());
-    });
-    progress_rx
+/// Proves that end-of-stream stays pending while the cassette write is blocked.
+///
+/// The build signal already showed the recorder reached the append boundary;
+/// this bounded poll then rules out the stream ending before the write does.
+async fn assert_stream_end_stays_pending(
+    body: &mut BoxStream<'static, HarnessResult<axum::body::Bytes>>,
+) -> eyre::Result<()> {
+    let end = tokio::time::timeout(PENDING_PROBE_TIMEOUT, body.next()).await;
+    eyre::ensure!(
+        end.is_err(),
+        "end of stream should remain pending while the cassette write is blocked; got {end:?}"
+    );
+    Ok(())
 }
 
-/// Drains the rest of the stream, formatting the first error it yields.
-async fn drain_stream(
-    body: BoxStream<'static, HarnessResult<axum::body::Bytes>>,
-) -> Result<(), String> {
-    body.map_err(|error| error.to_string())
-        .try_fold((), |(), _chunk| std::future::ready(Ok(())))
+/// Asserts the stream ends cleanly after the cassette write is released.
+async fn assert_stream_completed(
+    body: &mut BoxStream<'static, HarnessResult<axum::body::Bytes>>,
+) -> eyre::Result<()> {
+    let end = tokio::time::timeout(PROGRESS_TIMEOUT, body.next())
         .await
+        .wrap_err("stream should finish after the cassette write is released")?;
+    eyre::ensure!(
+        end.is_none(),
+        "stream should end after the cassette write is released; got {end:?}"
+    );
+    Ok(())
 }
 
 /// Builds a chat-completions request that selects the streaming path.
@@ -266,6 +270,12 @@ fn assert_preserved_response(proxied: &ProxyResponse) -> eyre::Result<()> {
         proxied.status == 200,
         "upstream status should be preserved; got {}",
         proxied.status
+    );
+    let expected_headers = vec![("content-type".to_owned(), b"application/json".to_vec())];
+    eyre::ensure!(
+        proxied.headers == expected_headers,
+        "upstream headers should be preserved; got {:?}",
+        proxied.headers
     );
     let ProxyBody::Buffered(body) = &proxied.body else {
         eyre::bail!("expected a buffered response body");
