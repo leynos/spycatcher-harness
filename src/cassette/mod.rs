@@ -7,6 +7,8 @@
 //! persistence.
 //! See `docs/spycatcher-harness-design.md`, section "Cassette definition".
 
+#[cfg(test)]
+pub(crate) mod append_stall;
 mod canonical;
 mod diff;
 pub(crate) mod filesystem;

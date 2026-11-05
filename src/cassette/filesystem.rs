@@ -6,6 +6,8 @@
 use camino::Utf8Path;
 use cap_std::{ambient_authority, fs_utf8::Dir};
 
+#[cfg(test)]
+use super::append_stall::AppendStall;
 use crate::{
     HarnessError,
     HarnessResult,
@@ -21,6 +23,9 @@ pub(crate) struct FilesystemCassetteStore {
     file_name: String,
     /// In-memory state mirrored to disk after each append.
     cassette: Cassette,
+    /// Test-only stall point exercised inside `flush`.
+    #[cfg(test)]
+    stall: Option<AppendStall>,
 }
 
 impl FilesystemCassetteStore {
@@ -74,6 +79,8 @@ impl FilesystemCassetteStore {
             parent_dir,
             file_name,
             cassette,
+            #[cfg(test)]
+            stall: None,
         };
         if is_new {
             store.flush()?;
@@ -107,8 +114,17 @@ impl FilesystemCassetteStore {
             parent_dir,
             file_name,
             cassette,
+            #[cfg(test)]
+            stall: None,
         })
     }
+
+    /// Installs a stall point that the next [`Self::flush`] waits on.
+    ///
+    /// Only tests can reach this; production builds have no stall path and
+    /// `flush` behaves exactly as it would without one.
+    #[cfg(test)]
+    pub(crate) fn install_append_stall(&mut self, stall: AppendStall) { self.stall = Some(stall); }
 
     /// Replaces the in-memory cassette and persists it atomically.
     ///
@@ -135,6 +151,10 @@ impl FilesystemCassetteStore {
             .ok()
             .map(|m| m.permissions());
         let mut temp_file = self.parent_dir.create(&temp_name)?;
+        #[cfg(test)]
+        if let Some(stall) = &self.stall {
+            stall.wait();
+        }
         if let Some(perms) = permissions {
             temp_file.set_permissions(perms)?;
         }
@@ -154,10 +174,12 @@ impl FilesystemCassetteStore {
 }
 
 impl CassetteReader for FilesystemCassetteStore {
+    /// Returns a clone of the cassette currently mirrored in memory.
     fn load(&self) -> HarnessResult<Cassette> { Ok(self.cassette.clone()) }
 }
 
 impl CassetteAppender for FilesystemCassetteStore {
+    /// Appends one interaction, rolling the in-memory cassette back on failure.
     fn append(&mut self, interaction: Interaction) -> HarnessResult<()> {
         self.cassette.append(interaction);
         if let Err(error) = self.flush() {
@@ -257,6 +279,7 @@ mod tests {
     };
     static NEXT_TEST_DIR: AtomicUsize = AtomicUsize::new(1);
 
+    /// Record mode creates a missing cassette at the current schema version.
     #[rstest]
     fn record_mode_creates_an_empty_versioned_cassette() {
         let cassette_path = unique_cassette_path("create");
@@ -269,6 +292,7 @@ mod tests {
         assert_eq!(persisted, Cassette::new());
     }
 
+    /// Successive appends persist interactions in submission order.
     #[rstest]
     fn append_persists_interactions_in_order() {
         let cassette_path = unique_cassette_path("append");
@@ -285,6 +309,7 @@ mod tests {
         assert_eq!(reloaded.interactions, vec![first, second]);
     }
 
+    /// Replay rejects a cassette whose schema version this build cannot consume.
     #[rstest]
     fn replay_load_rejects_unsupported_format_version() {
         let supported = crate::cassette::CassetteFormatVersion::SUPPORTED.as_u32();
@@ -308,6 +333,7 @@ mod tests {
         ));
     }
 
+    /// A missing cassette surfaces as a domain error naming the file.
     #[rstest]
     fn replay_load_maps_missing_files_to_cassette_not_found() {
         let cassette_path = unique_cassette_path("missing");
@@ -324,11 +350,13 @@ mod tests {
         ));
     }
 
+    /// Returns a unique project-relative cassette path for one test.
     fn unique_cassette_path(name: &str) -> Utf8PathBuf {
         let index = NEXT_TEST_DIR.fetch_add(1, Ordering::Relaxed);
         let uuid = Uuid::new_v4();
         Utf8PathBuf::from(format!("target/test-cassettes/{name}-{index}-{uuid}.json"))
     }
+    /// Builds an interaction whose fields are tagged with `content`.
     fn sample_interaction(content: &str) -> Interaction {
         Interaction {
             request: RecordedRequest {

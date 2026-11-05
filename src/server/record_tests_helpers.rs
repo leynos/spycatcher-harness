@@ -1,5 +1,5 @@
 //! Shared test infrastructure for record-mode unit tests.
-use std::sync::atomic::AtomicU64;
+use std::sync::{Arc, Mutex, atomic::AtomicU64};
 
 use camino::{Utf8Path, Utf8PathBuf};
 use eyre::WrapErr;
@@ -24,6 +24,7 @@ use crate::{
 pub(crate) struct FakeEnvProvider(pub(crate) Option<String>);
 
 impl EnvProvider for FakeEnvProvider {
+    /// Returns the configured value regardless of the requested variable.
     fn read(&self, _: &str) -> Option<String> { self.0.clone() }
 }
 
@@ -31,6 +32,7 @@ impl EnvProvider for FakeEnvProvider {
 pub(crate) struct FakeMetadataFactory;
 
 impl MetadataFactory for FakeMetadataFactory {
+    /// Returns fixed metadata that keeps recorded cassettes deterministic.
     fn create(&self) -> HarnessResult<InteractionMetadata> {
         Ok(InteractionMetadata {
             protocol_id: CHAT_COMPLETIONS_PROTOCOL_ID.to_owned(),
@@ -45,6 +47,7 @@ impl MetadataFactory for FakeMetadataFactory {
 pub(crate) struct FixedClock;
 
 impl Clock for FixedClock {
+    /// Returns a constant timestamp so recorded cassettes are reproducible.
     fn now_rfc3339(&self) -> HarnessResult<String> { Ok("2024-01-01T00:00:00Z".to_owned()) }
 }
 
@@ -54,6 +57,7 @@ pub(crate) struct FakeUpstream {
 }
 
 impl ChatCompletionsUpstream for FakeUpstream {
+    /// Returns the configured response, or a connection failure when unset.
     fn send_chat_completions(
         &self,
         _request: ChatCompletionsRequest<'_>,
@@ -71,6 +75,7 @@ impl ChatCompletionsUpstream for FakeUpstream {
         ))
     }
 
+    /// Returns the configured body as a single-chunk stream, or a failure.
     fn stream_chat_completions(
         &self,
         _request: ChatCompletionsRequest<'_>,
@@ -99,6 +104,13 @@ impl ChatCompletionsUpstream for FakeUpstream {
     }
 }
 
+/// Runs `request` through a service that must reject it, then proves the
+/// rejected request persisted no interaction.
+///
+/// # Errors
+///
+/// Returns an error when the request unexpectedly succeeds, when the error
+/// predicate fails, or when the cassette cannot be reloaded.
 pub(crate) async fn assert_error_does_not_append(
     slug: &str,
     env_provider: FakeEnvProvider,
@@ -127,11 +139,26 @@ pub(crate) async fn assert_error_does_not_append(
     Ok(())
 }
 
+/// Builds a record service that uses the shared fake metadata factory.
+///
+/// # Errors
+///
+/// Returns an error when the cassette cannot be opened for recording.
 pub(crate) fn service_fixture(
     cassette_path: &Utf8Path,
     upstream: FakeUpstream,
     env_provider: FakeEnvProvider,
 ) -> eyre::Result<RecordService<FakeUpstream, FakeEnvProvider, FakeMetadataFactory>> {
+    service_with_metadata(cassette_path, upstream, env_provider, FakeMetadataFactory)
+}
+
+/// Builds a record service with an injected metadata factory.
+pub(crate) fn service_with_metadata<M: MetadataFactory>(
+    cassette_path: &Utf8Path,
+    upstream: FakeUpstream,
+    env_provider: FakeEnvProvider,
+    metadata: M,
+) -> eyre::Result<RecordService<FakeUpstream, FakeEnvProvider, M>> {
     let cassette_store = FilesystemCassetteStore::open_or_create_for_record(cassette_path)
         .wrap_err("cassette should open for recording")?;
 
@@ -139,7 +166,7 @@ pub(crate) fn service_fixture(
         cassette_store: Arc::new(Mutex::new(cassette_store)),
         upstream_client: upstream,
         env_provider,
-        metadata: FakeMetadataFactory,
+        metadata,
         upstream: UpstreamConfig::default(),
         redaction: RedactionConfig {
             drop_headers: vec!["authorization".to_owned()],
@@ -160,6 +187,14 @@ pub(crate) struct CassetteFixture {
     pub(crate) temp_dir: tempfile::TempDir,
 }
 
+/// Builds a record service bound to a caller-owned temporary cassette.
+///
+/// The returned fixture keeps the temporary directory alive for the service's
+/// lifetime, so tests need no path bookkeeping.
+///
+/// # Errors
+///
+/// Returns an error when the cassette cannot be created or opened.
 pub(crate) fn service_fixture_ephemeral(
     env_provider: FakeEnvProvider,
 ) -> eyre::Result<ServiceFixture> {
@@ -177,6 +212,15 @@ pub(crate) fn service_fixture_ephemeral(
     })
 }
 
+/// Creates a project-relative temporary directory holding a cassette path.
+///
+/// Keeping the path relative matches the rooted directory capabilities the
+/// filesystem store uses, while the returned fixture owns the directory.
+///
+/// # Errors
+///
+/// Returns an error when the temporary directory cannot be created or
+/// expressed as a project-relative UTF-8 path.
 pub(crate) fn cassette_fixture(name: &str) -> eyre::Result<CassetteFixture> {
     let temp_dir = tempfile::Builder::new()
         .prefix(&format!("record-service-{name}-"))
@@ -195,6 +239,8 @@ pub(crate) fn cassette_fixture(name: &str) -> eyre::Result<CassetteFixture> {
     })
 }
 
+/// Builds a chat-completions request carrying a redactable authorization
+/// header.
 pub(crate) fn sample_request(parsed_json: Option<serde_json::Value>) -> ObservedRequest {
     ObservedRequest {
         method: "POST".to_owned(),
@@ -213,6 +259,7 @@ pub(crate) fn sample_request(parsed_json: Option<serde_json::Value>) -> Observed
     }
 }
 
+/// Builds a successful JSON response over `body`.
 pub(crate) fn sample_response(body: &[u8]) -> ObservedResponse {
     ObservedResponse {
         status: 200,
@@ -223,6 +270,11 @@ pub(crate) fn sample_response(body: &[u8]) -> ObservedResponse {
     }
 }
 
+/// Reopens a cassette for replay so tests can assert on persisted state.
+///
+/// # Errors
+///
+/// Returns an error when the cassette cannot be reopened or decoded.
 pub(crate) fn load_cassette(cassette_path: &Utf8Path) -> eyre::Result<Cassette> {
     let store = FilesystemCassetteStore::open_for_replay(cassette_path)
         .wrap_err("cassette should reopen for replay")?;
