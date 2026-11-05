@@ -1,12 +1,14 @@
-# Architectural decision record (ADR) 001: Add a diagnostic switch for CLI localization
+# Architectural decision record (ADR) 0001: Add a diagnostic switch for CLI localization
 
 ## Status
 
-Accepted
+Accepted on 2026-06-04: add a diagnostic environment switch that forces stock
+CLI help and parse-error output. See [Amendments](#amendments) for the later
+filename and status-summary update, which did not change the decision.
 
 ## Date
 
-2026-06-04
+2026-11-03
 
 ## Context and problem statement
 
@@ -40,3 +42,14 @@ not an application preference.
 Future non-English CLI catalogues must continue to pass the same fallback
 tests, so this switch remains a reliable way to recover stock `clap`
 diagnostics.
+
+## Amendments
+
+### 2026-11-03: canonical filename and status summary
+
+This decision was published as ADR 001 at
+`docs/adr/2026-06-04-cli-localization-disable-switch.md`. Its canonical path
+now uses ADR 0001 to follow the four-digit filename convention; the ordinal
+remains 1. The expanded Status summary records the original acceptance date and
+decision. This is a documentation-format update, not a change to the accepted
+decision.

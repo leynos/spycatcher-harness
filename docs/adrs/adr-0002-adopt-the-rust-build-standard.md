@@ -1,12 +1,14 @@
-# Architectural decision record (ADR) 002: Adopt the Rust build standard
+# Architectural decision record (ADR) 0002: Adopt the Rust build standard
 
 ## Status
 
-Accepted
+Accepted on 2026-10-03: apply the estate Rust build standard while retaining
+LLVM as a documented exception. See [Amendments](#amendments) for the later
+toolchain-pin and filename updates, neither of which changed the decision.
 
 ## Date
 
-2026-10-03
+2026-11-03
 
 ## Context and problem statement
 
@@ -55,12 +57,23 @@ root cause.
 - The Cranelift exception is documented in the developers' guide, which this
   record complements.
 
-## Addendum, 2026-10-31: toolchain pin nightly-2026-10-30
+## Amendments
+
+### 2026-10-31: toolchain pin nightly-2026-10-30
 
 The toolchain pin moved from `nightly-2026-02-26` to `nightly-2026-10-30`. No
 Cranelift measurement was taken on the new pin, and none is required now: the
-exception stands on the 2026-09-28 and 2026-09-30 observations. This addendum
+exception stands on the 2026-09-28 and 2026-09-30 observations. This entry
 defers the next measurement to the 2027-04-03 revisit date recorded in the
 tracking issue (number 146), and supersedes the "or when the toolchain pin
 changes" trigger in the decision above for this pin move. The developers' guide
 states the same deferral.
+
+### 2026-11-03: canonical filename and status summary
+
+This decision was published as ADR 002 at
+`docs/adr/2026-10-03-adopt-the-rust-build-standard.md`. Its canonical path now
+uses ADR 0002 to follow the four-digit filename convention; the ordinal remains
+2. The expanded Status summary records the original acceptance date and
+decision. This is a documentation-format update, not a change to the accepted
+decision.

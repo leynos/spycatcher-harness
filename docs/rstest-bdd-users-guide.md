@@ -1155,7 +1155,8 @@ fn async_wrapper_with_aliases<'ctx>(
 
 - **Tokio current-thread mode only:** Multi-threaded Tokio mode would require
   `Send` futures, which conflicts with the `RefCell`-backed fixture storage. See
-  [ADR-001](adr-001-async-fixtures-and-test.md) for the full design rationale.
+  [upstream ADR-001](https://github.com/leynos/rstest-bdd/blob/main/docs/adr-001-async-fixtures-and-test.md)
+  for the full design rationale.
 - **Nested runtime safeguards:** Async-only steps running in synchronous
   scenarios use a per-step runtime fallback, which refuses to run when a Tokio
   runtime is already active on the current thread.

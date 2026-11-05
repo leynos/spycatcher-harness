@@ -819,8 +819,8 @@ catalogue-backed `cli-*`/`clap-error-*` IDs. Where the design references
 extension trait.
 
 The diagnostic environment switch introduced in Milestone 4 is documented in
-`docs/adr/2026-06-04-cli-localization-disable-switch.md` because it is a
-user-visible configuration knob outside the existing
+`docs/adrs/adr-0001-add-a-diagnostic-switch-for-cli-localization.md` because it
+is a user-visible configuration knob outside the existing
 `[cmds.<subcommand>.localization]` shape.
 
 Go/no-go: `make markdownlint` and `make nixie` pass on the updated docs.
