@@ -542,9 +542,19 @@ Every ADR must include the following sections in order:
   the problem or question that prompted the decision. Include enough background
   for readers unfamiliar with the history.
 
-When an accepted ADR needs a targeted correction rather than replacement, add an
-`Amended by ADR-nnnn (YYYY-MM-DD)` banner to its Status section and an
-`## Amendments` section that preserves the original decision as history.
+When an accepted ADR needs a substantive correction rather than replacement,
+record the correction in a separate amending ADR, add an
+`Amended by ADR-nnnn (YYYY-MM-DD)` banner to the amended record's Status
+section, and add an `## Amendments` section that preserves the original
+decision as history. A substantive correction never rewrites the accepted
+decision in place.
+
+A documentation-format migration that leaves the decision unchanged, such as a
+filename, zero-padding, or Status-summary update, is not an amendment. Record
+it as a dated entry under `## Amendments` and link that section from the Status
+section. These same-record formatting entries need no `Amended by` banner,
+because that banner names a separate record that does the amending. They must
+not carry a substantive change to the decision.
 
 ### Conditional sections
 
