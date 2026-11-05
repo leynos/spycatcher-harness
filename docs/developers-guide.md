@@ -635,8 +635,12 @@ equivalent `spawn_blocking` boundary.
 
 The responsiveness regressions hold the store mutex from a standard thread and
 run on Tokio's single-threaded runtime, so a regression that writes on the
-executor stalls the only worker. See the [Review residuals](#review-residuals)
-for the named tests.
+executor stalls the only worker. `FilesystemCassetteStore` also carries a
+`#[cfg(test)]` append stall, installed explicitly by `install_append_stall`,
+that pauses `flush` after the temporary file opens. It has no effect in
+production builds; it exists so a test can prove that the write itself, not
+only the lock wait, runs on the blocking pool. See the
+[Review residuals](#review-residuals) for the named tests.
 
 ### Record metadata plumbing (`src/server/record_metadata.rs`)
 
@@ -745,7 +749,8 @@ Current record-mode review residuals are tracked as deliberate follow-ups:
 - Concurrency: functional concurrent-persistence correctness is covered by
   `concurrent_requests_are_recorded_without_data_loss`. Executor responsiveness
   while a cassette write is blocked is covered separately by
-  `non_stream_requests_progress_while_the_cassette_write_is_blocked` and
+  `non_stream_requests_progress_while_the_cassette_write_is_blocked`,
+  `append_io_stall_keeps_the_executor_responsive`, and
   `stream_chunks_are_forwarded_while_the_cassette_write_is_blocked`. Store
   boundary failures are covered by
   `store_boundary_failures_preserve_the_upstream_response`. Blocking-task panic

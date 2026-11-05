@@ -6,6 +6,8 @@
 use camino::Utf8Path;
 use cap_std::{ambient_authority, fs_utf8::Dir};
 
+#[cfg(test)]
+use super::append_stall::AppendStall;
 use crate::{
     HarnessError,
     HarnessResult,
@@ -21,6 +23,9 @@ pub(crate) struct FilesystemCassetteStore {
     file_name: String,
     /// In-memory state mirrored to disk after each append.
     cassette: Cassette,
+    /// Test-only stall point exercised inside `flush`.
+    #[cfg(test)]
+    stall: Option<AppendStall>,
 }
 
 impl FilesystemCassetteStore {
@@ -74,6 +79,8 @@ impl FilesystemCassetteStore {
             parent_dir,
             file_name,
             cassette,
+            #[cfg(test)]
+            stall: None,
         };
         if is_new {
             store.flush()?;
@@ -107,8 +114,17 @@ impl FilesystemCassetteStore {
             parent_dir,
             file_name,
             cassette,
+            #[cfg(test)]
+            stall: None,
         })
     }
+
+    /// Installs a stall point that the next [`Self::flush`] waits on.
+    ///
+    /// Only tests can reach this; production builds have no stall path and
+    /// `flush` behaves exactly as it would without one.
+    #[cfg(test)]
+    pub(crate) fn install_append_stall(&mut self, stall: AppendStall) { self.stall = Some(stall); }
 
     /// Replaces the in-memory cassette and persists it atomically.
     ///
@@ -135,6 +151,10 @@ impl FilesystemCassetteStore {
             .ok()
             .map(|m| m.permissions());
         let mut temp_file = self.parent_dir.create(&temp_name)?;
+        #[cfg(test)]
+        if let Some(stall) = &self.stall {
+            stall.wait();
+        }
         if let Some(perms) = permissions {
             temp_file.set_permissions(perms)?;
         }

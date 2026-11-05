@@ -31,7 +31,11 @@ use super::{
 };
 use crate::{
     HarnessResult,
-    cassette::{InteractionMetadata, filesystem::FilesystemCassetteStore},
+    cassette::{
+        InteractionMetadata,
+        append_stall::{AppendStall, AppendStallControl},
+        filesystem::FilesystemCassetteStore,
+    },
     server::record_metadata::MetadataFactory,
 };
 
@@ -213,6 +217,27 @@ pub(crate) fn cassette_store_handle<U, E, M>(
     service: &RecordService<U, E, M>,
 ) -> Arc<Mutex<FilesystemCassetteStore>> {
     Arc::clone(&service.cassette_store)
+}
+
+/// Installs a stall point inside the store's append path.
+///
+/// Unlike [`BlockedCassetteWrite`], which stalls `Mutex::lock`, this stall is
+/// reached only once the append owns the lock and has opened its temporary
+/// file. A test can therefore prove that the write itself, not just the lock
+/// wait, runs on the blocking pool.
+///
+/// # Errors
+///
+/// Returns an error when the store mutex is poisoned.
+pub(crate) fn install_append_stall(
+    store: &Arc<Mutex<FilesystemCassetteStore>>,
+) -> eyre::Result<AppendStallControl> {
+    let (stall, control) = AppendStall::pair();
+    let mut guard = store.lock().map_err(|error| {
+        eyre::eyre!("store lock should be available before stalling: {error:?}")
+    })?;
+    guard.install_append_stall(stall);
+    Ok(control)
 }
 
 /// Poisons the service's cassette-store mutex.

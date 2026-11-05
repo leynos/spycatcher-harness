@@ -16,6 +16,7 @@ use super::{
         PROGRESS_TIMEOUT,
         block_cassette_temp_path,
         cassette_store_handle,
+        install_append_stall,
         poison_store_lock,
         signalling_service_fixture,
     },
@@ -58,6 +59,7 @@ enum StoreFailure {
     AppendError,
 }
 
+/// Proves non-stream requests reach the append boundary while the lock is held.
 #[tokio::test]
 async fn non_stream_requests_progress_while_the_cassette_write_is_blocked() -> eyre::Result<()> {
     let cassette = cassette_fixture("blocked-non-stream")?;
@@ -121,6 +123,67 @@ async fn non_stream_requests_progress_while_the_cassette_write_is_blocked() -> e
     Ok(())
 }
 
+/// Proves a slow append runs on the blocking pool while other tasks keep running.
+#[tokio::test]
+async fn append_io_stall_keeps_the_executor_responsive() -> eyre::Result<()> {
+    let cassette = cassette_fixture("stalled-append")?;
+    let service = Arc::new(service_fixture(
+        &cassette.path,
+        FakeUpstream {
+            response: Ok(sample_response(NON_STREAM_BODY)),
+        },
+        FakeEnvProvider(Some("blocked-key".to_owned())),
+    )?);
+    let stall = install_append_stall(&cassette_store_handle(&service))?;
+
+    let handle = tokio::spawn({
+        let request_service = Arc::clone(&service);
+        async move {
+            request_service
+                .handle_chat_completions(sample_request(None))
+                .await
+        }
+    });
+
+    // The stall reports from inside the blocking closure, after the store lock
+    // is acquired, so reaching it proves the write itself runs off the executor
+    // rather than only the lock wait.
+    tokio::time::timeout(PROGRESS_TIMEOUT, stall.wait_until_entered())
+        .await
+        .wrap_err("the append should reach the stall point")?;
+    eyre::ensure!(
+        !handle.is_finished(),
+        "the request must not finish while the append is stalled"
+    );
+
+    assert_independent_task_progress().await?;
+
+    stall.release();
+    let proxied = handle
+        .await
+        .wrap_err("stalled request task should not panic")?
+        .map_err(|error| eyre::eyre!("stalled request should succeed: {error:?}"))?;
+    assert_preserved_response(&proxied)?;
+    eyre::ensure!(
+        stall.observed_explicit_release(),
+        "the append must observe an explicit release"
+    );
+
+    eyre::ensure!(
+        service.counters() == (1, 0),
+        "the stalled request should be recorded exactly once; got {:?}",
+        service.counters()
+    );
+    let persisted = load_cassette(&cassette.path)?;
+    eyre::ensure!(
+        persisted.interactions.len() == 1,
+        "the stalled request should be persisted; got {} interactions",
+        persisted.interactions.len()
+    );
+    Ok(())
+}
+
+/// Proves stream chunks are forwarded while the cassette write is blocked.
 #[tokio::test]
 async fn stream_chunks_are_forwarded_while_the_cassette_write_is_blocked() -> eyre::Result<()> {
     let cassette = cassette_fixture("blocked-stream")?;
@@ -186,6 +249,7 @@ async fn stream_chunks_are_forwarded_while_the_cassette_write_is_blocked() -> ey
     Ok(())
 }
 
+/// Proves store boundary failures preserve the upstream response.
 #[rstest]
 #[case::poisoned_lock(StoreFailure::PoisonedLock)]
 #[case::append_error(StoreFailure::AppendError)]
@@ -222,6 +286,22 @@ async fn store_boundary_failures_preserve_the_upstream_response(
         "a failed append must not persist an interaction; got {}",
         persisted.interactions.len()
     );
+    Ok(())
+}
+
+/// Runs one unrelated task and proves it completes promptly.
+///
+/// A stalled append that ran on the executor would leave no worker to poll this
+/// task, so the bounded wait would fail instead of the assertion passing.
+async fn assert_independent_task_progress() -> eyre::Result<()> {
+    let (progress, progress_rx) = tokio::sync::oneshot::channel();
+    tokio::spawn(async move {
+        let _sent = progress.send(());
+    });
+    tokio::time::timeout(PROGRESS_TIMEOUT, progress_rx)
+        .await
+        .wrap_err("an unrelated task should run while the append is stalled")?
+        .wrap_err("the unrelated task should report its progress")?;
     Ok(())
 }
 
