@@ -3,7 +3,8 @@
 ## Status
 
 Accepted on 2026-10-03: apply the estate Rust build standard while retaining
-LLVM as a documented exception.
+LLVM as a documented exception. See [Amendments](#amendments) for the later
+toolchain-pin and filename updates, neither of which changed the decision.
 
 ## Date
 
@@ -56,7 +57,9 @@ root cause.
 - The Cranelift exception is documented in the developers' guide, which this
   record complements.
 
-## Addendum, 2026-10-31: toolchain pin nightly-2026-10-30
+## Amendments
+
+### 2026-10-31: toolchain pin nightly-2026-10-30
 
 The toolchain pin moved from `nightly-2026-02-26` to `nightly-2026-10-30`. No
 Cranelift measurement was taken on the new pin, and none is required now: the
@@ -66,7 +69,7 @@ tracking issue (number 146), and supersedes the "or when the toolchain pin
 changes" trigger in the decision above for this pin move. The developers' guide
 states the same deferral.
 
-## Addendum, 2026-11-03: canonical filename and status summary
+### 2026-11-03: canonical filename and status summary
 
 This decision was published as ADR 002 at
 `docs/adr/2026-10-03-adopt-the-rust-build-standard.md`. Its canonical path now

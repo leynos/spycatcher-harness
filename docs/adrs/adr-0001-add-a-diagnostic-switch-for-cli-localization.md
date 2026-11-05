@@ -3,7 +3,8 @@
 ## Status
 
 Accepted on 2026-06-04: add a diagnostic environment switch that forces stock
-CLI help and parse-error output.
+CLI help and parse-error output. See [Amendments](#amendments) for the later
+filename and status-summary update, which did not change the decision.
 
 ## Date
 
@@ -42,7 +43,9 @@ Future non-English CLI catalogues must continue to pass the same fallback
 tests, so this switch remains a reliable way to recover stock `clap`
 diagnostics.
 
-## Addendum, 2026-11-03: canonical filename and status summary
+## Amendments
+
+### 2026-11-03: canonical filename and status summary
 
 This decision was published as ADR 001 at
 `docs/adr/2026-06-04-cli-localization-disable-switch.md`. Its canonical path
