@@ -37,8 +37,8 @@ The crate declares `rust-version = "1.89.0"` and edition 2024. The floor is not
 arbitrary: `ortho_config` 0.10.0, which this project uses for layered
 subcommand configuration, requires a compiler at or above 1.89.0, so adopting
 that release also sets the application MSRV. CI enforces the floor by installing
-`1.89.0` and running
-`cargo +1.89.0 check --locked --workspace --all-targets --all-features`, which
+`1.89.0` and running `make msrv-check`
+(`cargo +1.89.0 check --locked --workspace --all-targets --all-features`), which
 also proves the lockfile resolves on the oldest supported compiler.
 
 Development uses the nightly pinned in `rust-toolchain.toml`

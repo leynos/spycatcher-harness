@@ -34,7 +34,7 @@ jobs:
       - name: Install the minimum supported Rust version
         run: rustup toolchain install 1.89.0 --profile minimal
       - name: Check the minimum supported Rust version
-        run: cargo +1.89.0 check --locked --workspace --all-targets --all-features
+        run: make msrv-check
       - name: Setup uv
         uses: astral-sh/setup-uv@0a73d6eb01c0201c8fc84847d0f4425b704ad66d
         with:

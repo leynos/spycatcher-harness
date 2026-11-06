@@ -1,4 +1,4 @@
-.PHONY: help all clean test build release lint fmt check-fmt markdownlint nixie \
+.PHONY: help all clean test build release lint msrv-check fmt check-fmt markdownlint nixie \
 	typecheck spelling test-workflow-contracts test-make-all
 
 
@@ -104,6 +104,14 @@ lint: ## Run Clippy and the Whitaker Dylint suite with warnings denied
 
 typecheck: ## Type-check without building
 	$(GATE_RUSTFLAGS) $(CARGO) check $(CARGO_FLAGS)
+
+# The published floor is stable, which rejects the build standard's `-Z`
+# flags. The recipe assigns no `RUSTFLAGS`, so CI keeps the warning policy the
+# toolchain action exports and the check stays outside the development route.
+MSRV_TOOLCHAIN ?= 1.89.0
+
+msrv-check: ## Check every target on the minimum supported Rust version
+	$(CARGO) +$(MSRV_TOOLCHAIN) check --locked --workspace --all-targets --all-features
 
 fmt: ## Format Rust and Markdown sources
 	$(CARGO) fmt --all
