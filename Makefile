@@ -106,12 +106,13 @@ typecheck: ## Type-check without building
 	$(GATE_RUSTFLAGS) $(CARGO) check $(CARGO_FLAGS)
 
 # The published floor is stable, which rejects the build standard's `-Z`
-# flags. The recipe assigns no `RUSTFLAGS`, so CI keeps the warning policy the
-# toolchain action exports and the check stays outside the development route.
+# flags. The recipe passes the caller's `RUSTFLAGS` through untouched (empty
+# when unset, so a local run never reads the configured `-Z` flags), so CI keeps
+# the warning policy the toolchain action exports.
 MSRV_TOOLCHAIN ?= 1.89.0
 
 msrv-check: ## Check every target on the minimum supported Rust version
-	$(CARGO) +$(MSRV_TOOLCHAIN) check --locked --workspace --all-targets --all-features
+	$(RELEASE_RUSTFLAGS) $(CARGO) +$(MSRV_TOOLCHAIN) check --locked --workspace --all-targets --all-features
 
 fmt: ## Format Rust and Markdown sources
 	$(CARGO) fmt --all
