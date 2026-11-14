@@ -219,8 +219,9 @@ project:
   - `make lint` executes, in order:
     - `interrogate` over `tests/`, the Python docstring gate, which fails on any
       undocumented definition.
-    - `cargo doc --no-deps`, with `RUSTDOCFLAGS` defaulting to
-      `--cfg docsrs -D warnings`.
+    - `cargo doc --no-deps`, with `RUSTDOCFLAGS` set from `RUSTDOC_FLAGS`,
+      which always begins with `--cfg docsrs -D warnings`. An inherited
+      `RUSTDOCFLAGS` is replaced, not composed.
     - `cargo clippy --all-targets --all-features -- -D warnings`.
     - `whitaker --all -- --all-targets --all-features`, the Whitaker Dylint
       suite.
@@ -376,20 +377,22 @@ project:
   the environment via `Command::env`/`Command::env_clear`, because the mutation
   is confined to the child process. A test manipulating the environment
   in-process does not qualify, whatever layer it claims to occupy.
-- **Repository form.** This repository injects its environment through the
-  `EnvProvider` trait in `src/upstream.rs` or `ortho_config`'s `MapEnv`, and
-  does not depend on `mockable`. Suites that spawn the binary with `env_clear`
-  forward ambient values through the `read_ambient` helper in
-  `tests/common/process_env.rs`.
+- **Repository form.** The accepted local equivalent of the `mockable` seam is
+  the `EnvProvider` trait in `src/upstream.rs`, or `ortho_config`'s `MapEnv`
+  for configuration tests; `mockable` is not a dependency here. Suites that
+  spawn the binary with `env_clear` forward ambient values through the
+  `read_ambient` helper in `tests/common/process_env.rs`.
 
 ### Dependency management
 
 - **Mandate caret requirements for all dependencies.** All crate versions
   specified in `Cargo.toml` must use SemVer-compatible caret requirements (e.g.,
   `some-crate = "1.2.3"`, equivalent to `^1.2.3`). This is Cargo's default and
-  allows for safe, non-breaking updates to minor and patch versions while
-  preventing breaking changes from new major versions. This approach is
-  critical for ensuring build stability and reproducibility.
+  allows for safe, non-breaking updates to minor and patch versions of crates
+  at 1.0 and later, while preventing breaking changes from new major versions.
+  Pre-1.0 crates are narrower: `"0.2.3"` (`^0.2.3`) permits `0.2.4` but excludes
+  `0.3.0`, so a minor bump of a pre-1.0 dependency is a deliberate change.
+  This approach is critical for ensuring build stability and reproducibility.
 - **Prohibit unstable version specifiers.** The use of wildcard (`*`) or
   open-ended inequality (`>=`) version requirements is strictly forbidden, as
   they introduce unacceptable risk and unpredictability. Tilde requirements (
