@@ -833,8 +833,9 @@ establishes a compiler root cause:
 LLVM is the default codegen backend; Cranelift is disabled and opt-in only
 ([concordat ADR-0004][adr-0004]). Revisit on 14 May 2027, as concordat ADR-0004
 records, by re-running the workspace suite and the three panic-semantics tests
-under both backends on the then-supported nightly; if Cranelift passes, adopt
-it and update the routing contracts.
+under both backends on the then-supported nightly. Adoption also requires the
+build and test directory sizes to be no worse than LLVM, as concordat ADR-0004
+requires; only then update the routing contracts.
 
 [adr-0004]: https://github.com/leynos/concordat/blob/main/docs/adrs/adr-0004-cranelift-is-not-part-of-the-rust-build-standard.md
 

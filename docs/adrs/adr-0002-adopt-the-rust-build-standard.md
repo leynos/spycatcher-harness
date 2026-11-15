@@ -6,9 +6,12 @@ Accepted on 2026-10-03: apply the estate Rust build standard while retaining
 LLVM as a documented exception. See [Amendments](#amendments) for the later
 toolchain-pin and filename updates, neither of which changed the decision.
 
+Amended by ADR-0004 (2026-11-14): the Cranelift review date is now 14 May 2027.
+The decision to retain LLVM is unchanged.
+
 ## Date
 
-2026-11-03
+2026-11-14
 
 ## Context and problem statement
 
