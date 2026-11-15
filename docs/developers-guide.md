@@ -830,12 +830,16 @@ establishes a compiler root cause:
   control and the LLVM controls pass
   ([issue #146](https://github.com/leynos/spycatcher-harness/issues/146)).
 
-Development builds therefore stay on LLVM. Revisit on or after 2027-04-03, as
-issue #146 records, by re-running the workspace suite and the three
-panic-semantics tests under both backends on the then-supported nightly; if
-Cranelift passes, adopt it and update the routing contracts.
+LLVM is the default codegen backend; Cranelift is disabled and opt-in only
+([concordat ADR-0004][adr-0004]). Revisit on 14 May 2027, as concordat ADR-0004
+records, by re-running the workspace suite and the three panic-semantics tests
+under both backends on the then-supported nightly. Adoption also requires the
+build and test directory sizes to be no worse than LLVM, as concordat ADR-0004
+requires; only then update the routing contracts.
+
+[adr-0004]: https://github.com/leynos/concordat/blob/main/docs/adrs/adr-0004-cranelift-is-not-part-of-the-rust-build-standard.md
 
 The pinned toolchain is now `nightly-2026-10-30`. No measurement has been taken
 on it: both observations above were made on `nightly-2026-02-26`, and the
-exception stands on them until the 2027-04-03 revisit, when the suite is
+exception stands on them until the 14 May 2027 revisit, when the suite is
 re-measured under both backends.
