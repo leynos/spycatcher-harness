@@ -69,6 +69,17 @@ tracking issue (number 146), and supersedes the "or when the toolchain pin
 changes" trigger in the decision above for this pin move. The developers' guide
 states the same deferral.
 
+### Update, 2026-11-14: Cranelift review date moved
+
+Concordat ADR-0004 ([adr-0004][adr-0004]) keeps LLVM as the default codegen
+backend and records Cranelift as disabled and opt-in only, with its review on
+14 May 2027. That review date replaces the 2027-04-03 revisit date and the
+tracking-issue attribution in the Decision and in the 2026-10-31 amendment; the
+text above is kept as the record at the time. The decision to retain LLVM is
+unchanged.
+
+[adr-0004]: https://github.com/leynos/concordat/blob/main/docs/adrs/adr-0004-cranelift-is-not-part-of-the-rust-build-standard.md
+
 ### 2026-11-03: canonical filename and status summary
 
 This decision was published as ADR 002 at
