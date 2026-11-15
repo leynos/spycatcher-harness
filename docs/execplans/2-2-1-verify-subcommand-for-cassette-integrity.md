@@ -1,126 +1,149 @@
 # 2.2.1 Implement the `verify` subcommand for cassette integrity and redaction
 
-This ExecPlan (execution plan) is a living document. The sections
-`Constraints`, `Tolerances`, `Risks`, `Progress`, `Surprises & discoveries`,
-`Decision log`, `Outcomes & retrospective`, `Conformance basis`, and
-`Verification plan` must be kept up to date as work proceeds.
+This ExecPlan (execution plan) is a living document. The sections `Constraints`,
+`Tolerances`, `Risks`, `Progress`, `Surprises & discoveries`, `Decision log`,
+`Outcomes & retrospective`, `Conformance basis`, and `Verification plan` must
+be kept up to date as work proceeds.
 
-Status: DRAFT (awaiting expert review and user approval)
+Status: DRAFT (expert review applied; awaiting user approval)
 
 Branch: `2-2-1-verify-subcommand-for-cassette-integrity`
 
 Roadmap item: `2.2.1` in `docs/roadmap.md`.
 
 Implementation must not begin until the user explicitly approves this plan.
-After approval, work proceeds milestone by milestone and stops only when a
+After approval, work proceeds milestone by milestone. It stops only when a
 tolerance threshold is reached, a constraint would be violated, or a decision
 gate below says to stop.
 
 ## Purpose / big picture
 
 Spycatcher harness records Large Language Model (LLM) API sessions to a
-"cassette" (one JSON file holding an ordered list of request/response
-"interactions") and replays them in regression suites. Cassettes are committed
-to repositories, edited by hand, merged, and regenerated. Today nothing checks
-that a committed cassette is still internally consistent or that it does not
-carry credentials. The command line already accepts `verify`, but running it
-fails:
+"cassette": one JSON file holding an ordered list of request/response
+"interactions". Regression suites then replay them. Cassettes are committed to
+repositories, edited by hand, merged, and re-recorded. Nothing checks that a
+committed cassette is still internally consistent or free of credentials. The
+command line already accepts `verify`, but running it fails:
 
 ```plaintext
 $ spycatcher-harness verify --cassette-dir fixtures/llm --cassette-name smoke.json
 Error: failed to start harness: mode not yet implemented: Verify
 ```
 
-After this task, the same command checks four failure classes, plus whether
-the file can be read at all, and reports every finding:
+After this task, the same command checks five classes and reports every finding
+in one run:
 
-- schema: the file is JSON, carries a supported `format_version`, and
+- `io`: the cassette exists, is a regular file, can be read, and is within the
+  size ceiling;
+- `schema`: the file is JSON, has a supported `format_version`, and
   deserializes into the cassette schema;
-- ordering: interactions and recorded stream events appear in their recorded
-  order, as described in the "ordering" definition below;
-- hash: every request's stored `stable_hash` and `canonical_request` equal the
-  values recomputed from the stored method, path, query, and body;
-- redaction: no request or response header named by the required redaction
-  policy, by default `authorization`, survives in the cassette.
+- `ordering`: interactions and recorded stream events are in recorded order
+  (defined precisely in `D3`);
+- `hash`: every request's stored `stable_hash`, `canonical_request`, and
+  `parsed_json` equal the values recomputed from its method, path, query, and
+  body bytes;
+- `redaction`: no request or response header named by the required redaction
+  policy survives (default: `authorization`).
 
 A passing run prints a summary and exits `0`:
 
 ```plaintext
 $ spycatcher-harness verify --cassette-dir fixtures/llm --cassette-name smoke.json
-verified fixtures/llm/smoke.json: 3 interactions, 0 findings
+verified fixtures/llm/smoke.json: 3 interactions, 0 findings, 0 checks skipped
 ```
 
 A failing run prints one line per finding and exits `1`:
 
 ```plaintext
-$ spycatcher-harness verify --cassette-dir fixtures/llm --cassette-name smoke.json
 fixtures/llm/smoke.json: verification failed with 2 findings
 error[hash.stable_hash_mismatch] /interactions/1/request/stable_hash: stored hash differs from recomputed hash
-error[redaction.required_header_present] /interactions/2/request/headers/0/0: header `authorization` must be redacted
+error[redaction.required_header_present] /interactions/2/request/headers/0/0: header must be redacted
 ```
 
 `--format json` writes a versioned JSON report for tools. `--format github`
-writes GitHub Actions workflow commands, so findings appear as annotations on
-the pull request. The JSON and GitHub formats use the same finding codes as
-the text format.
+writes GitHub Actions workflow commands, so findings appear as pull-request
+annotations. All formats use the same qualified codes, for example
+`hash.stable_hash_mismatch`. Library callers get the same checks through a new
+`spycatcher_harness::verify_cassette` function, which returns a
+`VerificationReport` instead of starting a server.
 
-Library callers get the same behaviour through a new
-`spycatcher_harness::verify_cassette` function that returns a
-`VerificationReport` value rather than starting a server.
+`record` and `replay` keep serving requests exactly as before. The cassette
+on-disk schema (`format_version` 1) is unchanged.
 
-Preserved behaviour: `record` and `replay` are unchanged, and the cassette
-on-disk schema (`format_version` 1) is unchanged. Deliberately changed
-behaviour: `start_harness` with `Mode::Verify` now returns
-`HarnessError::InvalidConfig`, which names `verify_cassette`, instead of the
-placeholder `HarnessError::ModeNotYetImplemented`. That variant is removed,
-because verify is its only producer.
+Deliberately changed behaviour:
 
-This plan also closes a documentation gap. The roadmap links to
+- `start_harness` with `Mode::Verify` returns `HarnessError::InvalidConfig`
+  before it touches the cassette.
+- `HarnessError::ModeNotYetImplemented` is removed, because verify was its
+  only producer.
+- Configuration-loading failures, such as a bad config file or an invalid
+  locale, exit `2` for every subcommand rather than `1`. This matches clap's
+  usage-error code and keeps `1` meaning "the cassette has findings" (`D2`).
+
+The plan also closes a documentation gap. The roadmap links to
 `spycatcher-harness-design.md#recommended-additions-for-regression-suite-integration`,
-but that text is a plain paragraph rather than a heading, so the link is dead.
+but that text is a plain paragraph rather than a heading, so the anchor does
+not exist.
 
 ## Constraints
 
 - Implementation begins only after explicit user approval of this plan.
-- Do not change the cassette on-disk schema or `CassetteFormatVersion::SUPPORTED`.
-  Verify reads cassettes written by format version 1 exactly as `record`
-  writes them today.
-- Do not change `record` or `replay` runtime behaviour, HTTP responses, or
-  canonical hashing (`canonicalize`, `stable_hash`,
-  `RecordedRequest::populate_canonical_fields` in
-  `src/cassette/canonical/mod.rs`). Verify reuses them; it does not
-  reimplement them.
-- Verify must never write to the cassette or create files. Opening is
-  read-only through `cap_std::fs_utf8`, as in
-  `src/cassette/filesystem.rs`.
-- Verify output must never contain header values, request or response bodies,
-  or stream payloads. A finding names the header and its JSON Pointer
-  location only. This keeps a leaked credential out of CI logs.
-- Keep domain checks free of I/O. The `cassette::verify` domain module takes
-  bytes and a policy and returns a report. Only the application service
-  `src/verify.rs` touches the filesystem, and only the CLI adapter writes to
-  stdout. See `Interfaces and dependencies`.
-- Follow `AGENTS.md`: no file over 400 lines; `//!` module docs on every
-  module, including tests and Verus files; no `unwrap` or `expect` outside
-  tests; clippy `print_stdout` and `print_stderr` stay denied; lints are not
-  silenced except by item-scoped `#[expect(..., reason = "...")]` as a last
-  resort; en-GB-oxendict spelling in comments and docs.
-- Environment access follows the `EnvProvider` and `read_ambient` rules in
-  `AGENTS.md`. The verify path adds no new environment reads.
-- Authorized dependency changes are limited to dev-dependencies `googletest`
-  and `pretty_assertions` (user-authorized), using caret requirements.
-  No new runtime dependency is authorized.
-- Verus is not a Cargo dependency. It is installed and run only through
-  `prover-tools` from `leynos/rust-prover-tools`, as the `verus` skill
-  prescribes, and `make verus` stays out of `make all`, `make lint`,
-  `make test`, and the CI pull-request gate. `tests/test_make_all.py` pins
-  the `all` prerequisites to `check-fmt lint test spelling
-  test-workflow-contracts`; that set must not change.
-- The library is pre-release. No tag in this repository's history is an
-  ancestor of `HEAD`; the `v0.5.0` to `v0.9.1` tags come from an unrelated
-  history. So the public API may change without compatibility shims. Removing
-  `HarnessError::ModeNotYetImplemented` and its Fluent key is in scope, with
-  every caller updated in the same commit.
+- Do not change the cassette on-disk schema or
+  `CassetteFormatVersion::SUPPORTED`.
+- Do not change how `record` or `replay` serve requests, record cassettes, or
+  compute canonical hashes.
+  - Verify reuses `canonicalize` and `stable_hash`
+    (`src/cassette/canonical/mod.rs`), the SSE parser (`src/sse.rs`), and the
+    redaction predicate. It does not reimplement them.
+  - Moving the JSON-body parser into the cassette domain is a pure relocation
+    (`EP-M2`).
+  - The only other observable change outside verify is the
+    configuration-error exit code in `D2`.
+- Verify never writes, creates, or locks files. It opens files read-only
+  through `cap_std::fs_utf8`.
+- Verify output never contains header values, request or response bodies,
+  stream payloads, or `serde_json` error text. That error text can quote
+  document content, for example `invalid type: string "sk-…"`. A finding
+  carries only its code, its JSON Pointer location, and typed parameters from
+  this allowlist:
+  - a header name that matched the policy;
+  - numeric indices;
+  - hashes;
+  - a parse line and column.
+- Hexagonal boundaries:
+  - The `cassette::verify` domain module performs no I/O. It does not import
+    `http_exchange`, `axum`, `cli`, Fluent, or `std::fs`.
+  - The application service `src/verify.rs` is the only filesystem caller.
+  - The CLI adapter `src/cli/verify_output/` is the only renderer.
+  - The binary is the only owner of process exit and stdout.
+- `AGENTS.md` rules:
+  - No file exceeds 400 lines.
+  - Every module, including test modules, starts with a `//!` comment.
+  - Non-test code uses neither `unwrap` nor `expect`.
+  - Clippy's `print_stdout` and `print_stderr` stay denied.
+  - `too-many-arguments-threshold = 4` applies (`clippy.toml`).
+  - Lints are silenced only with item-scoped `#[expect(..., reason = "...")]`,
+    and only as a last resort.
+  - Every assertion carries a diagnostic message.
+  - Comments and documentation use en-GB-oxendict spelling.
+- The verify path adds no environment reads; configuration layering uses the
+  existing OrthoConfig sources.
+- Authorized dependency changes:
+  - dev-dependencies `googletest` and `pretty_assertions`, which the user
+    authorized, using caret requirements;
+  - the `parsing` feature on the existing `time` dependency, needed to parse
+    `recorded_at` as RFC 3339 (`D3`).
+
+  No new runtime crate is authorized.
+- Verus is not adopted in this task (`D7`). No prover tooling, pins, or
+  Makefile targets are added. `make all` keeps exactly the prerequisites that
+  `tests/test_make_all.py` pins.
+- The library is pre-release: no tag in this repository's history is an
+  ancestor of `HEAD`. The `v0.5.0` to `v0.9.1` tags come from an unrelated
+  history. Interfaces may therefore change without compatibility shims, but
+  every caller must update in the same commit. This covers the config loader
+  return type, the removal of `ModeNotYetImplemented`, and the new
+  `cassette::verify` types.
 - Completed ExecPlans under `docs/execplans/` are historical and must not be
   edited.
 
@@ -131,1162 +154,1348 @@ The comparison base is `origin/main` at `c3e6d76`. Count with:
 ```bash
 git diff --numstat origin/main...HEAD -- . \
   ':(exclude)docs/execplans/2-2-1-verify-subcommand-for-cassette-integrity.md' \
-  ':(exclude)Cargo.lock'
+  ':(exclude)Cargo.lock' ':(exclude)typos.toml'
 ```
 
-Each limit measures net lines (additions minus deletions) per category.
-Classification is by whole file:
+Limits are net lines (additions minus deletions) per category. Each file counts
+in exactly one category, by whole file:
 
-- Code: `src/**`, `tests/**` (including `.feature` files and `insta` `.snap`
-  files), `verus/**`, and `Makefile`.
-- Configuration: `Cargo.toml`, `tools/**` pin files (`VERSION`, `SHA256SUMS`,
-  `REF`), and `i18n/**/*.ftl` Fluent resources.
-- Documentation: `docs/**` except this ExecPlan, plus `tools/verus/README.md`.
-- Excluded: this ExecPlan file and the generated `Cargo.lock`.
+- Code: `src/**`, and `tests/**` including `.feature` and `insta` `.snap`
+  files.
+- Configuration: `Cargo.toml` and `i18n/**/*.ftl`.
+- Documentation: `docs/**`, except this ExecPlan.
+- Excluded: this ExecPlan, the generated `Cargo.lock`, and the generated
+  `typos.toml`. If `make spelling` regenerates `typos.toml`, that change goes
+  in a separate commit, per `AGENTS.md`.
 
-Budget survey. The comparable plans 1-2-1 (16 files, 1,200 lines),
-1-2-2 (14 files, 1,000 lines), 1-3-2 (22 files, about 1,700 lines),
-2-1-1 (24 files, about 1,900 lines), and 2-1-2 (22 files, about 1,700 lines)
-used one combined code-and-docs budget. None recorded a budget increase in its
-decision log or revision notes. Task 2.2.1 is wider: four check families,
-three output formats, a CLI exit-code path, the repository's first Verus
-proof wiring, and documentation including two ADRs. The estimate is about
-1,350 production lines, 1,500 test lines (unit, property, BDD, end-to-end,
-snapshots), 250 Verus and wiring lines, 90 configuration lines, and 700
-documentation lines. Budgets add roughly 20% contingency:
+Fixture cassettes are built in-test from typed builders and written compactly
+to temporary directories. They are never committed as pretty-printed JSON,
+because `Vec<u8>` fields pretty-print one byte per line and would swamp the
+code budget.
 
-- Files: more than 48 non-ExecPlan files changed or added: stop and escalate.
-- Code: more than 3,400 net lines: stop and escalate. Within that, production
-  code under `src/**` must not exceed 1,600 net lines.
-- Configuration: more than 120 net lines: stop and escalate.
-- Documentation: more than 850 net lines: stop and escalate.
-- Interface: any public API change beyond the following stop the work for
-  escalation: `verify_cassette`, `cassette::verify` types,
-  `config::VerifyFormat`, the new `RedactionConfig` usage by verify, and
-  removal of `ModeNotYetImplemented`.
-- Dependencies: any dependency other than `googletest` and
-  `pretty_assertions` (dev): stop and escalate.
-- Architecture: if verify needs to change cassette persistence, canonical
-  hashing, or the SSE parser's behaviour, stop and escalate.
-- Verus: if `EP-M0` cannot install and run the pinned Verus through
-  `prover-tools` on this host, or the kernel cannot be proved within two
-  working sessions, stop and present the fallback in `D7`.
-- Iterations: if a focused test still fails after three fix attempts, stop and
-  escalate.
-- Time: if any single milestone exceeds one working day of active effort,
-  stop and escalate.
-- Ambiguity: if a check's pass/fail rule admits two readings that change
-  which existing recorded cassettes fail, stop and present both.
+Budget survey:
+
+- Plans 1-3-2, 2-1-1, and 2-1-2 declared limits of 22, 24, and 22 files. The
+  panel recount shows each changed 31 non-plan files, about 40% over, and none
+  recorded a revision.
+- Earlier plans 1-2-1 (16 files, 1,200 lines) and 1-2-2 (14 files, 1,000
+  lines) were smaller.
+- Task 2.2.1, recounted from the module list in `Plan of work`:
+  - about 22 new `src` files;
+  - about 14 edited `src` files;
+  - about 15 test, feature, and snapshot files;
+  - 2 configuration files;
+  - 6 documentation files.
+
+  That is about 59 files in total.
+- Estimated lines: about 1,500 production, 2,000 test, 60 configuration, and
+  600 documentation.
+
+The limits below add about 10% contingency, informed by that history:
+
+- Files: more than 64 non-ExecPlan files changed or added.
+- Code: more than 3,900 net lines in total, or more than 1,700 net lines of
+  production code. Production code is `src/**` excluding `*_tests.rs` and
+  `tests.rs` files.
+- Configuration: more than 80 net lines.
+- Documentation: more than 700 net lines.
+- Interface: any public API change beyond the following:
+  - `verify_cassette`;
+  - the `cassette::verify` types;
+  - `cli::LoadedCommand` and the new loader return types;
+  - `cli::verify_output` rendering;
+  - `RedactionConfig::requires_redaction`;
+  - removal of `ModeNotYetImplemented`.
+- Dependencies: anything beyond the authorized changes in `Constraints`.
+- Architecture: verify needing to change cassette persistence, canonical
+  hashing, or SSE parser behaviour.
+- Iterations: a focused test that still fails after three fix attempts.
+- Time: any milestone that exceeds one working day of active effort.
+- Ambiguity: a check whose pass/fail rule admits two readings that differ on
+  which record-produced cassettes fail. Stop and present both readings.
+
+Reaching any of these thresholds means stop and escalate.
 
 ## Risks
 
-- Risk: interaction-level ordering is not monotonic in valid concurrent
-  recordings. `relative_offset_ms` is measured at handler entry, while
-  appends happen at completion (`src/server/record.rs`), so concurrent record
-  sessions append in completion order.
-  Severity: high. Likelihood: medium. Mitigation: enforce interaction start
-  order only when the effective match mode is `MatchMode::SequentialStrict`,
-  which is the only mode for which array order is the replay contract. See
-  `D3`.
-- Risk: hand-authored cassettes, such as fixtures in other repositories, lack
-  `canonical_request`, `raw_transcript`, or `timing`, and would fail verify
-  for reasons unrelated to integrity.
-  Severity: medium. Likelihood: medium. Mitigation: define precisely which
-  absences are findings (`D4`) and document the rules in the users' guide.
-- Risk: Verus release and toolchain churn. Verus pins its own Rust toolchain,
-  separate from the repository's `nightly-2026-11-13`.
-  Severity: medium. Likelihood: medium. Mitigation: `EP-M0` probes
-  installation and a trivial proof before any proof work. Verus stays out of
-  the default gates.
-- Risk: the Verus proof covers a mirror rather than shipped code, the
-  "idealized structure" finding that the `verus` skill warns about.
-  Severity: medium. Likelihood: medium. Mitigation: `EP-M0` decides whether
-  the production kernel can be written in the Verus-verifiable subset and
-  checked textually (`D7`). Otherwise the residual gap is recorded and a
-  property test closes it against an independent oracle.
-- Risk: GitHub Actions shows at most 10 error annotations per step and 50
-  per job (community discussion 68471), so a cassette with many findings
-  loses annotations silently.
-  Severity: low. Likelihood: medium. Mitigation: the GitHub format emits at
-  most nine finding annotations, then one summary annotation stating the
-  number omitted and pointing at `--format json` (`D5`).
-- Risk: workflow-command injection. A hostile cassette could carry a header
-  name containing a newline followed by `::add-mask::` or similar.
-  Severity: high. Likelihood: low. Mitigation: escape every interpolated value
-  per the GitHub toolkit rules, and test the escaping with an independent
-  property oracle and named injection cases.
-- Risk: large cassettes and memory use. Verify reads the whole document.
-  Severity: low. Likelihood: low. Mitigation: a bounded read with a 256 MiB
-  ceiling that reports `io.cassette_too_large`. The ceiling is a named
-  constant (`D8`).
-- Risk: `make fmt` reports pre-existing Markdown findings, as recorded in
-  `1-3-2` lines 379-382.
-  Severity: low. Likelihood: medium. Mitigation: run `make fmt` and then
-  inspect the diff, keeping only hunks in files this plan touches.
+- Risk: false ordering failures on valid cassettes.
+  - Cause: `relative_offset_ms` restarts at 0 in every `record` session that
+    appends to an existing cassette (`src/cassette/filesystem.rs:71-88`,
+    `src/server/record_metadata.rs:110-114`). It is also measured at handler
+    entry, while concurrent appends land in completion order.
+  - Severity: high. Likelihood without mitigation: high.
+  - Mitigation:
+    - `D3` flags a pair only when both `relative_offset_ms` and `recorded_at`
+      decrease.
+    - Setting `MatchMode::Keyed` (`cmds.verify.match_mode`) skips the rule.
+    - A record-twice regression test proves that multi-session cassettes
+      pass.
+- Risk: false hash or transcript failures caused by values changing on save
+  and reload.
+  - Cause: `Option<Value>` reloads JSON `null` as `None`. Without
+    `float_roundtrip`, `serde_json` may not reproduce a long-mantissa `f64`
+    exactly.
+  - Severity: high. Likelihood: medium.
+  - Mitigation:
+    - `D4` recomputes from the body bytes, as `record` did.
+    - Stored values are compared only against a persistence round trip of the
+      fresh value.
+    - `EP-M0` probes `null` and arbitrary `f64` payloads before any rule is
+      built.
+- Risk: secrets reach CI logs through `serde_json` error text.
+  - Severity: high. Likelihood: medium.
+  - Mitigation:
+    - A schema finding carries only `serde_json::Error::classify()`, the line,
+      and the column (`Constraints`).
+    - A dedicated sentinel test covers malformed documents
+      (`INV-no-secret-echo`).
+- Risk: workflow-command injection in any output format. The GitHub runner
+  parses every stdout line.
+  - Severity: high. Likelihood: low.
+  - Mitigation:
+    - All renderers escape interpolated values.
+    - Every line starts with a prefix the renderer owns.
+    - The GitHub escaper follows the toolkit rules.
+    - Header names appear only when they match a validated policy token, and
+      a valid token cannot contain control characters.
+- Risk: verify hangs on a FIFO or reads a device at the cassette path.
+  - Severity: medium. Likelihood: low.
+  - Mitigation:
+    - `Dir::metadata` is checked before opening.
+    - A path that is not a regular file is `io.not_a_regular_file`.
+    - A file over the size ceiling is `io.cassette_too_large`.
+    - The read is bounded with `take`.
+    - The residual race is recorded in `D8`.
+- Risk: high memory use on large cassettes.
+  - Severity: medium. Likelihood: low.
+  - Mitigation:
+    - Never build a whole-document `serde_json::Value`.
+    - The version peek deserializes a one-field struct, and serde skips the
+      remaining fields.
+    - The typed parse runs once.
+    - Peak memory is roughly the bytes plus one typed cassette, about 330 MiB
+      at the ceiling.
+- Risk: a configured policy silently drops the default `authorization` check.
+  - Severity: medium. Likelihood: medium.
+  - Mitigation:
+    - `D6` adds configured headers to the defaults.
+    - Removing the defaults requires `include_default_headers = false`.
+    - Configuration rejects names that are not valid HTTP tokens.
+- Risk: ortho_config 0.10 may not layer a `Vec<String>` from an environment
+  variable.
+  - Severity: low. Likelihood: medium.
+  - Mitigation: `EP-M0` probes it. If it fails, environment layering for the
+    list is documented as unsupported, and only the file and CLI layers are
+    tested.
+- Risk: `make fmt` reports pre-existing Markdown findings (`1-3-2` lines
+  379-382).
+  - Severity: low. Likelihood: medium.
+  - Mitigation: keep only the hunks in files this plan touches.
 
 ## Progress
 
-- [x] (2026-11-15 00:00Z) Branch renamed to
-  `2-2-1-verify-subcommand-for-cassette-integrity`; Wyvern reconnaissance of
-  the cassette domain, CLI, tests, tooling, and documentation completed.
-- [x] (2026-11-15 00:00Z) Initial draft written.
-- [ ] Community-of-experts review applied.
+- [x] (2026-11-15) Branch renamed. Wyvern reconnaissance of the cassette
+  domain, CLI, tests, tooling, and documentation completed.
+- [x] (2026-11-15) Initial draft written and committed.
+- [x] (2026-11-15) Community-of-experts review applied. The four panels were
+  structure and contracts, failure modes and security, verification and
+  viability, and alternatives and cost. See the revision note.
 - [ ] Plan approved by the user.
-- [ ] `EP-M0` Verus and dependency feasibility probe.
-- [ ] `EP-M1` verification report model, schema checks, and outcome mapping.
-- [ ] `EP-M2` hash recomputation and request-body integrity checks.
-- [ ] `EP-M3` ordering checks over interactions and streams.
-- [ ] `EP-M4` Verus proof of the ordering kernel and `make verus`.
-- [ ] `EP-M5` redaction policy checks and layered verify configuration.
-- [ ] `EP-M6` application service, output formats, CLI exit codes, BDD and
-  end-to-end coverage.
-- [ ] `EP-M7` documentation, ADRs, roadmap closure, and full gates.
+- [ ] `EP-M0` feasibility probes: persistence round trip, ortho_config list
+  layering, googletest and MSRV, timestamp parsing.
+- [ ] `EP-M1` finding model, report, and I/O and schema checks.
+- [ ] `EP-M2` hash and request-integrity checks.
+- [ ] `EP-M3` ordering checks.
+- [ ] `EP-M4` redaction checks and layered verify configuration.
+- [ ] `EP-M5` application service, renderers, CLI dispatch, and exit codes.
+- [ ] `EP-M6` documentation, ADR, roadmap closure, and full gates.
 
 ## Surprises & discoveries
 
 - Observation: `verify` is already a parsed subcommand with layered
-  `cmds.verify` configuration, but it routes through `start_harness`, which
-  opens the cassette and then returns `ModeNotYetImplemented`.
-  Evidence: `src/cli/mod.rs:205-225` and `:320-343`, `src/lib.rs:123-127`.
-  Impact: no new subcommand plumbing is needed. Dispatch must branch before
-  `start_harness`.
+  `cmds.verify` configuration. It routes through `start_harness`, which opens
+  the cassette and then returns `ModeNotYetImplemented`.
+  - Evidence: `src/cli/mod.rs:205-225` and `:320-343`; `src/lib.rs:112-127`
+    and `:165-168`.
+  - Impact: dispatch must branch before `start_harness`, and `start_harness`
+    must reject `Verify` before `prepare_cassette` runs.
 - Observation: the roadmap's second design reference is a dead anchor.
-  Evidence: `docs/spycatcher-harness-design.md:928` is a plain paragraph
-  ("Recommended additions for regression suite integration:"), not a heading.
-  Impact: `EP-M7` turns it into a heading so the anchor resolves.
-- Observation: canonical hashing reads `parsed_json`, not `body`.
-  Evidence: `canonicalize` in `src/cassette/canonical/mod.rs:162-177`.
-  Impact: recomputing the hash alone cannot detect an edit to `body` that
-  leaves `parsed_json` unchanged. Verify adds a body-to-`parsed_json`
-  consistency check (`EP-M2`).
-- Observation: the record path always uses `IgnorePathConfig::default()` and
-  never persists an ignore configuration.
-  Evidence: `src/server/record.rs:305`, `src/server/record_stream/mod.rs:155`.
-  Impact: verify can recompute with the default configuration and match
-  `record` exactly. Cassettes produced through the library with non-default
-  ignore paths cannot be verified faithfully (`D4`).
+  - Evidence: `docs/spycatcher-harness-design.md:928` is a plain paragraph.
+  - Impact: `EP-M6` turns it into a heading.
+- Observation: canonical hashing reads `parsed_json`, not `body`. The record
+  path derives `parsed_json` from `body` with `parse_json_bytes`.
+  - Evidence: `canonicalize` at `src/cassette/canonical/mod.rs:162-177`;
+    `src/http_exchange.rs:118`.
+  - Impact: verify recomputes from `body`, as record did (`D4`).
+- Observation: `relative_offset_ms` is session-relative. It restarts on every
+  `record` run that appends to an existing cassette.
+  - Evidence: `SessionMetadata::create_at` and `open_or_create_for_record`.
+  - Impact: `D3` adds a `recorded_at` co-condition.
 - Observation: the stream recorder establishes three timing invariants:
-  `chunk_offsets_ms.len() == events.len()`, offsets are non-decreasing, and
-  `ttft_ms` is no greater than the first offset.
-  Evidence: `observe_chunk` and `finish_recording` in
-  `src/server/record_stream/state.rs:120-168`.
-  Impact: these become ordering checks.
-- Observation: there is no Verus, Kani, or prover wiring in the repository,
-  although `prover-tools`, `kani`, and `cargo-kani` are installed on this
-  host and `verus` is not.
-  Evidence: `command -v` probes, and no prover matches in `Makefile` or
-  `Cargo.toml`.
-  Impact: `EP-M0` and `EP-M4` add the first pins and Makefile targets.
+  - `chunk_offsets_ms.len() == events.len()`;
+  - the offsets are non-decreasing;
+  - `ttft_ms` is no greater than the first offset.
+
+  Evidence: `observe_chunk` and `finish_recording` at
+  `src/server/record_stream/state.rs:120-168`. Impact: these become ordering
+  checks, and recorded streams satisfy them by construction.
+- Observation: two helpers have narrower visibility than the plan first
+  assumed, and one file is at its size limit.
+  - `canonical_request_value` lives in `src/cassette/canonical/json/mod.rs:57`
+    as `pub(super)`.
+  - `open_rooted_parent` is private at `src/cassette/filesystem.rs:224`, and
+    that file is 399 lines long.
+  - Impact: the hash rule compares against the output of `canonicalize` and
+    `stable_hash`, re-deriving the envelope through a new `pub(crate)`
+    accessor on `CanonicalRequest`. The bounded read lives in
+    `src/verify.rs`.
+- Observation: `HarnessError` localization goes through Fluent, which wraps
+  arguments in U+2068/U+2069 isolation marks.
+  - Evidence: `src/i18n.rs:96`; the snapshot at
+    `src/bin/spycatcher_harness.rs:231`.
+  - Impact: the JSON report carries no localized prose, and the GitHub
+    renderer strips the isolation marks (`D5`).
+- Observation: past plans overran their file limits by about 40% without
+  recording it.
+  - Evidence: the panel's recount of plans 1-3-2, 2-1-1, and 2-1-2.
+  - Impact: `Tolerances` was recounted from the module list.
 
 ## Decision log
 
-- D1. Decision: report every finding rather than failing fast, except that a
-  schema-class finding which prevents deserialization stops further checks.
-  Rationale: CI users fix cassettes in batches, so one run should show every
-  problem. Checks after a failed deserialization have nothing typed to
-  inspect. Rejected: fail-fast, which forces a fix-rerun loop.
-  Date/Author: 2026-11-15, planning agent.
-- D2. Decision: classify findings into five classes, `io`, `schema`,
-  `ordering`, `hash`, and `redaction`, each with stable snake_case codes, and
-  treat every finding as an error. There is no warning severity in this slice.
-  The exit code is `0` if and only if there are no findings, and `1`
-  otherwise. Clap usage errors keep exit `2`, and configuration errors raised
-  before verification keep the existing `main` error path (exit `1`).
-  Rationale: the roadmap requires a non-zero exit on any failure class. A
-  single severity keeps that rule total and easy to check. Missing or
-  unreadable cassettes are `io` findings rather than process errors, so CI
-  still receives a structured report and an annotation. Rejected: per-class
-  exit codes, which are fragile because one run can contain several classes.
-  Date/Author: 2026-11-15, planning agent.
-- D3. Decision: "ordering" means four things. First, with
-  `MatchMode::SequentialStrict` (the default and the only CLI replay mode),
-  `metadata.relative_offset_ms` is non-decreasing across `interactions`.
-  Second, each stream's `timing.chunk_offsets_ms` has one entry per event.
-  Third, those offsets are non-decreasing and `ttft_ms` is no greater than the
-  first offset. Fourth, re-parsing `raw_transcript` with the production
-  `SseParser` yields exactly `events`, in order. Interaction start order is
-  not enforced under `MatchMode::Keyed`.
-  Rationale: sequential strict replay consumes interactions in array order, so
-  a start-order regression means the array order differs from the client's
-  issue order. Keyed replay deliberately tolerates reordering, and concurrent
-  recordings append in completion order. Rejected: always enforcing start
-  order, which fails valid concurrent recordings. Also rejected: never
-  enforcing it, which leaves "sequential integrity" from the design document
-  unchecked.
-  Date/Author: 2026-11-15, planning agent.
-- D4. Decision: rules for absent optional fields.
-  - A missing `stable_hash` or `canonical_request` is a `hash` finding,
-    because replay requires `stable_hash` and record always writes both.
-  - A stream with an empty `raw_transcript` and non-empty `events` skips the
-    transcript re-parse check, because it is hand-authored.
-  - A stream with `timing: None` skips the timing checks.
-  - A request whose `body` is not valid JSON must have
-    `parsed_json: None`, otherwise it is a `hash.parsed_json_mismatch`
-    finding.
-
-  Hash recomputation always uses `IgnorePathConfig::default()`, matching the
-  record path. Cassettes written through the library with custom ignore paths
-  are out of scope and documented as such.
-  Rationale: this aligns verify with what `record` produces while tolerating
-  the documented hand-authoring workflow. Rejected: requiring every optional
-  field, which breaks hand-authored stream fixtures.
-  Date/Author: 2026-11-15, planning agent.
-- D5. Decision: three output formats are selected by
-  `--format text|json|github` (default `text`), layered as
-  `cmds.verify.format`.
-  - `json` is a versioned document (`report_version: 1`) that is written to
-    stdout.
-  - `github` emits one `::error` workflow command per finding, capped at nine,
-    plus one summary annotation when findings are omitted. All formats write
-    to stdout.
-  - Annotations use `file=` with the cassette path as configured, a
-    `title=` of `spycatcher-harness verify: <class>.<code>`, and the message
-    and JSON Pointer as data. Line numbers are omitted, because
-    `serde_json::Value` carries no spans. The exception is a schema parse
-    error, which reports the `serde_json` line and column.
-
-  Rationale: JSON serves tools and the later 2.2.2 mismatch reports, and
-  workflow commands give native pull-request annotations with no extra
-  action. Rejected: Static Analysis Results Interchange Format (SARIF), which
-  needs the code-scanning upload action and permissions and is heavier than
-  the requirement. Also rejected: computing line numbers with a span-aware
-  parser, which needs a new dependency.
-  Date/Author: 2026-11-15, planning agent.
-- D6. Decision: the required redaction policy reuses `RedactionConfig`. Verify
-  gains a config-only `cmds.verify.redaction.drop_headers` layer, mirroring
-  how `cmds.record.upstream` is config-only. The default is
-  `RedactionConfig::default()` (`["authorization"]`). Header matching reuses
-  the record path's case-insensitive predicate (`should_persist_header` in
-  `src/http_exchange.rs`, widened to `pub(crate)`). Only names are checked,
-  never values.
-  Rationale: one predicate and one default guarantee that a cassette recorded
-  under policy `P` passes verify under `P`. Rejected: a wider hard-coded deny
-  list (`cookie`, `x-api-key`), which would fail cassettes recorded under the
-  documented default. Users widen the policy in configuration instead. Also
-  rejected: value heuristics such as `Bearer` prefixes, which are deferred
-  because they produce false positives and risk echoing secrets.
-  Date/Author: 2026-11-15, planning agent.
-- D7. Decision: Verus is warranted only for the ordering kernel
-  `first_descent`, which returns the first index whose value is smaller than
-  its predecessor. The proof shows that the adjacent-pair scan is complete
-  for global non-decreasing order over sequences of any length. All other
-  obligations use `rstest`, `proptest`, `insta`, BDD, and end-to-end tests.
-  The bridge to production is decided in `EP-M0`. Preferred: the production
-  kernel is written in the Verus-verifiable subset, and a contract test
-  asserts that its body is textually identical to the verified mirror.
-  Fallback: Verus proves a loop mirror, and a `proptest` property checks the
-  production kernel against an independent quadratic oracle, with the
-  residual gap recorded.
-  Rationale: the kernel carries the one unbounded, contractual invariant in
-  this feature (`INV-order-complete`). Formatting, escaping, and plumbing are
-  covered better by tests. Rejected: Kani, which is bounded and adds nothing
-  here that the unbounded proof does not.
-  Date/Author: 2026-11-15, planning agent.
-- D8. Decision: verify reads at most 256 MiB, as `MAX_VERIFY_DOCUMENT_BYTES`,
-  and reports `io.cassette_too_large` beyond that.
-  Rationale: `AGENTS.md` requires byte bounds on input. 256 MiB comfortably
-  exceeds realistic cassettes while bounding memory. Replay has no such
-  ceiling today; that gap is recorded for roadmap follow-up and not changed
-  here.
-  Date/Author: 2026-11-15, planning agent.
+- D1. Decision: report every finding rather than failing fast.
+  - Exception: an `io` finding, or a `schema` finding that prevents typed
+    deserialization, ends the run. Later rules have no typed cassette to
+    inspect.
+  - Rationale: CI users fix cassettes in batches.
+  - Rejected: fail-fast `HarnessError` variants on `Cassette`. They force a
+    fix-and-rerun loop. They also misreport future-version files, because
+    `from_reader` deserializes before it checks the version.
+  - Date/Author: 2026-11-15, planning agent; confirmed by the panel.
+- D2. Decision: define five finding classes and three exit codes.
+  - Classes: `io`, `schema`, `ordering`, `hash`, and `redaction`. Every
+    finding is an error.
+  - Exit codes:
+    - `0`: verified with no findings.
+    - `1`: a report was produced and has at least one finding.
+    - `2`: no report could be produced. This covers clap usage errors
+      (unchanged), every configuration-loading error for every subcommand
+      (changed from `1`), `verify_cassette` configuration errors, and failure
+      to write the report to stdout.
+  - Skipped checks (`D4`) are reported but never affect the exit code.
+  - Rationale: the roadmap requires a non-zero exit for any failure class. CI
+    must also tell "this cassette is bad" apart from "verify could not run". A
+    JSON consumer sees exit `2` with empty stdout only when no report exists.
+  - Rejected: per-class exit codes, because one run can contain several
+    classes.
+  - Date/Author: 2026-11-15; revised after panel review (exit `2`).
+- D3. Decision: define "ordering" as three checks.
+  - Interaction order:
+    - A pair of adjacent interactions `(i-1, i)` is reported as
+      `ordering.interaction_start_order` when both
+      `relative_offset_ms[i] < relative_offset_ms[i-1]` and
+      `recorded_at[i] < recorded_at[i-1]` hold. `recorded_at` is parsed as an
+      RFC 3339 instant.
+    - If either `recorded_at` fails to parse, the pair is reported as skipped
+      with `skipped.recorded_at_unparsable`.
+    - Under `MatchMode::Keyed` the rule is skipped entirely. Verify takes the
+      mode from `HarnessConfig.match_mode`, set through the config-only
+      `cmds.verify.match_mode`.
+  - Stream timing, when `timing` is `Some`:
+    - `chunk_offsets_ms` has one entry per event;
+    - the offsets are non-decreasing, and every adjacent descent is reported;
+    - `ttft_ms` is no greater than the first offset.
+  - Stream transcript: re-parsing a non-empty `raw_transcript` with
+    `SseParser` reproduces `events` exactly, after the persistence round trip
+    of `D4`.
+  - Rationale:
+    - A hand reorder or a bad merge moves both timestamps together.
+    - A new record session restarts the offset, but `recorded_at` keeps
+      rising.
+    - A concurrent recording's array order follows completion time, which
+      `recorded_at` approximates.
+    - The co-condition therefore flags real reordering without failing
+      record-produced cassettes.
+  - Residual risk: if two concurrent completions race between building their
+    metadata and taking the store lock, both signals can invert. The users'
+    guide documents this and recommends `match_mode = "keyed"` for
+    concurrently recorded cassettes.
+  - Rejected: enforcing the offset alone, which fails multi-session
+    cassettes; and dropping interaction ordering, which leaves the design's
+    "sequential integrity" unchecked.
+  - Date/Author: 2026-11-15; revised after panel review.
+- D4. Decision: recomputation and absence rules.
+  - Hash recomputation:
+    1. Start from `parse_json_body(&request.body)`, exactly as `record`
+       derived `parsed_json`.
+    2. Build a `RecordedRequest` copy with that value.
+    3. Call `canonicalize(&copy, &IgnorePathConfig::default())` once.
+    4. Derive both `stable_hash` and the canonical envelope from that result.
+  - Comparisons: stored `parsed_json`, `canonical_request`, and stream
+    `events` are compared against `persisted(fresh)`. `persisted` serializes
+    with `serde_json::to_vec`, then deserializes back through the same field
+    types. `Some(Null)` therefore becomes `None`, and floats round-trip
+    exactly as persistence made them.
+  - A missing `stable_hash` or `canonical_request` is a `hash` finding.
+    `record` always writes both, and replay requires `stable_hash`.
+  - Skips, which appear in the report's `skipped` list:
+    - a stream with an empty `raw_transcript` and non-empty `events` skips the
+      transcript check (`skipped.transcript_absent`);
+    - a stream with `timing: None` skips the timing checks
+      (`skipped.timing_absent`).
+  - Out of scope, and documented in the users' guide: cassettes written
+    through the library with a non-default `IgnorePathConfig`.
+  - Rationale: verification must agree with what `record` produced.
+    Persistence normalization would otherwise cause false positives. Visible
+    skips mean a recorder regression cannot hide behind a skip.
+  - Date/Author: 2026-11-15; revised after panel review.
+- D5. Decision: report formats and wire contract.
+  - Selection: `--format text|json|github`, default `text`, layered as
+    `cmds.verify.format`.
+    - The format lives only in the CLI layer, as `VerifyOutputFormat` in
+      `src/cli_args.rs`. It reaches the binary through `cli::LoadedCommand`;
+      `HarnessConfig` does not carry it.
+    - All formats write to stdout and emit qualified codes
+      (`<class>.<code>`).
+  - `json`: a versioned envelope.
+    - Fields: `report_version: 1`, `kind: "cassette_verification"`,
+      `cassette`, `outcome`, `interactions_checked`, `findings`, and
+      `skipped`.
+    - Each finding has `code`, `class`, `interaction`, `pointer`, and typed
+      `params`. The report carries no localized prose.
+    - Task 2.2.2 can add `kind: "replay_mismatch"` under the same rules.
+    - Evolution rule, recorded in ADR 0003: new fields and codes are
+      additive, and consumers must ignore unknown fields. Renaming or removing
+      a field or code, or changing its meaning, bumps `report_version`.
+  - `text`: Fluent-localized, one line per finding. Every interpolated value
+    is control-escaped.
+  - `github`: one workflow command per finding, of the form
+    `::error file=…,title=spycatcher-harness verify: <code>::<message> (<pointer>)`.
+    - Fluent isolation marks are stripped.
+    - `file` and `title` are escaped as properties.
+    - At most nine finding annotations are emitted. When more exist, a tenth
+      summary annotation states how many were omitted and points at
+      `--format json`.
+    - Line numbers are omitted except for schema parse errors.
+    - `file=` is the cassette path as configured. The users' guide tells users
+      to run from the repository root with a relative `--cassette-dir`, so
+      annotations attach to the diff.
+  - Rejected:
+    - Static Analysis Results Interchange Format (SARIF). It needs the
+      `upload-sarif` action and extra permissions, and GitHub Advanced
+      Security on private repositories. It remains a candidate later renderer
+      over the same envelope.
+    - A problem matcher. It moves the regex contract onto users and still
+      needs injection-safe text.
+    - Span-aware parsing for line numbers. It needs a new dependency.
+  - Date/Author: 2026-11-15; revised after panel review.
+- D6. Decision: the required redaction policy.
+  - Verify requires the union of `RedactionConfig::default().drop_headers`
+    (`authorization`) and `cmds.verify.redaction.require_headers`.
+  - Setting `cmds.verify.redaction.include_default_headers = false` removes
+    the defaults; the setting defaults to `true`.
+  - The configuration layer validates names as HTTP header tokens. An invalid
+    name is a configuration error and exits `2`. The effective list becomes
+    `HarnessConfig.redaction`.
+  - Matching uses a new case-insensitive
+    `RedactionConfig::requires_redaction(&self, name) -> bool`. The record
+    path's private `should_persist_header` delegates to it, so record and
+    verify share one predicate and the domain never imports `http_exchange`.
+  - Only header names are checked. Values, query parameters, and bodies are
+    documented non-goals.
+  - Rationale:
+    - Because the policy is a union, configuring an extra header cannot
+      silently stop the `authorization` check.
+    - Token validation turns typos into errors.
+    - A shared predicate means a cassette recorded under policy `P` passes
+      verify under `P`.
+  - Rejected:
+    - A wider hard-coded deny list, which fails cassettes recorded under the
+      documented default.
+    - Value heuristics, which risk false positives and secret echo.
+  - Date/Author: 2026-11-15; revised after panel review.
+- D7. Decision: do not adopt Verus in this task.
+  - What replaces it: exhaustive bounded enumeration plus property tests
+    discharge the ordering kernel's invariant.
+  - The kernel: `adjacent_violations` returns every index `k` whose adjacent
+    pair `(k-1, k)` violates a predicate. Its only unbounded content is that
+    adjacent non-descent implies global non-decreasing order, which follows
+    from transitivity in one induction step.
+  - Why enumeration is exhaustive: the kernel only compares values, so every
+    sequence of length `n` is order-isomorphic to a sequence over `{0..n-1}`.
+    Enumerating all 55,987 sequences over `{0..5}` of length 0 to 6 is
+    therefore exhaustive for every `u64` sequence up to length 6. A property
+    test against a quadratic oracle covers longer sequences.
+  - Rationale:
+    - `AGENTS.md` and the user brief warn against artificial proof
+      obligations.
+    - Three of four panel experts judged a Verus proof of this kernel
+      disproportionate. One called it "rigorous, but thin in substance".
+    - It would put the repository's first prover wiring (pins, Makefile
+      targets, contract tests, an ADR) on the critical path.
+    - It would require a non-idiomatic production loop.
+    - The textual-identity bridge cannot work, because Verus `invariant` and
+      `decreases` clauses sit inside the loop syntax.
+    - No other obligation in this feature has unbounded content over a small,
+      stable, pure kernel. Hashing rests on SHA-256 and `serde_json` axioms.
+      Escaping is a character map, and a `Seq<char>` proof would not bridge to
+      the shipped `String` code.
+  - Recommended follow-up: a separate roadmap task to adopt Verus via
+    `prover-tools`, aimed at the replay sequential-cursor invariants in
+    `src/cassette/matching/`.
+  - Rejected:
+    - A Verus proof of `first_descent`; see the panel findings in the revision
+      note.
+    - Kani, which adds bounded checking that the order-isomorphic enumeration
+      already provides without tool wiring.
+  - Date/Author: 2026-11-15, planning agent after panel review. This is a
+    user-visible choice, flagged for approval.
+- D8. Decision: limit reads to 256 MiB (`MAX_VERIFY_DOCUMENT_BYTES`).
+  - `Dir::metadata` must report a regular file with
+    `len() <= MAX_VERIFY_DOCUMENT_BYTES`.
+  - The read uses `take(MAX + 1)`, which catches a file that grows after the
+    check.
+  - Residual: a FIFO swapped in between the check and the open could still
+    block. This is recorded.
+  - Replay has no ceiling. That is noted for follow-up and not changed here.
+  - Date/Author: 2026-11-15; revised after panel review.
 - D9. Decision: verify detects inconsistency and accidental leakage, not
-  adversarial tampering. Hashes are unkeyed SHA-256, so anyone can recompute
-  them after an edit.
-  Rationale: this states the guarantee honestly. Authenticity would need
-  signing, which is out of scope.
-  Date/Author: 2026-11-15, planning agent.
-- D10. Decision: findings are ordered deterministically by interaction index
-  (document-level findings first), then class in the order `io`, `schema`,
-  `ordering`, `hash`, `redaction`, then JSON Pointer.
-  Rationale: stable output makes snapshots, CI diffs, and the nine-annotation
-  cap reproducible.
-  Date/Author: 2026-11-15, planning agent.
+  adversarial tampering. The hashes are unkeyed SHA-256, so anyone who edits a
+  cassette can recompute them.
+  - Date/Author: 2026-11-15.
+- D10. Decision: sort findings deterministically.
+  - Sort key: interaction index, then class in the order `io`, `schema`,
+    `ordering`, `hash`, `redaction`, then typed pointer segments.
+  - Index segments compare numerically, so `/headers/2` sorts before
+    `/headers/10`.
+  - Date/Author: 2026-11-15; revised after panel review.
+- D11. Decision: model each finding as a single typed kind.
+  - `FindingKind` is a single `#[non_exhaustive]` enum with per-variant data.
+    `class()` and `code()` are derived from the variant, so a finding cannot
+    pair a class with an unrelated code or data.
+  - Domain types do not derive `Serialize`. The JSON envelope is a separate
+    DTO in the CLI adapter, so there is exactly one wire schema.
+  - The public structs and enums are `#[non_exhaustive]`.
+  - Date/Author: 2026-11-15, panel review.
 
 ## Outcomes & retrospective
 
-Not started. Complete at each milestone boundary and at completion, including
-the reconciliation of discoveries with the upstream documents named in
+Not started. Complete this at each milestone boundary and at completion,
+including reconciling discoveries with the upstream documents in
 `Conformance basis`.
 
 ## Context and orientation
 
-Base revision inspected: `c3e6d76d9ca300d17c6139e6ec8a344f3e971e2a`. Line
-numbers below refer to that revision; relocate symbols with `rg -n '<symbol>'
-src tests`.
+The inspected base revision is `c3e6d76d9ca300d17c6139e6ec8a344f3e971e2a`. Line
+numbers refer to that revision; relocate symbols with
+`rg -n '<symbol>' src tests`.
 
-Repository shape. This is a single Rust crate, `spycatcher-harness`, with
-library `src/lib.rs` and binary `src/bin/spycatcher_harness.rs`. It uses
-edition 2024, `rust-version = "1.89.0"`, and the toolchain
+Crate: a single Rust crate, `spycatcher-harness`, with the library at
+`src/lib.rs` and the binary at `src/bin/spycatcher_harness.rs`. It uses edition
+2024 and `rust-version = "1.89.0"`. The pinned toolchain is
 `nightly-2026-11-13`.
 
 Cassette domain (`src/cassette/`):
 
 - `src/cassette/mod.rs` (305 lines) defines:
   - `CassetteFormatVersion(u32)`, with `SUPPORTED = 1`;
-  - `Cassette { format_version, interactions: Vec<Interaction> }`, with
-    `validate`, `from_reader`, and `write_to`;
+  - `Cassette { format_version, interactions }`, with `validate`,
+    `from_reader`, and `write_to`;
   - `Interaction { request, response, metadata }`;
   - `RecordedRequest`, with fields `method`, `path`, `query`, `headers:
     Vec<(String, String)>`, `body: Vec<u8>`, `parsed_json: Option<Value>`,
     `canonical_request: Option<Value>`, and `stable_hash: Option<String>`;
-  - `RecordedResponse::{NonStream, Stream}`, where the `Stream` variant has
-    fields `status`, `headers`, `events`, `raw_transcript`, and
-    `timing: Option<StreamTiming>`;
+  - `RecordedResponse::{NonStream, Stream}`, where `Stream` carries `events`,
+    `raw_transcript`, and `timing: Option<StreamTiming>`;
   - `StreamEvent::{Comment, Data}`;
   - `StreamTiming { ttft_ms, chunk_offsets_ms }`;
-  - `InteractionMetadata`, with fields `protocol_id`, `upstream_id`,
-    `recorded_at`, and `relative_offset_ms`.
+  - `InteractionMetadata { protocol_id, upstream_id, recorded_at: String,
+    relative_offset_ms }`.
 
-  Headers serialize as two-element arrays, so a header name's JSON Pointer is
-  `/interactions/<i>/request/headers/<j>/0`.
-- `Cassette::from_reader` deserializes before checking the version, so a
-  future-version file with a different shape surfaces as `InvalidCassette`
-  rather than `UnsupportedCassetteFormatVersion`. Verify peeks at
-  `format_version` first.
-- `src/cassette/canonical/mod.rs` provides `canonicalize(&RecordedRequest,
-  &IgnorePathConfig) -> Result<CanonicalRequest, CanonicalError>`,
-  `stable_hash(&CanonicalRequest) -> String`, and
-  `RecordedRequest::populate_canonical_fields`. The stored
-  `canonical_request` is the envelope produced by the private
-  `canonical_request_value`. `serde_json` is built with `preserve_order`, and
-  `Value` equality on objects is order-insensitive, so comparing the stored
-  `canonical_request` with the recomputed one does not depend on key order.
-- `src/cassette/filesystem.rs` holds `FilesystemCassetteStore`
-  (`pub(crate)`), with `open_for_replay`, `open_existing`, and the
-  `open_rooted_parent` cap-std helper.
-- Rule from the 1-2-1 plan: a new cassette child module is declared in
-  `src/cassette/mod.rs`, because Whitaker `self_named_module_files` forbids a
-  `verify.rs` next to a `verify/` directory.
+  Headers serialize as two-element arrays, so the JSON Pointer to a header name
+  is `/interactions/<i>/request/headers/<j>/0`.
+- `src/cassette/canonical/mod.rs` provides
+  `canonicalize(&RecordedRequest, &IgnorePathConfig)`,
+  `stable_hash(&CanonicalRequest)`, and
+  `RecordedRequest::populate_canonical_fields`.
+  - The stored envelope comes from `canonical_request_value` in
+    `canonical/json/mod.rs`, which is `pub(super)`.
+  - `serde_json` uses `preserve_order`, and `Value` object equality ignores
+    key order.
+- `src/cassette/filesystem.rs` (399 lines) holds the `pub(crate)`
+  `FilesystemCassetteStore` and the private `open_rooted_parent`.
+- Whitaker's `self_named_module_files` rule forbids `foo.rs` beside `foo/`,
+  so a new cassette child module is declared from `src/cassette/mod.rs`.
 
-SSE parsing: `src/sse.rs` holds `SseParser` (`pub(crate)`), with `feed(&[u8])`
-and `finish()` returning `Result<Vec<StreamEvent>, SseParseError>`. Its tests
-already show that results are independent of chunk boundaries
-(`parser_handles_frames_split_across_every_boundary`).
+SSE: `src/sse.rs` holds the `pub(crate)` `SseParser`, with `feed` and `finish`.
+Its output does not depend on chunk boundaries. The module imports
+`cassette::StreamEvent`, so `cassette::verify` using `sse` forms an intra-crate
+module cycle. That is acceptable and is noted in the developers' guide.
 
 Redaction:
 
-- `src/config.rs:185-198` defines `RedactionConfig { drop_headers }` with the
-  default `["authorization"]`.
-- `src/http_exchange.rs:229-250` defines `redact_headers` (`pub(crate)`) and
-  the private `should_persist_header`. Matching is case-insensitive.
-- `src/protocol.rs:65-135` has property tests over `redact_headers`.
-- `src/http_exchange.rs:118` defines `parse_json_bytes(&[u8]) ->
-  Option<Value>`, the parser the record path uses for `parsed_json`.
+- `RedactionConfig { drop_headers }` is at `src/config.rs:185-198`. Its
+  default is `["authorization"]`.
+- `redact_headers` and the private `should_persist_header` are at
+  `src/http_exchange.rs:229-250`. That file imports `axum::http::HeaderMap`.
+- `parse_json_bytes` is at `src/http_exchange.rs:118`.
 
-CLI and binary:
+Recording metadata: `recorded_at` comes from
+`OffsetDateTime::now_utc().format(&Rfc3339)`, and `relative_offset_ms` is
+measured from the session start (`src/server/record_metadata.rs`).
+
+CLI:
 
 - `src/cli/mod.rs` (343 lines) declares `Commands::{Record, Replay, Verify}`
-  and `VerifyArgs { listen, cassette_dir, cassette_name, locale,
-  fallback_locale, localization }`. `load_verify_config` merges
-  `cmds.verify` and then calls `config_build::to_verify_config`
-  (`src/cli/config_build.rs:54-59`).
-- `RecordArgs.upstream` shows the config-only pattern: `#[serde(default)]` and
-  `#[arg(skip)]` on an `Option<RecordUpstreamArgs>` declared in
-  `src/cli_args.rs`.
-- `src/bin/spycatcher_harness.rs` defines `main() -> eyre::Result<()>`,
-  which loads configuration, builds the Fluent loader, and calls `run_harness`
-  and then `start_harness`.
-- `src/bin/spycatcher_harness/process_output.rs` owns the stdout and stderr
-  writers (`write_display_output` and `write_error_output`), and
-  `src/bin/spycatcher_harness/cli_startup.rs` exits `0` for help and version
-  and `2` for parse errors.
+  and `VerifyArgs`.
+- The public loaders `load_subcommand_config*` (`:85-143`) and
+  `load_subcommand_config_from_iter_with_sources`
+  (`src/cli/source_loader.rs:65`) return `HarnessConfig`. About 20 call sites
+  exist across `src/cli`, `src/bin`, `tests/cli_localization_unit.rs`, and
+  `tests/cli_layering/source_loader.rs`.
+- `RecordArgs.upstream` shows the config-only pattern (`#[serde(default)]`
+  with `#[arg(skip)]`), with its types in `src/cli_args.rs`.
+
+Binary:
+
+- `main() -> eyre::Result<()>` builds the localizer and runtime, then calls
+  `start_harness`.
+- `cli_startup::handle_cli_config_result` exits `0` for help and `2` for
+  parse errors. It wraps other configuration errors into `eyre`, which gives
+  exit `1`.
+- `process_output.rs` owns the stdout and stderr writers.
 
 Errors and localization:
 
-- `src/error.rs` defines `HarnessError`; the `ModeNotYetImplemented` variant
-  is at `:85`.
-- `src/i18n.rs` maps errors to Fluent IDs; `localize_harness_error` is at
-  `:101`.
-- The only catalogue is `i18n/en-US/spycatcher-harness.ftl`, which contains
-  `cli-verify-about` at `:34`.
-- `src/i18n_tests.rs` and `tests/lifecycle_tests.rs:171-188` refer to
-  `ModeNotYetImplemented`.
+- `HarnessError` is in `src/error.rs`, with `ModeNotYetImplemented` at `:85`.
+- `src/i18n.rs` maps errors to Fluent IDs. The catalogue is
+  `i18n/en-US/spycatcher-harness.ftl`.
+- `ModeNotYetImplemented` is referenced from `src/error.rs:145`,
+  `src/i18n.rs:30` and `:156`, `src/i18n_tests.rs:52` and `:109`,
+  `tests/lifecycle_tests.rs:171-188`, and `docs/users-guide.md:29` and `:334`.
 
 Tests and gates:
 
-- BDD suites use `rstest-bdd` 0.6. Examples are
-  `tests/cassette_schema_versioning_bdd.rs` and
-  `tests/features/cassette_schema_versioning.feature`, with a
-  `#[derive(Default, ScenarioState)]` world, `Slot<T>`, and
-  `#[scenario(path = ..., name = ...)]`.
-- End-to-end tests run
-  `std::process::Command::new(env!("CARGO_BIN_EXE_spycatcher-harness"))`
-  with `env_clear()` and `tests/common/coverage_profile.rs`. An example is
+- BDD uses `rstest-bdd` 0.6; see `tests/cassette_schema_versioning_bdd.rs`.
+- End-to-end binary tests run
+  `Command::new(env!("CARGO_BIN_EXE_spycatcher-harness"))` with `env_clear()`
+  and `tests/common/coverage_profile.rs`; see
   `tests/binary_localization_e2e.rs`.
-- `insta` snapshots live in `tests/snapshots/`. `proptest` regressions are
-  committed beside their suites.
-- `googletest`, `pretty_assertions`, and `assert_cmd` are not used yet.
-- The gates are `make check-fmt`, `make lint` (`interrogate` over `tests/`,
-  `cargo doc`, clippy, and Whitaker), and `make test` (nextest plus doc
-  tests). `make all` adds `spelling` and `test-workflow-contracts`.
-  `make markdownlint` and `make nixie` are separate.
-- CI is `.github/workflows/ci.yml`.
-
-Budget survey: see `Tolerances`. Production files most likely to approach the
-400-line limit are `src/cli/mod.rs` (343) and `src/cassette/mod.rs` (305).
-New verify code therefore lives in new modules.
+- Snapshots live in `tests/snapshots/`.
+- The one property block, at `src/server/replay_stream_properties.rs:56`, uses
+  64 cases.
+- `googletest` and `pretty_assertions` are not used yet.
+- Gates:
+  - `make check-fmt`;
+  - `make lint`, which runs interrogate over the Python in `tests/`,
+    `cargo doc`, clippy, and Whitaker;
+  - `make test`, which runs nextest plus the doc tests;
+  - `make all` adds `spelling` and `test-workflow-contracts`;
+  - `make markdownlint` and `make nixie` check the documentation.
 
 Signposted documentation:
 
 - `docs/spycatcher-harness-design.md`: sections "Cassette definition",
-  "Canonicalization and hashing", "Public library API surface" (including the
-  `CassetteVerifier` paragraph at `:928`), "CLI shape", and "Implementation
-  decisions".
-- `docs/users-guide.md`, `docs/developers-guide.md`,
-  `docs/testing-guide.md`, and `docs/replay-matching-guide.md`.
+  "Canonicalization and hashing", "Public library API surface", "CLI shape",
+  and "Implementation decisions".
+- `docs/users-guide.md`, `docs/developers-guide.md`, and
+  `docs/testing-guide.md`.
 - `docs/rust-testing-with-rstest-fixtures.md`,
   `docs/rstest-bdd-users-guide.md`,
   `docs/reliable-testing-in-rust-via-dependency-injection.md`,
-  `docs/rust-doctest-dry-guide.md`,
-  `docs/complexity-antipatterns-and-refactoring-strategies.md`, and
-  `docs/ortho-config-users-guide.md`, the last for the `cmds.verify`
-  layering.
-- `docs/documentation-style-guide.md`, for ADR structure and numbering.
+  `docs/rust-doctest-dry-guide.md`, and
+  `docs/complexity-antipatterns-and-refactoring-strategies.md`.
+- `docs/ortho-config-users-guide.md`, for `cmds.verify` layering and list
+  fields.
+- `docs/documentation-style-guide.md`, for the ADR template at `:521-588`.
 
 Signposted skills: `execplans`, `rust-router`, `hexagonal-architecture`,
-`rust-unit-testing`, `proptest`, `verus`, `rust-verification`,
-`rust-errors`, `domain-cli-and-daemons`, `codegraph-mcp`, and
+`rust-unit-testing`, `proptest`, `rust-verification` (the reasoning behind
+`D7`), `rust-errors`, `domain-cli-and-daemons`, `codegraph-mcp`, and
 `en-gb-oxendict-style`.
 
 ## Conformance basis
 
-Upstream artefacts inspected at `c3e6d76`:
+Upstream artefacts, inspected at `c3e6d76`:
 
-- `docs/roadmap.md` task 2.2.1 (lines 192-202) and its dependencies 1.2.1
-  and 1.2.2, both complete.
-- `docs/spycatcher-harness-design.md`: "CLI shape" (`:939-963`), the
-  "Public library API surface" paragraph recommending `CassetteVerifier`
-  (`:928-933`), "Cassette definition" (`:229-287`), and "Canonicalization and
-  hashing" (`:376-422`).
-- `docs/adrs/adr-0001-*` (localization diagnostic switch) and
-  `docs/adrs/adr-0002-*` (build standard). Both constrain, and neither is
-  changed.
-- No terms-of-reference document exists for this project.
+- `docs/roadmap.md`: task 2.2.1 (`:192-202`); its dependencies 1.2.1 and
+  1.2.2, both done; and its consumer, task 2.2.2 (`:204-213`).
+- `docs/spycatcher-harness-design.md`:
+  - "CLI shape" (`:939-963`);
+  - the `CassetteVerifier` and `MismatchReport` paragraph (`:928-935`);
+  - "Cassette definition" (`:229-287`);
+  - "Canonicalization and hashing" (`:376-422`).
+- `docs/adrs/adr-0001-*` and `adr-0002-*`, which this plan respects and does
+  not change.
+- No terms of reference exist for this project.
 
 Requirements:
 
-- `REQ-schema`: verify checks the cassette format version (roadmap 2.2.1
-  success criterion 1; design `CassetteVerifier`: "Verifies cassette format
-  version").
-- `REQ-ordering`: verify checks ordering (roadmap criterion 1; design:
-  "Verifies sequential integrity").
-- `REQ-hash`: verify recomputes hashes (roadmap criterion 1).
-- `REQ-redaction`: verify checks the required redaction policies (roadmap
-  criterion 1; design: "Verifies no secrets leaked (headers scrubbed)").
-- `REQ-output`: failures are machine-readable and human-readable, suitable
-  for CI annotations (roadmap criterion 2).
-- `REQ-exit`: verify exits non-zero on any failure class (roadmap
-  criterion 3).
-- `REQ-cli`: `verify` validates cassette integrity and redaction as a
-  subcommand with `cmds.verify` layering (design "CLI shape").
+- `REQ-schema`: check the format version. Sources: roadmap criterion 1; the
+  design's "Verifies cassette format version".
+- `REQ-ordering`: check ordering. Sources: roadmap criterion 1; the design's
+  "Verifies sequential integrity".
+- `REQ-hash`: recompute hashes. Source: roadmap criterion 1.
+- `REQ-redaction`: check the required redaction policies. Sources: roadmap
+  criterion 1; the design's "Verifies no secrets leaked (headers scrubbed)".
+- `REQ-output`: provide machine-readable and human-readable output for CI
+  annotations. Source: roadmap criterion 2.
+- `REQ-exit`: exit non-zero on any failure class. Source: roadmap
+  criterion 3.
+- `REQ-cli`: provide a `verify` subcommand with `cmds.verify` layering.
+  Source: the design's "CLI shape".
 
 Gaps:
 
-- `GAP-stub`: verify currently returns `ModeNotYetImplemented`.
-- `GAP-anchor`: the roadmap link to
+- `GAP-stub`: verify returns `ModeNotYetImplemented`.
+- `GAP-anchor`: the roadmap link
   `#recommended-additions-for-regression-suite-integration` is dead.
-- `GAP-redaction-layering`: `RedactionConfig` is not layered from
-  configuration for any subcommand.
+- `GAP-redaction-layering`: no subcommand layers `RedactionConfig`.
 
 Trace links:
 
 ```plaintext
-REQ-schema    -> EP-M1 -> cassette::verify::schema tests; BDD "unsupported format version"; e2e exit 1
-REQ-hash      -> EP-M2 -> cassette::verify::hash tests + proptest; BDD "tampered body"
-REQ-ordering  -> EP-M3, EP-M4 -> ordering tests + proptest + verus/cassette_verify_ordering.rs; BDD "stream timing"
-REQ-redaction -> EP-M5 -> redaction tests + agreement proptest; BDD "authorization header"
-REQ-output    -> EP-M6 -> insta snapshots (text, json, github); escaping proptest; e2e --format
-REQ-exit      -> EP-M1, EP-M6 -> outcome tests; e2e rstest table over every class
-REQ-cli       -> EP-M5, EP-M6 -> cli layering tests; e2e cmds.verify config file
-GAP-stub      -> EP-M6 -> tests/lifecycle_tests.rs updated; e2e pass case
-GAP-anchor    -> EP-M7 -> make markdownlint; manual anchor check
-GAP-redaction-layering -> EP-M5 -> tests/cli_layering cases for cmds.verify.redaction
+REQ-schema    -> EP-M1 -> verify::schema tests; BDD "unsupported format version"; e2e exit 1
+REQ-hash      -> EP-M2 -> verify::hash tests + mutation property; BDD "hand-edited body"
+REQ-ordering  -> EP-M3 -> ordering enumeration + properties; BDD "stream timing", "record twice"
+REQ-redaction -> EP-M4 -> redaction tests + agreement property; BDD "authorization header"
+REQ-output    -> EP-M5 -> insta snapshots (text/json/github); escaping + secret-echo properties
+REQ-exit      -> EP-M1, EP-M5 -> outcome table; e2e table over every class and exit 2 cases
+REQ-cli       -> EP-M4, EP-M5 -> cli layering tests; e2e cmds.verify config file
+GAP-stub      -> EP-M5 -> tests/lifecycle_tests.rs; e2e pass case
+GAP-anchor    -> EP-M6 -> make markdownlint; anchor check
+GAP-redaction-layering -> EP-M4 -> tests/cli_layering verify redaction cases
 ```
 
 ## Verification plan
 
 ### Abstract model
 
-A cassette document is a byte string `D`. Verification is a total function
-`verify(D, P) -> R`, where:
+A cassette document is a byte string `D`. A policy is `P = (R, m)`: `R` is the
+set of required header names, ASCII lower-cased, and `m` is the match mode.
+Verification is a total function `verify(D, P) = (findings, skipped)`. Each
+finding is a typed `FindingKind` with an interaction index (or document scope)
+and a JSON Pointer. The stages run in order:
 
-- `P = (required_headers: set of lower-cased names, match_mode)`;
-- `R = (outcome, findings: Seq<Finding>)`;
-- `Finding = (class, code, interaction: Option<nat>, pointer: JSON Pointer)`.
+1. I/O, at the application boundary. A missing path, a non-regular file, a
+   size above `MAX`, or a read error yields one `io` finding, and the run stops.
+2. Schema. One `schema` finding is produced, and the run stops, if any of the
+   following holds:
+   - `D` is not JSON;
+   - `format_version` is missing or is not an unsigned 32-bit integer;
+   - the version is unsupported;
+   - `D` does not deserialize into `Cassette`.
+3. Rules. For the typed cassette `C`, the findings are the union of the hash,
+   redaction, interaction-ordering, and stream rules. Each rule is a pure
+   function of `P` and either one interaction or one adjacent pair of
+   interactions.
+4. Outcome. The outcome is `Passed` if and only if there are no findings.
+   `Passed` exits `0` and `Failed` exits `1`. An error before any report exists
+   exits `2`.
 
-The pipeline runs in four stages:
-
-1. If `|D| > MAX`, then `R` has the single finding
-   `io.cassette_too_large`.
-2. If `D` is not JSON, has no unsigned 32-bit integer `format_version`, has
-   an unsupported version, or fails to deserialize into `Cassette`, then `R`
-   has exactly one `schema` finding and no other checks run.
-3. Otherwise, with `C` the typed cassette, the findings are the union of four
-   independent per-interaction rule sets: ordering, hash, redaction, and the
-   stream rules. Each rule set is a pure function of `C` and `P`.
-4. `outcome = Passed` if and only if `findings` is empty. `exit_code` is `0`
-   for `Passed` and `1` for `Failed`.
-
-Missing or unreadable files are modelled at the application boundary as `R`
-with one `io` finding.
+The notation `persisted(v)` means `deserialize(serialize(v))` through the
+cassette field types.
 
 ### Invariants and lemmas
 
-- `INV-exit` (`REQ-exit`): `exit_code(R) == 0` if and only if `R.findings` is
-  empty. Equivalently, every finding of every class yields a non-zero exit.
-- `INV-order-complete` (`REQ-ordering`): for any sequence `s` of `u64`,
-  `first_descent(s) == None` if and only if `s` is globally non-decreasing
-  (`forall i <= j < |s|: s[i] <= s[j]`). Also, `first_descent(s) == Some(k)`
-  implies `1 <= k < |s|`, `s[k-1] > s[k]`, and that `s[..k]` is
-  non-decreasing, so `k` is the least violating index.
-- `INV-order-scope` (`REQ-ordering`, `D3`): interaction start order is checked
-  if and only if `P.match_mode == SequentialStrict`. Stream rules are checked
-  regardless of mode.
-- `INV-transcript` (`REQ-ordering`): for any recorder-produced stream,
-  `SseParser` applied to the whole of `raw_transcript` equals `events`, so a
-  correct recording never yields `ordering.stream_transcript_mismatch`.
-- `INV-hash-sound` (`REQ-hash`): for any request on which
-  `populate_canonical_fields(&IgnorePathConfig::default())` has run, the hash
-  rules produce no finding. This rules out false positives.
-- `INV-hash-complete` (`REQ-hash`): any edit to `method`, `path`, `query`, or
-  `parsed_json` that changes the canonical envelope, without recomputing
-  `stable_hash`, yields `hash.stable_hash_mismatch`. Any edit to `body` that
-  changes its parsed JSON, without updating `parsed_json`, yields
-  `hash.parsed_json_mismatch`.
-- `INV-redaction-agree` (`REQ-redaction`, `D6`): for any header list `H` and
-  policy `P`, the redaction findings for `redact_headers(H, P)` under `P`
-  are empty. This ties record and verify together.
-- `INV-redaction-complete` (`REQ-redaction`): for any persisted header whose
-  name equals some `p` in `P.required_headers` under ASCII case folding,
-  exactly one `redaction.required_header_present` finding names its pointer.
-- `INV-no-secret-echo` (constraint): no rendered output, in any format,
-  contains any header value, body byte, or stream payload from the cassette.
-- `INV-annotation-safe` (`REQ-output`): every GitHub-format line is a single
-  line. Escaped message data contains no carriage return (CR) or line feed
-  (LF). Escaped property values contain no CR, LF, `,`, or `:`. Unescaping
-  inverts escaping.
-- `INV-deterministic` (`D10`): `verify` is a function of `(D, P)`. Repeated
-  runs render byte-identical output in every format.
-- `L-adjacent-global`, the lemma under `INV-order-complete`: if
-  `s[i-1] <= s[i]` for every `0 < i < |s|`, then `s[i] <= s[j]` for every
-  `i <= j < |s|`. Proof by induction on `j - i`, using transitivity of `<=`.
+- `INV-exit` (`REQ-exit`): the exit code is `0` if and only if a report
+  exists with no findings, `1` if and only if a report exists with findings, and
+  `2` if and only if no report exists.
+- `INV-adjacent-complete` (`REQ-ordering`): for any `s: &[u64]` and the
+  descent predicate, `adjacent_violations(s)` equals
+  `{ k | 1 <= k < |s|, s[k-1] > s[k] }` in ascending order. It is empty if and
+  only if `s` is globally non-decreasing.
+- `L-adjacent-global`: if no adjacent pair descends, then `s[i] <= s[j]` for
+  every `i <= j`. The proof is an induction on `j - i` using transitivity. The
+  design document states the argument, and the enumeration checks it up to the
+  bound.
+- `INV-order-pair` (`REQ-ordering`, `D3`): a pair is reported if and only if
+  its offset and its `recorded_at` both decrease and the mode is
+  `SequentialStrict`. An unparsable `recorded_at` produces a skip, not a
+  finding.
+- `INV-record-clean`, the no-false-positives invariant: a cassette produced
+  by the record path has no findings under its own recording policy. This
+  includes:
+  - multi-session appends;
+  - streams with comments;
+  - `null` and float payloads;
+  - empty and non-JSON bodies;
+  - percent-encoded header values.
+- `INV-hash-exact` (`REQ-hash`): each mutation class yields exactly this
+  finding set:
+
+  | Mutation                            | Findings                                                                     |
+  | ----------------------------------- | ---------------------------------------------------------------------------- |
+  | `method`, `path`, or `query` edited | `stable_hash_mismatch`, `canonical_request_mismatch`                         |
+  | `body` edited to different JSON     | `stable_hash_mismatch`, `canonical_request_mismatch`, `parsed_json_mismatch` |
+  | only `parsed_json` edited           | `parsed_json_mismatch`                                                       |
+  | only `stable_hash` edited           | `stable_hash_mismatch`                                                       |
+  | `stable_hash` deleted               | `stable_hash_missing`                                                        |
+  | JSON keys reordered anywhere        | none                                                                         |
+
+- `INV-transcript` (`REQ-ordering`): for recorder-produced streams, re-parsing
+  the transcript gives `persisted(events)`. Swapping two distinct events, or
+  editing one payload, yields exactly one `stream_transcript_mismatch`, at the
+  first differing index.
+- `INV-redaction` (`REQ-redaction`):
+  - Exactness: the reported pointers are exactly the persisted header-name
+    pointers whose name equals a member of `R` under ASCII case folding.
+  - Uniqueness: each such header is reported once, even when the policy lists
+    duplicate or differently cased entries.
+  - Agreement: verifying `redact_headers(H, P)` against `P` reports nothing.
+- `INV-locality` (stage 3 independence): appending a clean interaction never
+  changes the findings for earlier interactions.
+- `INV-sorted` (`D10`): findings are always sorted by the `D10` key, and
+  rendering is byte-identical across runs.
+- `INV-no-secret-echo`: no output, in any format, contains a header value,
+  body byte, stream payload, or document substring quoted by `serde_json`.
+- `INV-annotation-safe`:
+  - Every line of every format begins with a prefix the renderer owns.
+  - No interpolated value introduces CR or LF.
+  - GitHub data escapes `%`, CR, and LF; GitHub properties also escape `:`
+    and `,`.
+  - `%` is escaped first, and decoding inverts encoding.
+- `INV-cap`: GitHub output has `min(n, 9)` finding annotations, plus one
+  summary annotation when `n > 9`. Shown plus omitted equals `n`.
 
 ### Axioms (trusted, not verified here)
 
-- `AXIOM-serde`: `serde_json` parsing, `Value` equality (order-insensitive for
-  objects under `preserve_order`), and error line and column reporting behave
-  as documented. Relied on by the schema and hash rules.
-- `AXIOM-sha2`: `sha2::Sha256` is a deterministic function of its input.
-  Relied on by `INV-hash-sound`.
-- `AXIOM-canonical`: `canonicalize` and `stable_hash` are deterministic. This
-  is established by task 1.2.2 tests and is not re-proved here.
-- `AXIOM-sse-chunking`: `SseParser` output is independent of chunk boundaries.
-  This is established by `src/sse.rs` tests and exercised again by the
-  `INV-transcript` property.
-- `AXIOM-gha`: GitHub Actions parses `::error <props>::<data>` workflow
-  commands as documented. Data escapes `%` as `%25`, CR as `%0D`, and LF as
-  `%0A`. Properties additionally escape `:` as `%3A` and `,` as `%2C`. The UI
-  shows at most 10 error annotations per step. Source: GitHub Docs, "Workflow
-  commands for GitHub Actions"; `@actions/core` `command.ts`; community
-  discussion 68471.
-- `AXIOM-verus`: the pinned Verus release and Z3 are sound for the fragment
-  used. Only linear arithmetic over `int` and `Seq` is needed.
+- `AXIOM-serde`: `serde_json` parsing and serialization are deterministic.
+  `Value` object equality ignores key order. `Error::classify`, `line`, and
+  `column` behave as documented.
+- `AXIOM-sha2`: SHA-256 is deterministic.
+- `AXIOM-canonical`: `canonicalize` and `stable_hash` are deterministic, as
+  task 1.2.2 established.
+- `AXIOM-sse`: `SseParser` output is independent of chunk boundaries, as the
+  tests in `src/sse.rs` show.
+- `AXIOM-time`: `time`'s RFC 3339 parser accepts every string that `record`
+  formats with `Rfc3339`.
+- `AXIOM-gha`: GitHub Actions parses `::error <props>::<data>` as follows:
+  - data escapes `%` as `%25`, CR as `%0D`, and LF as `%0A`;
+  - properties additionally escape `:` as `%3A` and `,` as `%2C`;
+  - at most 10 error annotations display per step, and 50 per job;
+  - lines split on LF and bare CR, but not on U+2028 or U+0085.
+
+  Sources: GitHub Docs, "Workflow commands for GitHub Actions"; `@actions/core`
+  `command.ts`; community discussion 68471.
+- `AXIOM-ortho`: OrthoConfig merges the `cmds.verify` file, environment, and
+  CLI layers as documented. `EP-M0` confirms the behaviour for list fields.
 
 ### Methods per obligation
 
-- Obligation `INV-exit`.
-  - Method: an exhaustive `rstest` table over every `FindingClass` variant
-    (finite). A `proptest` property maps any non-empty generated finding
-    multiset to `Failed` and exit `1`. End-to-end, an `rstest` table drives
-    the real binary with one fixture cassette per class.
-  - Rationale: the class set is finite and small. The externally owned promise
-    is the process exit status, so it must be tested through the binary.
-  - Artefacts: `src/cassette/verify/report_tests.rs` and
-    `tests/verify_cli_e2e.rs`.
-  - Evidence: Red is the e2e table failing first, because verify exits `1`
-    with `mode not yet implemented` for the pass case and the stderr text is
-    wrong for the failing cases. Green is all rows passing.
-  - Non-vacuity: each fixture is first checked to produce exactly its intended
-    class through `verify_document`. A seeded fault, mapping `Failed` to `0`,
-    must turn the e2e rows red; revert it and record the result.
-- Obligation `INV-order-complete` and `L-adjacent-global`.
-  - Method: a Verus proof (unbounded), plus a `proptest` differential check of
-    the production kernel against an independent quadratic oracle, plus named
-    `rstest` cases (empty, single, equal run, descent at start, middle, and
-    end).
-  - Rationale: the lemma quantifies over sequences of every length. This is
-    the one place the `verus` skill's "unbounded, small, pure kernel" test is
-    met.
-  - Artefacts: `verus/cassette_verify_ordering.rs`,
-    `src/cassette/verify/ordering.rs`, and
-    `src/cassette/verify/ordering_tests.rs`.
-  - Evidence: `make verus` reports `verification results:: N verified,
-    0 errors`. The proptest passes with 1,024 cases.
-  - Non-vacuity: the proof file includes `proof fn` witnesses that build a
-    sorted 3-element `Seq` and an unsorted one, and asserts the contract's
-    antecedents for both. A seeded fault, changing the exec comparison from
-    `>` to `>=`, must make Verus fail. Record the failing output, then revert.
-    The proptest generator classifies cases as sorted or unsorted and as
-    descent-at-0, interior, or last. Each class must reach at least 5% of
-    cases, asserted with `prop_assume`-free classification counters.
-- Obligation `INV-order-scope`, plus the stream timing rules.
-  - Method: an `rstest` table over `MatchMode` crossed with ordered and
-    reordered offsets. Named cases cover length mismatch, `ttft_ms` above the
-    first offset, `timing: None`, and empty streams.
-  - Artefact: `src/cassette/verify/stream_tests.rs`.
-  - Non-vacuity: the reordered fixture must produce a finding under
-    `SequentialStrict`, which proves the precondition is reachable, and none
-    under `Keyed`.
-- Obligation `INV-transcript`.
-  - Method: `proptest`. Generate event sequences (comments and multi-line
-    data) and serialize them into a transcript using an independent test-side
-    SSE writer. Split the transcript at random chunk boundaries, feed the
-    chunks through `SseParser` as the recorder does, and assert that the
-    verify rule reports nothing. Then mutate one event by swapping two
-    adjacent distinct events or editing one payload, and assert that the rule
-    reports `ordering.stream_transcript_mismatch` with the first differing
-    index.
-  - Artefact: `src/cassette/verify/stream_tests.rs`.
-  - Non-vacuity: the mutation branch filters out swaps of equal events,
-    because those leave the sequence unchanged, and records the rejection
-    rate. Fewer than 10% of cases may be rejected.
-- Obligations `INV-hash-sound` and `INV-hash-complete`.
-  - Method: `proptest` over generated requests (method case, query order,
-    nested JSON bodies), run through `populate_canonical_fields`, asserting no
-    findings. Mutation strategies (method, path, query pair, JSON leaf, body
-    only) assert the specific finding code. Known-answer `rstest` vectors
-    reuse the hash fixtures from `tests/features/canonical_request_hashing.feature`
-    as an independent oracle.
-  - Artefact: `src/cassette/verify/hash_tests.rs`.
-  - Non-vacuity: the mutation strategy discards mutations that leave the
-    canonical form unchanged, for example reordering JSON keys. Assert the
-    discard rate is below 25% and log the class counts. Reordering keys must
-    produce no finding, a negative control for false positives.
-- Obligations `INV-redaction-agree` and `INV-redaction-complete`.
-  - Method: `proptest` that generates header lists and policies, with names
-    drawn partly from the policy in random ASCII case. One property asserts
-    that verify over `redact_headers(H, P)` finds nothing. The other uses an
-    independent oracle (`eq_ignore_ascii_case` over every pair) to compute the
-    expected pointer set and asserts equality with the reported pointers.
-  - Artefact: `src/cassette/verify/redaction_tests.rs`.
-  - Non-vacuity: at least 30% of generated lists contain a policy header;
-    classify and assert this. A seeded fault, making the comparison
-    case-sensitive, must fail the completeness property.
-- Obligation `INV-no-secret-echo`.
-  - Method: `proptest` that plants random sentinel values (high-entropy
-    strings) in header values, bodies, and stream payloads of a cassette that
-    has findings of every class. Render all three formats and assert that no
-    sentinel occurs.
-  - Artefact: `src/cli/verify_output_tests.rs`.
-  - Non-vacuity: the cassette must yield at least one redaction finding whose
-    header carries a sentinel value, so a renderer that echoed values would
-    fail.
-- Obligation `INV-annotation-safe`.
-  - Method: `proptest` over arbitrary Unicode strings, including CR, LF, `%`,
-    `:`, and `,`. Assert that the escaped data and properties contain no
-    forbidden characters and that a test-side decoder round-trips them. Named
-    `rstest` injection cases cover header names such as
-    `"x\n::add-mask::secret"`, `"a,b:c"`, and `"%0A"`.
-  - Artefacts: `src/cli/verify_output_tests.rs`, plus `insta` snapshots of the
-    GitHub rendering.
-  - Non-vacuity: the generator includes forbidden characters in at least 50%
-    of cases (classified). A seeded fault, dropping the `,` escape for
-    properties, must fail.
-- Obligation `INV-deterministic` and the output contract.
-  - Method: `insta` snapshots of the text, JSON, and GitHub renderings of one
-    multi-finding cassette that covers all five classes, plus the passing
-    summary. Paths are normalized by running in a temporary directory with a
-    relative `--cassette-dir`. Semantic `googletest` assertions on the parsed
-    JSON report check `report_version`, outcome, and the class set. The JSON
-    schema contract is tested by deserializing into a test-side mirror struct
-    with `deny_unknown_fields`.
-  - Artefacts: `tests/verify_cli_e2e.rs` and `tests/snapshots/verify_cli_e2e__*.snap`.
+Property tests use an explicit budget of
+`ProptestConfig { cases: 256, max_global_rejects: 25, .. }` unless stated
+otherwise. Generators reach the material classes by construction, using
+`prop_oneof!` over named sub-strategies rather than filtering.
+
+Proptest cannot classify cases, so each property has a companion deterministic
+test of its class mix. The test draws 512 values from the strategy with
+`TestRunner::deterministic()`, counts them per class, and asserts that every
+class appears in at least 10% of draws. Proptest regression files are committed
+only for real failures.
+
+- `INV-exit`:
+  - Method: an `rstest` table over every class, mapping report to outcome to
+    exit code. An end-to-end `rstest` table then drives the real binary with
+    one in-test fixture per class and asserts exit `1`.
+  - Exit `2` rows: an invalid redaction token in the config, an empty
+    cassette name, and an unreadable config file.
+  - Red: the pass row fails with today's `mode not yet implemented`.
+  - Non-vacuity: before asserting the exit code, each fixture is confirmed
+    in-process to produce exactly its intended class. A seeded fault that
+    maps `Failed` to `0` must turn the rows red, and is then reverted.
+- `INV-adjacent-complete` and `L-adjacent-global`:
+  - Exhaustive enumeration: every sequence over `{0..5}` of length 0 to 6
+    (55,987 cases), compared against an independent quadratic oracle. The
+    oracle checks every pair `i < j` for global order and lists every adjacent
+    descent.
+  - Longer sequences: a property over lengths 7 to 64, with the strategies
+    `sorted` (prefix sums of non-negative deltas), `descent_at_1`,
+    `descent_interior`, `descent_last`, and `many_descents`.
+  - Named cases: empty, single, an equal run, and `[5,1,6,2]`, which must
+    report `[1,3]`.
+  - Rationale: the order-isomorphism argument in `D7` makes the enumeration
+    exhaustive up to length 6.
+  - Non-vacuity: the enumeration asserts that it visits both sorted and
+    unsorted sequences and every descent position. Two seeded faults must
+    each fail the enumeration: `>` changed to `>=`, and reporting `k-1`.
+- `INV-order-pair`:
+  - Method: an `rstest` table crossing the offset direction (up or down), the
+    `recorded_at` direction (up or down), the mode (`SequentialStrict` or
+    `Keyed`), and an unparsable timestamp.
+  - BDD: "a cassette recorded in two sessions verifies cleanly". It uses the
+    real record service with an injected clock and session start from
+    `record_tests_helpers`.
+  - Non-vacuity: the down-and-down row must produce a finding under
+    `SequentialStrict`, which proves the precondition is reachable.
+- `INV-record-clean`:
+  - Method: a property that builds interactions with the record path's own
+    builders, `build_interaction` and `build_stream_interaction`, via the
+    `record_tests_helpers` fake upstream. It persists them with `write_to`,
+    reloads, verifies, and asserts zero findings.
+  - Generated classes: JSON bodies including `null`, arbitrary `f64`, and
+    nested objects; non-JSON and empty bodies; streams with comments and
+    `data: null`.
+  - Budget: 128 cases, because record-path setup is expensive.
+  - Ordering: `EP-M0` runs the `null` and `f64` round-trip probe first, so any
+    persistence asymmetry is found before the rules exist.
+  - Non-vacuity: the class-mix test asserts that the `null`, float, stream,
+    and comment classes all appear.
+- `INV-hash-exact`:
+  - Method: one property that, per case, generates a request, populates it,
+    and asserts no findings. It then applies one mutation from a `prop_oneof!`
+    over the mutation classes and asserts the exact finding set from the
+    table.
+  - Each mutation changes the canonical form by construction:
+    - a verb drawn from a set that excludes the current one;
+    - a numeric leaf incremented by one;
+    - an appended query pair.
+  - Key reordering is a separate negative-control row.
+  - Known-answer cases reuse the hash vectors from
+    `tests/features/canonical_request_hashing.feature` as an independent
+    oracle.
+- `INV-transcript`:
+  - Method: a property in which a test-side SSE writer serializes generated
+    events, the transcript is split at random boundaries, and `SseParser`
+    builds `events`. Verify must report nothing.
+  - Mutation branch: either swap two events that differ by construction (a
+    comment with a data event), or edit one payload. Assert exactly one
+    finding at the expected index.
+- `INV-redaction`:
+  - Method: one property over generated header lists and policies.
+    - Names are drawn partly from the policy, in random ASCII case.
+    - Policies include duplicate entries in different case, such as
+      `["Authorization", "authorization"]`.
+    - An independent oracle, `eq_ignore_ascii_case` over every pair, gives the
+      exact expected pointer set.
+  - A second property asserts that verifying `redact_headers(H, P)` finds
+    nothing.
+  - Non-vacuity: the class-mix test asserts that at least 30% of lists contain
+    a policy header. A seeded case-sensitive fault must fail.
+- `INV-locality`:
+  - Method: a metamorphic property. Take any generated cassette with
+    findings, append one clean recorded interaction, and assert that the
+    findings for earlier indices are unchanged.
+- `INV-sorted`:
+  - Method: a property over generated multi-finding cassettes, asserting that
+    the findings are sorted by the `D10` key.
+  - Named case: `/headers/2` sorts before `/headers/10`.
+- `INV-no-secret-echo`:
+  - Method: two properties that render all three formats and assert that no
+    sentinel appears in any output.
+    1. Planted sentinels: high-entropy values in header values (including one
+       on a header whose name the policy requires), bodies, and stream
+       payloads, in a cassette with hash, ordering, and redaction findings.
+    2. Malformed documents: one cassette whose `body` is a JSON string
+       containing a sentinel, and one whose `kind` tag is an unknown sentinel
+       value. Both are schema failures where `serde_json` would quote the
+       sentinel.
+  - Non-vacuity: a seeded fault that renders `serde_json`'s `to_string()`
+    must fail the malformed-document property.
+- `INV-annotation-safe`:
+  - Method: a property over arbitrary Unicode strings, including CR, LF, `%`,
+    `:`, `,`, U+2028, and U+0085. It asserts that escaped output contains no
+    forbidden characters and that a test-side decoder round-trips every value.
+  - Prefix check: every line of every rendered format starts with a known
+    prefix: the word `verified`, `error[`, `::error`, a cassette-path
+    summary, or `{` for JSON.
+  - Named injection cases:
+    - cassette names containing `,`, `:`, and `\n::add-mask::x`;
+    - already-escaped `%0A` sequences;
+    - a cassette path containing `::stop-commands::`.
+  - Non-vacuity: two seeded faults must fail: dropping the `,` escape, and
+    escaping `%` last.
+- `INV-cap`:
+  - Method: an `rstest` table over 0, 1, 9, 10, and 25 findings, asserting
+    the annotation counts and the summary arithmetic.
+- Output contract:
+  - Snapshots: `insta` snapshots cover the text pass and fail cases, the
+    JSON, and the GitHub output for a cassette with hash, ordering, and
+    redaction findings.
+  - `io` and `schema` failures get separate snapshots, because `D1` stops the
+    run early for them.
+  - Paths are made deterministic by running in a temporary directory with a
+    relative `--cassette-dir`.
+  - JSON: `googletest` `assert_that!` matchers check the parsed report's
+    `report_version`, `kind`, `outcome`, and code set.
+  - A test-side mirror struct with `deny_unknown_fields` acts as an
+    in-repository change detector. Consumer tolerance of unknown fields is
+    stated separately, in ADR 0003.
+  - Size boundary: a file of exactly `MAX` bytes passes the size check, and
+    `MAX + 1` gives `io.cassette_too_large`. A lower test-only ceiling is
+    injected through `pub(crate)` service options.
+  - FIFO and directory: end-to-end rows each yield `io.not_a_regular_file`
+    without hanging. The FIFO row is Unix-only and creates the FIFO with
+    `mkfifo` through `std::process::Command`. A 10-second test timeout guards
+    against a hang.
+
+Assertion style:
+
+- `pretty_assertions::assert_eq!` is for whole-struct comparisons in unit
+  tests. It always carries a message, because clippy's `missing_assert_message`
+  lint does not see third-party macros.
+- `googletest::assert_that!` is for JSON report matching. `expect_that!` is
+  used only inside `#[gtest]` tests.
+- Neither crate is used inside proptest bodies, which use `prop_assert*`, or
+  rstest-bdd steps, which use `eyre::ensure!`. Shrinking and step errors must
+  keep working there.
 
 ### Formal verification decision
 
-Verus is used for `INV-order-complete` and `L-adjacent-global` only (`D7`).
-The kernel is pure, total, and small. The property quantifies over every
-sequence length, and the result is reused by both interaction and stream
-checks. Kani would explore only bounded lengths. A property test samples,
-which is why it accompanies the proof as the bridge to production rather than
-replacing it.
+No formal prover is used (`D7`).
 
-Everything else stays with tests:
+The one unbounded obligation, `L-adjacent-global`, is a single transitivity
+induction. The design document states and argues it. Exhaustive enumeration by
+order-isomorphism checks it for every `u64` sequence up to length 6, and
+property tests cover longer inputs.
 
-- Hash recomputation depends on SHA-256 and `serde_json`, which are axioms
-  here.
-- Escaping is a character map, and property tests with seeded faults give
-  proportionate assurance.
-- Exit mapping is a finite two-way match.
+A Verus proof would add unbounded certainty over a mirror of a six-line
+function. It would cost the repository's first prover wiring, and its bridge to
+the shipped code would be weaker than the exhaustive check of the shipped code
+itself.
 
-Stronger methods would add little. A Verus proof of escaping would cover a
-`Seq<char>` mirror, not the shipped `String` code, and would leave the
-GitHub parser unverified anyway. The proof leaves the production iterator or
-loop form unverified unless the `EP-M0` textual-identity bridge succeeds;
-that residual gap is stated in `D7`.
+All other obligations either depend on external behaviour treated as axioms
+(SHA-256, `serde_json`, the GitHub runner) or are finite maps and tables that
+the tests cover exhaustively.
+
+Residual gaps:
+
+- the kernel above length 6 is covered by the transitivity argument and
+  sampling, not by proof;
+- the time-of-check-to-time-of-use (TOCTOU) race in `D8`;
+- the concurrent-completion race in `D3`.
+
+A follow-up Verus adoption task is recommended for the replay cursor
+invariants, where the content is unbounded and non-trivial.
 
 ### Suggested BDD features
 
-Proposed path: `tests/features/cassette_verify.feature`, bound by
-`tests/cassette_verify_bdd.rs`, with steps in `tests/cassette_verify/`. The
-steps drive `verify_cassette` and the renderers in-process. The binary is
-covered by `tests/verify_cli_e2e.rs`.
+Path: `tests/features/cassette_verify.feature`.
+
+- Bound by: `tests/cassette_verify_bdd.rs`, with world and steps in
+  `tests/cassette_verify/`.
+- Scope: steps drive `verify_cassette` and the renderers in-process. The
+  binary is covered by `tests/verify_cli_e2e.rs`.
+- Timing: each scenario is written red in the milestone that introduces its
+  rule.
 
 ```gherkin
 Feature: Cassette verification
 
-  Scenario: A freshly recorded cassette verifies cleanly
+  Scenario: A recorded cassette verifies cleanly
     Given a cassette recorded with two non-stream and one stream interaction
     When the cassette is verified
     Then verification passes with 3 interactions checked
-    And the report has no findings
+
+  Scenario: A cassette recorded in two sessions verifies cleanly
+    Given a cassette recorded in two separate record sessions
+    When the cassette is verified
+    Then verification passes with 4 interactions checked
 
   Scenario: An unsupported format version is a schema failure
     Given a cassette with format version 9
     When the cassette is verified
-    Then verification fails with finding "schema.unsupported_format_version"
-    And no other checks are reported
+    Then verification fails with exactly the finding "schema.unsupported_format_version"
 
   Scenario: A hand-edited request body is a hash failure
     Given a recorded cassette whose second request body was edited without rehashing
     When the cassette is verified
-    Then verification fails with finding "hash.stable_hash_mismatch" for interaction 1
+    Then interaction 1 has findings "hash.stable_hash_mismatch", "hash.canonical_request_mismatch" and "hash.parsed_json_mismatch"
+
+  Scenario: Reordered interactions are an ordering failure
+    Given a recorded cassette whose first two interactions were swapped by hand
+    When the cassette is verified
+    Then verification fails with finding "ordering.interaction_start_order" for interaction 1
+
+  Scenario: Keyed replay cassettes skip interaction start order
+    Given a recorded cassette whose first two interactions were swapped by hand
+    When the cassette is verified with keyed matching
+    Then verification passes
 
   Scenario: Out-of-order stream timing is an ordering failure
     Given a recorded stream cassette whose chunk offsets decrease at event 2
     When the cassette is verified
     Then verification fails with finding "ordering.stream_offsets_not_monotonic" for interaction 0
 
-  Scenario: Interaction start order is only enforced for sequential replay
-    Given a cassette whose interaction start offsets are 10, 5
-    When the cassette is verified with keyed matching
-    Then verification passes
-
   Scenario: An unredacted authorization header is a redaction failure
-    Given a cassette whose first request carries an "Authorization" header
-    When the cassette is verified
-    Then verification fails with finding "redaction.required_header_present"
-    And no report output contains the header value
-
-  Scenario: A configured required header is enforced
-    Given a cassette whose response carries an "x-api-key" header
-    And verify requires redaction of "x-api-key"
+    Given a cassette whose first request carries an "Authorization" header with a secret value
     When the cassette is verified
     Then verification fails with finding "redaction.required_header_present" for interaction 0
+    And no rendered report contains the secret value
 
-  Scenario: A missing cassette is an io failure
-    Given no cassette file exists
+  Scenario: Configured headers extend the default policy
+    Given a cassette whose request carries "authorization" and whose response carries "x-api-key"
+    And verify also requires redaction of "x-api-key"
     When the cassette is verified
-    Then verification fails with finding "io.cassette_not_found"
-
-  Scenario: GitHub output escapes hostile header names
-    Given a cassette whose request carries a header named "x\n::add-mask::oops"
-    And verify requires redaction of that header
-    When the report is rendered for GitHub Actions
-    Then every output line starts with "::error " or is the summary line
-    And no output line starts with "::add-mask::"
+    Then interaction 0 has 2 "redaction.required_header_present" findings
 ```
-
-Each scenario maps to the requirement and milestone that its step names cite
-in `Conformance basis`. The scenarios are written red in the milestone that
-introduces their rule. Each scenario exists in the feature file from that
-milestone, failing until the rule lands.
 
 ## Plan of work
 
-Orientation for the new modules (all new unless marked):
+Module map:
 
 ```plaintext
-src/cassette/mod.rs                 (edit) declare `pub mod verify;`
-src/cassette/verify/mod.rs          domain entry `verify_document`, policy, orchestration
-src/cassette/verify/report.rs       Finding, FindingClass, FindingCode, VerificationReport, outcome
-src/cassette/verify/schema.rs       size, JSON, version peek, typed deserialization
-src/cassette/verify/ordering.rs     `first_descent` kernel + interaction start-order rule
-src/cassette/verify/stream.rs       stream timing + transcript re-parse rules
-src/cassette/verify/hash.rs         hash, canonical envelope, and parsed_json rules
-src/cassette/verify/redaction.rs    required-header rule
-src/cassette/verify/*_tests.rs      unit and property tests per rule
-src/verify.rs                       application service `verify_cassette` (bounded cap-std read)
-src/cli/verify_output.rs            text/json/github renderers + workflow-command escaping
-src/cli/verify_output_tests.rs      renderer, escaping, and secret-echo tests
-src/bin/spycatcher_harness/verify_run.rs  binary dispatch, stdout writer, ExitCode
-verus/cassette_verify_ordering.rs   Verus proof of the ordering kernel
-tools/verus/{VERSION,SHA256SUMS,README.md}, tools/rust-prover-tools/REF
+src/cassette/mod.rs                          (edit) `pub mod verify;`
+src/cassette/canonical/mod.rs                (edit) `parse_json_body` moved here; envelope accessor
+src/cassette/verify/mod.rs                   `verify_document`, `VerifyPolicy`, rule orchestration
+src/cassette/verify/finding.rs               `FindingKind`, `FindingClass`, `Finding`, `Skip`, sort key
+src/cassette/verify/report.rs                `VerificationReport`, `VerificationOutcome`
+src/cassette/verify/schema.rs                version peek and typed parse
+src/cassette/verify/ordering.rs              `adjacent_violations` kernel, interaction pair rule
+src/cassette/verify/stream.rs                stream timing and transcript rules
+src/cassette/verify/hash.rs                  hash, envelope, and parsed_json rules
+src/cassette/verify/redaction.rs             required-header rule
+src/cassette/verify/persisted.rs             `persisted()` round-trip helper
+src/cassette/verify/test_support.rs          `#[cfg(test)]` shared strategies and builders
+src/cassette/verify/*_tests.rs               unit and property tests per rule
+src/verify.rs                                `verify_cassette`, bounded read, service options
+src/config.rs                                (edit) `RedactionConfig::requires_redaction`
+src/http_exchange.rs                         (edit) delegate predicate and JSON-body parse
+src/cli/mod.rs, src/cli/source_loader.rs     (edit) `LoadedCommand` return type
+src/cli_args.rs                              (edit) `VerifyOutputFormat`, `VerifyRedactionArgs`
+src/cli/config_build.rs                      (edit) verify redaction union, validation, match_mode
+src/cli/verify_output/{mod,text,json,github,escape}.rs   renderers and escapers
+src/cli/verify_output/tests.rs               renderer, escaping, cap, secret-echo tests
+src/bin/spycatcher_harness.rs                (edit) `main -> eyre::Result<ExitCode>`, verify branch
+src/bin/spycatcher_harness/verify_run.rs     verify dispatch and stdout rendering
+src/bin/spycatcher_harness/cli_startup.rs    (edit) config errors exit 2
+src/lib.rs, src/error.rs, src/i18n.rs, src/i18n_tests.rs   (edit) start_harness, variant removal
+i18n/en-US/spycatcher-harness.ftl            (edit) `verify-*` messages
 ```
 
-### `EP-M0` feasibility probe (prototype)
+### `EP-M0` feasibility probes (prototype, no tracked changes)
 
-Questions:
+1. Persistence round trip.
+   - Probe: a scratch property test, kept as a `/tmp` copy, writes
+     `RecordedRequest` and `StreamEvent` values containing `null`, arbitrary
+     `f64`, and nested JSON through `Cassette::write_to` and `from_reader`. It
+     compares `persisted(parse_json_body(body))` with the reloaded
+     `parsed_json`.
+   - Decision: this confirms the `D4` comparison design. Any inequality means
+     stop and escalate before `EP-M2`.
+2. OrthoConfig list layering.
+   - Probe: check whether
+     `SPYCATCHER_HARNESS_CMDS_VERIFY_REDACTION__REQUIRE_HEADERS` merges into a
+     `Vec<String>`, and whether the CLI and file layers do.
+   - Decision: which layers `EP-M4` tests and documents.
+3. Test dependencies.
+   - Probe: add `googletest` and `pretty_assertions` in a scratch commit. Run
+     `make msrv-check`, and one test with `#[rstest]` and `#[gtest]` in each
+     attribute order.
+   - Decision: exact versions, and the attribute order to record in the
+     developers' guide.
+4. Timestamp parsing.
+   - Probe: confirm that `time` with the `parsing` feature parses every
+     output of `SystemClock::now_rfc3339`.
 
-1. Can `prover-tools verus install --repo-root .` install a pinned Verus
-   release on this host?
-2. Can `prover-tools verus run` verify a scratch file containing the
-   candidate kernel?
-3. Can the production kernel be written in a form that is both clippy-clean
-   under this repository's lints (`indexing_slicing` denied) and accepted by
-   Verus, so that its body can be textually identical?
-4. Do `googletest` and `pretty_assertions` build under the minimum supported
-   Rust version (MSRV) 1.89 and with `rstest` 0.28?
+Delete the scratch artefacts afterwards, and record the transcripts in
+`Artefacts and notes`.
 
-Steps:
+### `EP-M1` finding model, report, and I/O and schema checks
 
-1. Resolve the latest Verus release tag and its x86-linux archive checksum
-   with `gh release view --repo verus-lang/verus`.
-2. Resolve the `leynos/rust-prover-tools` `main` commit with
-   `git ls-remote https://github.com/leynos/rust-prover-tools.git HEAD`.
-3. Write the pins into `tools/verus/VERSION`, `tools/verus/SHA256SUMS`, and
-   `tools/rust-prover-tools/REF` (`ref: <40-hex>`).
-4. Write `/tmp/verus-probe/kernel.rs` with the two candidate kernel bodies:
-   - a `while` loop using `values.get(i)` pattern matching;
-   - a `while` loop using `values[i]` with the guard `i < values.len()`.
-5. Run `prover-tools verus run --repo-root . --proof-file
-   /tmp/verus-probe/kernel.rs`.
-6. In a scratch branch, run `cargo +1.89.0 check --tests` with the two
-   dev-dependencies added.
-
-Go/no-go:
-
-- If Verus cannot be installed or run, stop and escalate (`D7` tolerance).
-- If one candidate body passes both Verus and clippy unmodified, adopt the
-  textual-identity bridge.
-- Otherwise adopt the fallback bridge: a verified loop mirror plus the
-  `proptest` oracle. Record the residual gap in `D7`.
-
-The probe files in `/tmp` are deleted. The pins are retained and committed in
-`EP-M4`. Record the transcripts in `Artefacts and notes`.
-
-### `EP-M1` report model, schema checks, and outcome mapping
-
-Assigned: `REQ-schema`, `REQ-exit` (domain half), `D1`, `D2`, `D8`, `D10`.
+Assigned: `REQ-schema`, the domain half of `REQ-exit`, `D1`, `D2`, `D8`, `D10`,
+and `D11`.
 
 Red:
 
-1. Add the dev-dependencies `googletest` and `pretty_assertions` to
-   `Cargo.toml`.
-2. Write `src/cassette/verify/report_tests.rs` and `schema_tests.rs`
-   covering:
-   - the exhaustive class-to-outcome table;
-   - an empty document;
-   - non-JSON input;
+1. Add the dev-dependencies, at the versions chosen in `EP-M0`.
+2. Write `src/cassette/verify/schema_tests.rs`, covering:
+   - empty input;
+   - non-JSON input, whose finding carries the line and column;
+   - JSON that is not an object;
    - a missing `format_version`;
-   - a `format_version` of `-1`, `"1"`, and `4294967296`;
+   - versions `-1`, `"1"`, and `4294967296`;
    - version `9`;
-   - version `1` with an `interactions` field of the wrong type, which must
-     report `schema.malformed_document` with a line and column;
-   - a document over the size ceiling, which uses a test-only lowered ceiling
-     through a `pub(crate)` constructor parameter rather than a 256 MiB
-     fixture;
+   - version `1` with an `interactions` field of the wrong type, whose finding
+     carries the category, line, and column and no `serde_json` text;
    - a valid empty cassette.
-3. Add the BDD feature with the schema scenario.
-4. Run
-   `cargo nextest run --all-features -E 'test(verify)'`. It fails to
-   compile because the module is missing, which is the expected red.
+3. Write `report_tests.rs`, with the class-to-outcome table and the sort-key
+   cases.
+4. Add the feature file with its schema scenario, and the BDD entrypoint.
+5. Run
+   `cargo nextest run --all-features -E 'test(/verify/)' --test cassette_verify_bdd`.
+   It fails to compile because the module is missing, which is the expected
+   red.
 
-Green: implement `report.rs`, `schema.rs`, and `verify_document` with the
-schema stage only. Declare `pub mod verify` in `src/cassette/mod.rs`.
+Green: implement `finding.rs`, `report.rs`, `schema.rs`, and `verify_document`
+with the schema stage only. Declare `pub mod verify;` in `src/cassette/mod.rs`.
 
-Refactor: keep each file under 400 lines, then run `make check-fmt`,
-`make lint`, and `make test`.
+Refactor: keep files under 400 lines, then run the gates.
 
-### `EP-M2` hash recomputation and request integrity
+### `EP-M2` hash and request integrity
 
-Assigned: `REQ-hash`, `D4`, `INV-hash-sound`, `INV-hash-complete`.
+Assigned: `REQ-hash`, `D4`, `INV-hash-exact`, and the hash part of
+`INV-record-clean`.
 
-Red: write `hash_tests.rs` with the following cases and the two properties
-from the verification plan, and add the BDD hash scenario. All of them fail
-until the rule is wired in.
+Red: write `hash_tests.rs`, with these named cases:
 
-- a recorded request with no findings;
-- `stable_hash` missing;
-- `canonical_request` missing;
-- an edited `stable_hash`;
-- an edited `parsed_json` leaf;
-- a body edit with stale `parsed_json`;
-- a non-JSON body whose `parsed_json` is `Some`;
-- reordered JSON keys, which must produce no finding.
+- a clean recorded request;
+- each mutation row of the `INV-hash-exact` table;
+- an empty body;
+- a non-JSON body with `parsed_json: None`, which passes;
+- a non-JSON body with `parsed_json: Some`, which fails;
+- `null` and float bodies.
 
-Green: implement `hash.rs`. It recomputes with `canonicalize(request,
-&IgnorePathConfig::default())`, compares `stable_hash` with `stable_hash(&c)`,
-and compares the stored `canonical_request` `Value` with the recomputed
-envelope. Expose the private `canonical_request_value` as `pub(crate)` from
-`src/cassette/canonical/mod.rs` rather than duplicating it. It also compares
-`parsed_json` with `http_exchange::parse_json_bytes(&body)`. Pointers are
-`/interactions/<i>/request/stable_hash`, `.../canonical_request`, and
-`.../parsed_json`.
+Then add the mutation property and the hash BDD scenario.
 
-Gates: `make check-fmt`, `make lint`, `make test`.
+Green:
+
+1. Move `parse_json_bytes` from `src/http_exchange.rs` to `cassette::canonical`
+   as `pub(crate) fn parse_json_body`, and import it at the old call sites.
+   This is a pure relocation.
+2. Add a `pub(crate)` envelope accessor on `CanonicalRequest` that delegates to
+   `json::canonical_request_value`.
+3. Implement `persisted.rs` and `hash.rs` per `D4`. The pointers are
+   `/interactions/<i>/request/{stable_hash,canonical_request,parsed_json}`.
+
+Gates: `make check-fmt`, `make lint`, and `make test`.
 
 ### `EP-M3` ordering checks
 
-Assigned: `REQ-ordering`, `D3`, `INV-order-complete` (tests),
-`INV-order-scope`, `INV-transcript`.
-
-Red: write `ordering_tests.rs` (named kernel cases, the oracle proptest, and
-the interaction start-order table over `MatchMode`) and `stream_tests.rs`
-(length mismatch, non-monotonic offsets, `ttft_ms` above the first offset,
-`timing: None`, empty transcript skip, the transcript mismatch, and the
-`INV-transcript` property). Add the BDD ordering scenarios.
-
-Green:
-
-1. Implement `first_descent(values: &[u64]) -> Option<usize>` in the form
-   chosen by `EP-M0`.
-2. Implement the interaction rule using `relative_offset_ms`, emitting
-   `ordering.interaction_start_order` at `/interactions/<k>/metadata/relative_offset_ms`.
-3. Implement the stream rules, emitting:
-   - `ordering.stream_timing_length_mismatch`;
-   - `ordering.stream_offsets_not_monotonic` at
-     `/interactions/<i>/response/timing/chunk_offsets_ms/<k>`;
-   - `ordering.stream_ttft_after_first_event`;
-   - `ordering.stream_transcript_unparseable`;
-   - `ordering.stream_transcript_mismatch` at
-     `/interactions/<i>/response/events/<k>`.
-
-   The transcript re-parse uses `SseParser::feed` over the whole transcript,
-   then `finish`.
-4. `SseParser` is `pub(crate)` already; no visibility change is expected.
-
-Gates: as before.
-
-### `EP-M4` Verus proof of the ordering kernel
-
-Assigned: `INV-order-complete` (proof), `L-adjacent-global`, `D7`.
-
-Steps:
-
-1. Commit the pins from `EP-M0`, and add `tools/verus/README.md` stating what
-   is pinned and how to bump it.
-2. Add Makefile targets `install-verus` and `verus` that delegate through
-   `$(PROVER_TOOLS)` exactly as in the `verus` skill's on-ramp. They include
-   the `override` REF guard and the command-line-only contract-test seam, set
-   `VERUS_PROOF_FILE ?= verus/cassette_verify_ordering.rs`, and stay out of
-   `all`.
-3. Write `verus/cassette_verify_ordering.rs`. It starts with `//!` docs and
-   contains:
-   - `spec fn non_decreasing(s: Seq<int>) -> bool`, defined globally as
-     `forall i, j: 0 <= i <= j < |s| ==> s[i] <= s[j]`;
-   - `spec fn adjacent_non_decreasing(s)`;
-   - `proof fn lemma_adjacent_implies_global(s)`, by induction;
-   - `proof fn lemma_global_implies_adjacent(s)`;
-   - the exec `first_descent` with an `ensures` stating the `INV-order-complete`
-     contract and a loop invariant that `s[..i]` is adjacent non-decreasing;
-   - the non-vacuity witness lemmas.
-
-   Each `proof fn` has `///` docs.
-4. If `EP-M0` selected the textual bridge, add
-   `tests/verus_kernel_contract.rs`. It extracts the bodies between
-   `// verus-mirror:begin first_descent` and `// verus-mirror:end` markers in
-   both files, normalizes whitespace, and asserts equality with a diagnostic
-   diff.
-5. Add `tests/verus_tooling_contract.rs`, with:
-   - non-empty `VERSION` and `SHA256SUMS`;
-   - a checksum row naming the configured archive;
-   - a REF line matching `^ref: [0-9a-f]{40}$`;
-   - a `make -n verus PROVER_TOOLS_CONTRACT_TEST=1 PROVER_TOOLS=<fake>` dry
-     run asserting the exact `verus run --repo-root . --proof-file
-     verus/cassette_verify_ordering.rs` invocation;
-   - a check that the recipes contain no `curl`, `unzip`, `sha256sum`, or
-     `rustup toolchain install`.
-6. Run the seeded fault (`>` to `>=` in the exec comparison), record that
-   Verus fails, and revert.
-
-Acceptance:
-
-- `make verus` reports `0 errors`, and the seeded fault reports at least one
-  error.
-- `make check-fmt`, `make lint`, and `make test` pass.
-- `make test-make-all` still passes, which shows that `all` is unchanged.
-
-### `EP-M5` redaction checks and layered verify configuration
-
-Assigned: `REQ-redaction`, `REQ-cli` (configuration half), `D6`,
-`GAP-redaction-layering`, `INV-redaction-agree`, and `INV-redaction-complete`.
-
-Red: write `redaction_tests.rs` (named cases for request and response
-headers, mixed case, duplicates each reported, an empty policy, plus the two
-properties). Add a `tests/cli_layering/` case showing that
-`[cmds.verify.redaction] drop_headers = ["authorization", "x-api-key"]` and
-the environment variable
-`SPYCATCHER_HARNESS_CMDS_VERIFY_REDACTION__DROP_HEADERS` reach
-`HarnessConfig.redaction`. Add the BDD redaction scenarios.
-
-Green:
-
-1. Widen `should_persist_header` to `pub(crate)`. Its name stays the same, so
-   the record path is unchanged.
-2. Implement `redaction.rs`, which emits
-   `redaction.required_header_present` at
-   `/interactions/<i>/{request,response}/headers/<j>/0` with the lower-cased
-   header name as a finding parameter.
-3. Add `VerifyRedactionArgs { drop_headers: Option<Vec<String>> }` to
-   `src/cli_args.rs`, and a config-only `redaction` field on `VerifyArgs`.
-4. In `to_verify_config`, set `config.redaction` when it is supplied. An
-   explicit list replaces the default, so an empty list disables the check,
-   as documented.
-
-Gates: as before.
-
-### `EP-M6` application service, output formats, and CLI
-
-Assigned: `REQ-output`, `REQ-exit`, `REQ-cli`, `GAP-stub`, `D5`,
-`INV-exit` (e2e), `INV-no-secret-echo`, `INV-annotation-safe`, and
-`INV-deterministic`.
+Assigned: `REQ-ordering`, `D3`, `D7`, `INV-adjacent-complete`,
+`L-adjacent-global`, `INV-order-pair`, and `INV-transcript`.
 
 Red:
 
-1. Write `tests/verify_cli_e2e.rs` with:
-   - the pass case (exit `0`);
-   - an `rstest` table with one fixture per class (exit `1`, with the code
-     present in each format);
-   - `--format json` parsed and checked with `googletest` matchers;
-   - `--format github` line-shape checks;
-   - `cmds.verify.format = "json"` from a configuration file;
-   - `insta` snapshots for the three renderings of the all-classes fixture.
-2. Write `src/cli/verify_output_tests.rs` with the escaping, injection, and
-   secret-echo properties.
-3. Update `tests/lifecycle_tests.rs:171-188` to expect `InvalidConfig` from
-   `start_harness` with `Mode::Verify`.
+1. `ordering_tests.rs`: the exhaustive enumeration, the long-sequence
+   property, the named kernel cases, and the pair-rule table.
+2. `stream_tests.rs`, covering:
+   - a length mismatch;
+   - each descent being reported;
+   - `ttft_ms` greater than the first offset;
+   - `timing: None` (skip);
+   - an empty transcript (skip);
+   - an unparsable transcript;
+   - the transcript property;
+   - a `data: null` event.
+3. The ordering BDD scenarios, including "recorded in two sessions".
 
 Green:
 
-1. Add `pub fn verify_cassette(config: &HarnessConfig) ->
-   HarnessResult<VerificationReport>` in `src/verify.rs`, re-exported from
-   `src/lib.rs`. It runs `validate_config`, opens the cassette read-only
-   through `cap_std::fs_utf8`, reusing `open_rooted_parent`, and reads at
-   most `MAX_VERIFY_DOCUMENT_BYTES + 1` bytes. It maps not-found and other
-   I/O failures to `io` findings, then calls
-   `cassette::verify::verify_document(bytes, &VerifyPolicy::from(config))`.
-   It returns `Err` only for configuration errors.
-2. Add `config::VerifyFormat { Text, Json, Github }` (serde snake_case and
-   clap `ValueEnum`) and a `format` field on `VerifyArgs` (`--format`).
-   Carry it in `HarnessConfig` as `verify_format: VerifyFormat`; see
-   `Interfaces and dependencies`.
-3. Add `src/cli/verify_output.rs` with
-   `render_report(report, format, cassette_path, loader, writer: &mut impl Write)`
-   and the two escaping functions. Human messages come from new Fluent keys
-   `verify-*` in `i18n/en-US/spycatcher-harness.ftl`. JSON carries both the
-   stable `code` and the localized `message`.
-4. Add `src/bin/spycatcher_harness/verify_run.rs`. Change `main` to return
-   `eyre::Result<ExitCode>`. Branch on `Mode::Verify` before building the
-   Tokio runtime: call `verify_cassette`, render the report to a locked
-   stdout, and return `ExitCode::SUCCESS` or `ExitCode::from(1)`.
-5. Change `start_harness`'s `Mode::Verify` arm to return
-   `HarnessError::InvalidConfig` with the message
-   `verify mode does not start a server; call verify_cassette`.
-6. Remove `HarnessError::ModeNotYetImplemented`, its Fluent key, its
-   `i18n.rs` constant and arm, and its test fixtures in `src/error.rs` and
-   `src/i18n_tests.rs`.
+1. Add the `time` crate's `parsing` feature.
+2. Implement
+   `adjacent_violations<T>(items: &[T], violates: impl Fn(&T, &T) -> bool) -> Vec<usize>`
+   with iterator adapters. Clippy's `indexing_slicing` is denied, so it must
+   not index.
+3. Implement the pair rule, the stream rules, and the skip records.
 
-Refactor: confirm that `src/cli/mod.rs` stays under 400 lines, and move
-`VerifyArgs` to `src/cli/verify_args.rs` if it would not.
+The codes are `ordering.interaction_start_order`,
+`ordering.stream_timing_length_mismatch`,
+`ordering.stream_offsets_not_monotonic`,
+`ordering.stream_ttft_after_first_event`,
+`ordering.stream_transcript_unparsable`, and
+`ordering.stream_transcript_mismatch`.
 
-Gates: `make check-fmt`, `make lint`, `make test`, then `make verus`.
+Gates: as for `EP-M2`.
 
-### `EP-M7` documentation, ADRs, roadmap closure, and gates
+### `EP-M4` redaction checks and layered verify configuration
 
-Assigned: `GAP-anchor`, the documentation duties in `AGENTS.md`, and
-`REQ-output` (documented schema).
+Assigned: `REQ-redaction`, the configuration half of `REQ-cli`, `D6`,
+`GAP-redaction-layering`, and `INV-redaction`.
 
-1. `docs/users-guide.md`:
-   - Replace the "Verify is currently a CLI-only command" and
-     `ModeNotYetImplemented` text at `:9` and `:28-30`.
-   - Add a "Verifying cassettes" section after the CLI output and exit-status
-     text near `:446`, covering checks, failure classes and codes, exit
-     codes, the three formats with examples, the JSON report fields, a GitHub
-     Actions workflow snippet, `cmds.verify.redaction.drop_headers`, the
-     hand-authoring rules from `D4`, and the tampering limitation from `D9`.
+Red:
+
+1. `redaction_tests.rs`, covering:
+   - request and response headers;
+   - mixed case;
+   - duplicate headers, each reported;
+   - duplicate policy entries;
+   - an empty effective policy;
+   - the two properties.
+2. `tests/cli_layering/` cases:
+   - `[cmds.verify.redaction] require_headers = ["x-api-key"]` gives the
+     effective list `["authorization", "x-api-key"]`;
+   - `include_default_headers = false` removes `authorization`;
+   - an invalid token such as `"bad header"` is a configuration error;
+   - `[cmds.verify] match_mode = "keyed"` reaches `HarnessConfig.match_mode`.
+3. The redaction BDD scenarios.
+
+Green:
+
+1. Add `RedactionConfig::requires_redaction`, and make `should_persist_header`
+   delegate to it.
+2. Implement `redaction.rs`.
+3. Add `VerifyRedactionArgs`, with fields
+   `require_headers: Option<Vec<String>>` and
+   `include_default_headers: Option<bool>`, and a config-only `match_mode` to
+   `src/cli_args.rs` and `VerifyArgs`.
+4. In `to_verify_config`, compute the union of default and configured
+   headers. Validate each token with `axum::http::HeaderName::from_bytes`; this
+   belongs in the configuration layer, not the domain. Then set `redaction` and
+   `match_mode`.
+
+Gates: as for `EP-M2`.
+
+### `EP-M5` application service, renderers, CLI, and exit codes
+
+Assigned: `REQ-output`, `REQ-exit`, `REQ-cli`, `GAP-stub`, `D2`, `D5`,
+`INV-exit`, `INV-no-secret-echo`, `INV-annotation-safe`, `INV-cap`,
+`INV-sorted`, and `INV-locality`.
+
+Red:
+
+1. `tests/verify_cli_e2e.rs`, covering:
+   - the pass case;
+   - the per-class exit table, including the exit-`2` rows;
+   - `--format json`, checked with `googletest`;
+   - `cmds.verify.format = "json"` set in a config file;
+   - the FIFO and directory rows;
+   - the snapshots.
+2. `src/cli/verify_output/tests.rs`, covering escaping, injection, the
+   annotation cap, secret echo, and sorted output.
+3. Update `tests/lifecycle_tests.rs:171-188` to expect `InvalidConfig`
+   without creating a cassette file.
+4. Update the loader call sites to `LoadedCommand`. They fail to compile
+   until the green step lands.
+
+Green:
+
+1. In `src/verify.rs`, re-exported from `src/lib.rs`, implement
+   `verify_cassette(config: &HarnessConfig) ->
+   HarnessResult<VerificationReport>`,
+   plus a `pub(crate)` `verify_cassette_with(config, &VerifyServiceOptions)`
+   for the test-only ceiling. In order, it:
+   1. validates the cassette name with an extracted `validate_cassette_name`,
+      ignoring `mode` and `upstream`;
+   2. opens the parent `Dir` read-only;
+   3. checks the metadata;
+   4. reads with the bound;
+   5. maps I/O failures to findings;
+   6. calls `verify_document`.
+2. Make `cli::LoadedCommand`, with fields `config: HarnessConfig` and
+   `verify_output: Option<VerifyOutputFormat>`, the return type of every
+   `load_subcommand_config*` function. Update every caller in the same commit.
+3. Add the renderers in `src/cli/verify_output/`.
+   - Entry point: `render_report(report, &RenderContext { format,
+     cassette_path, loader }, writer)`.
+   - `escape.rs` holds `escape_workflow_data`, `escape_workflow_property`,
+     and `escape_control`.
+   - Add the `verify-*` Fluent keys to the catalogue.
+4. Update the binary.
+   - `main` returns `eyre::Result<ExitCode>`.
+   - `cli_startup` exits `2` for every configuration error other than a
+     display request.
+   - `verify_run.rs` branches on `Mode::Verify` before the runtime is built
+     and calls `verify_cassette`.
+   - On `Err`, it writes the localized error to stderr and exits `2`.
+   - Otherwise it renders to locked stdout. A write failure exits `2`;
+     success exits `0` or `1` according to the outcome.
+5. Make `start_harness` reject `Mode::Verify` with `InvalidConfig` before
+   `prepare_cassette` runs.
+   - Remove `Verify` from `prepare_cassette`.
+   - Update the rustdoc at `src/lib.rs:90-95`.
+   - Remove `ModeNotYetImplemented` and every reference to it.
+
+Refactor: if `src/cli/mod.rs` would exceed 400 lines, move `VerifyArgs` to
+`src/cli/verify_args.rs`.
+
+Gates: as for `EP-M2`.
+
+### `EP-M6` documentation, ADR, roadmap closure, and gates
+
+Assigned: `GAP-anchor`, the documentation duties in `AGENTS.md`, and the
+documented-schema half of `REQ-output`.
+
+1. Update `docs/users-guide.md`:
+   - Replace the text at `:9`, `:28-30`, and `:334`.
+   - Add a "Verifying cassettes" section after the CLI exit-status text near
+     `:446`. Cover:
+     - the classes and codes;
+     - the exit codes `0`, `1`, and `2`, including the configuration-error
+       change;
+     - the three formats, with examples;
+     - the JSON envelope and its evolution rule;
+     - a GitHub Actions workflow snippet that runs from the repository root;
+     - `cmds.verify.redaction.*` and `cmds.verify.match_mode`;
+     - the skip rules and the concurrent-recording residual;
+     - the non-goals: header values, query parameters, bodies, and
+       tampering.
    - Reconcile the example at `:497-503`.
-2. `docs/developers-guide.md`:
-   - Update the module tables at `:281-293`, `:309-318`, and `:371-379` with
-     `cassette::verify`, `verify`, and `cli::verify_output`.
-   - Add a "Cassette verification" subsection describing the domain, service,
-     and adapter split, how to add a rule, and the reuse policy for
-     `first_descent`, workflow-command escaping, and `should_persist_header`.
-   - Add a "Formal verification" subsection describing `make install-verus`,
-     `make verus`, the pins, the proof inventory, and what the proof does not
-     cover.
-3. `docs/spycatcher-harness-design.md`:
-   - Turn the "Recommended additions for regression suite integration"
-     paragraph into a `###` heading, so the roadmap anchor resolves, and
-     point it at the implementation.
-   - Update "CLI shape" with `--format`.
-   - Add an "Implementation decisions" entry
-     `### Cassette verification (task 2.2.1)` that summarizes `D1` to `D10`
-     and links the ADRs.
-   - Update the `start_harness` and `HarnessError` example to drop
-     `ModeNotYetImplemented`.
-4. Add `docs/adrs/adr-0003-define-the-cassette-verification-report-and-exit-contract.md`
-   (the `D2`, `D5`, and `D10` contract) and
-   `docs/adrs/adr-0004-adopt-verus-for-selected-unbounded-invariants.md`
-   (`D7` and the tooling route). Follow the documentation style guide
-   (`:521-588`).
-5. `docs/contents.md`: list both ADRs and this ExecPlan.
-6. `docs/roadmap.md`: tick 2.2.1 and its three success criteria only after
-   `EP-M6` acceptance passes.
-7. Run `make fmt` and keep only hunks in files this plan touched. Then run
-   `make check-fmt`, `make lint`, `make test`, `make markdownlint`,
-   `make nixie`, `make spelling`, and `make verus`.
+2. Update `docs/developers-guide.md`:
+   - Add the new modules to the module tables at `:281-293`, `:309-318`, and
+     `:371-379`.
+   - Add a "Cassette verification" subsection covering:
+     - the domain, service, and adapter split;
+     - how to add a rule and its code;
+     - the `sse` module-cycle note;
+     - the assertion-style rules.
+   - State the reuse policy:
+     - `adjacent_violations` is the only adjacent-order scan;
+     - `escape_workflow_*` are the only workflow-command escapers, and task
+       2.2.2 reuses them;
+     - `RedactionConfig::requires_redaction` is the only redaction predicate;
+     - `parse_json_body` is the only body parser.
+3. Update `docs/spycatcher-harness-design.md`:
+   - Turn the regression-suite paragraph into the heading
+     `### Recommended additions for regression suite integration`, so the
+     roadmap anchor resolves, and link it to the implementation.
+   - Update "CLI shape" and the `HarnessError` example.
+   - Add `### Cassette verification (task 2.2.1)` under "Implementation
+     decisions". Summarize `D1` to `D11`, include the `L-adjacent-global`
+     argument and the order-isomorphism justification from `D7`, and link ADR
+     0003.
+4. Add
+   `docs/adrs/adr-0003-define-the-cassette-verification-report-and-exit-contract.md`.
+   It records the JSON envelope, the `kind` discriminator shared with task
+   2.2.2, the evolution rule, the qualified codes, the exit codes, and the
+   GitHub annotation format and cap.
+5. List ADR 0003 and this ExecPlan in `docs/contents.md`.
+6. Tick task 2.2.1 and its three success criteria in `docs/roadmap.md` once
+   `EP-M5` acceptance passes.
+7. Run `make fmt`, keeping only the hunks in files this plan touched. Then
+   run `make check-fmt`, `make lint`, `make test`, `make markdownlint`,
+   `make nixie`, and `make spelling`.
 
 ## Milestones and plateaus
 
-- `EP-M0`: probe only, with no tracked changes except pins held for `EP-M4`.
-  Recovery: delete `/tmp/verus-probe`. Compatibility: none.
+No milestone needs a compatibility layer: the library is pre-release, and
+callers update in the same commit.
+
+- `EP-M0`:
+  - End state: probe results recorded; no tracked changes.
+  - Recovery: delete the scratch artefacts.
 - `EP-M1`:
-  - Outcome: `cassette::verify::verify_document` reports schema findings and
-    computes the outcome. The CLI is still the stub.
-  - Acceptance: the schema unit tests and BDD schema scenario pass.
-  - Conformance: `REQ-schema` is satisfied in the domain; no persisted-format
-    change; no new runtime dependency.
+  - End state: `verify_document` reports schema findings and outcomes. The CLI
+    is still a stub.
+  - Acceptance: the schema and report tests, and the BDD schema scenario.
+  - Conformance: `REQ-schema` is met in the domain; there is no
+    persisted-format change and no new runtime dependency.
   - Recovery: revert the milestone commit.
-  - Remaining: other classes and the CLI. Compatibility: none.
+  - Remaining gaps: the other rules and the CLI.
 - `EP-M2`:
-  - Outcome: hash findings.
-  - Acceptance: hash tests, properties, and the BDD scenario pass.
-  - Conformance: canonical hashing is reused, not altered (verify with
-    `git diff origin/main -- src/cassette/canonical`, which may show only the
-    `pub(crate)` visibility change).
-  - Recovery: revert. Compatibility: none.
-- `EP-M3`:
-  - Outcome: ordering findings.
-  - Acceptance: ordering and stream tests, properties, and BDD scenarios
-    pass.
-  - Conformance: `D3` is honoured, and `SseParser` is unchanged.
-  - Recovery: revert. Compatibility: none.
-- `EP-M4`:
-  - Outcome: proved kernel and `make verus`.
-  - Acceptance: `make verus` reports 0 errors, the seeded fault is rejected,
-    and the contract tests pass.
-  - Conformance: Verus is outside `all`, and the trusted assumptions are
-    inspected.
-  - Recovery: revert. The kernel tests from `EP-M3` still stand.
-    Compatibility: none.
-- `EP-M5`:
-  - Outcome: redaction findings and `cmds.verify.redaction` layering.
-  - Acceptance: redaction tests, properties, layering tests, and BDD pass.
-  - Conformance: the record path's predicate is reused and record behaviour
-    is unchanged.
-  - Recovery: revert. Compatibility: none.
-- `EP-M6`:
-  - Outcome: `spycatcher-harness verify` works end to end in three formats
-    with the specified exit codes. `start_harness(Verify)` returns
-    `InvalidConfig`.
-  - Acceptance: e2e tests, snapshots, renderer properties, and the lifecycle
-    test pass.
-  - Conformance: `REQ-output`, `REQ-exit`, and `REQ-cli` are satisfied. The
-    public API changes are exactly those listed in `Tolerances`.
+  - End state: hash findings.
+  - Acceptance: the hash tests, properties, and BDD scenario.
+  - Conformance: `git diff origin/main -- src/cassette/canonical
+    src/http_exchange.rs` shows only the relocation and the accessor.
   - Recovery: revert.
-  - Compatibility: none, because the library is pre-release.
-- `EP-M7`:
-  - Outcome: the documentation is accurate, the ADRs are accepted, and the
-    roadmap is ticked.
+- `EP-M3`:
+  - End state: ordering findings.
+  - Acceptance: the enumeration, the properties, and the BDD scenarios,
+    including the two-session case.
+  - Conformance: `SseParser` is unchanged.
+  - Recovery: revert.
+- `EP-M4`:
+  - End state: redaction findings and `cmds.verify` layering.
+  - Acceptance: the redaction, layering, and BDD tests.
+  - Conformance: record behaviour is unchanged, and the existing record tests
+    pass.
+  - Recovery: revert.
+- `EP-M5`:
+  - End state: `spycatcher-harness verify` works end to end.
+  - Acceptance: the e2e tests, snapshots, renderer properties, and lifecycle
+    test.
+  - Conformance: public API changes match `Tolerances` exactly, and exit codes
+    match `D2`.
+  - Recovery: revert.
+- `EP-M6`:
+  - End state: documentation accurate, ADR accepted, roadmap ticked.
   - Acceptance: all gates pass, and the anchor resolves.
-  - Conformance: discoveries are reconciled with the design and roadmap.
+  - Conformance: discoveries are reconciled with the design and the roadmap.
   - Recovery: revert the documentation commit.
 
 ## Concrete steps
 
-The working directory is the repository root. Gates run sequentially, and
-each is piped through `tee` with `set -o pipefail`:
+Run everything from the repository root. Run the gates sequentially, each
+through `tee` with `pipefail`:
 
 ```bash
 set -o pipefail
@@ -1294,195 +1503,282 @@ BRANCH=$(git branch --show-current)
 make check-fmt 2>&1 | tee /tmp/check-fmt-spycatcher-harness-$BRANCH.out
 make lint      2>&1 | tee /tmp/lint-spycatcher-harness-$BRANCH.out
 make test      2>&1 | tee /tmp/test-spycatcher-harness-$BRANCH.out
-make verus     2>&1 | tee /tmp/verus-spycatcher-harness-$BRANCH.out   # from EP-M4 onwards
 ```
 
-Focused red and green loops per milestone:
+Focused loops:
 
 ```plaintext
-Red:   cargo nextest run --all-features -E 'test(/verify/)'  -> failing or not compiling for the named missing rule
-Green: same command -> all selected tests pass
+Red:   cargo nextest run --all-features -E 'test(/verify/)'   -> fails for the named missing rule
+Green: same command                                            -> selected tests pass
 BDD:   cargo nextest run --all-features --test cassette_verify_bdd
 E2E:   cargo nextest run --all-features --test verify_cli_e2e
-Snap:  cargo insta review (accept only after confirming the rendering is the intended contract)
-Proof: make verus -> "verification results:: N verified, 0 errors"
+Snap:  cargo insta review   (accept only renderings confirmed as the intended contract)
 ```
 
-Commit after each milestone's gates pass, using an imperative subject, for
-example `Add hash recomputation checks to cassette verify`.
+Commit after each milestone's gates pass, using an imperative subject such as
+`Add hash recomputation checks to cassette verify`.
 
 ## Validation and acceptance
 
-Behavioural acceptance, run from a temporary directory holding a fresh
-recording:
+Make a fresh recording against a stub upstream, as the record e2e tests do, and
+run these checks from a temporary directory holding it:
 
-- `spycatcher-harness verify --cassette-dir fixtures/llm --cassette-name ok.json`
-  prints `verified fixtures/llm/ok.json: N interactions, 0 findings` and
-  exits `0`.
-- After replacing one request's `stable_hash` with 64 zeros, the same command
-  prints a `hash.stable_hash_mismatch` line and exits `1`. With
-  `--format json`, `jq '.outcome, .findings[0].code'` yields `"failed"` and
-  `"stable_hash_mismatch"`. With `--format github`, the first line starts with
-  `::error file=fixtures/llm/ok.json,title=spycatcher-harness verify%3A hash.stable_hash_mismatch::`.
+1. Run
+   `spycatcher-harness verify --cassette-dir fixtures/llm --cassette-name ok.json`.
+   Expect
+   `verified fixtures/llm/ok.json: N interactions, 0 findings, 0 checks skipped`
+   and exit `0`.
+2. Replace one `stable_hash` with 64 zeros and run the same command:
+   - Text output prints a `hash.stable_hash_mismatch` line and exits `1`.
+   - With `--format json`, `jq -r '.outcome, .findings[0].code'` prints
+     `failed` and `hash.stable_hash_mismatch`.
+   - With `--format github`, the first line starts with
+     `::error file=fixtures/llm/ok.json,title=spycatcher-harness verify%3A
+     hash.stable_hash_mismatch::`.
+3. Run `spycatcher-harness verify --cassette-name ''`. Expect exit `2`, an
+   error on stderr, and nothing on stdout.
 
 Quality criteria:
 
-- Tests: `make test` passes, including the new unit, property, BDD,
-  end-to-end, and snapshot tests. Each new test is shown red before its rule
-  lands.
-- Verification: `make verus` passes. `INV-order-complete` and
-  `L-adjacent-global` are discharged by Verus. Every other invariant is
-  discharged by the tests named in `Methods per obligation`, with the
-  non-vacuity evidence recorded.
-- Lint and typecheck: `make check-fmt`, `make lint`, `make markdownlint`,
-  `make nixie`, and `make spelling` pass.
-- Security: `INV-no-secret-echo` and `INV-annotation-safe` properties pass,
-  and their seeded faults are rejected.
+- Tests: `make test` passes, and each new test was red before its rule
+  landed.
+- Verification: every invariant in `Methods per obligation` is discharged,
+  with its non-vacuity evidence and seeded-fault results recorded in
+  `Artefacts and notes`.
+- Lint: `make check-fmt`, `make lint`, `make markdownlint`, `make nixie`, and
+  `make spelling` pass.
+- Security: `INV-no-secret-echo` and `INV-annotation-safe` pass, and the
+  seeded faults for both are rejected.
 
 ## Idempotence and recovery
 
-Every step is re-runnable. Verify is read-only. `prover-tools verus install`
-is idempotent and installs into `.verus/`, which must be added to
-`.gitignore` in `EP-M4` if `prover-tools` does not already ignore it.
-Seeded-fault experiments are made in the working tree, recorded, and reverted
-before committing. Confirm with `git diff --stat`. Generated `proptest`
-regression files are committed only when they capture a genuine fixed
-failure.
+Every step can be re-run safely, and verify itself is read-only. Apply each
+seeded fault in the working tree, observe the failure, and revert it before
+committing; confirm with `git diff --stat`. Commit proptest regression files
+only when they capture a real failure that has been fixed. Gate Unix-only
+tests, such as the FIFO case, with `#[cfg(unix)]`.
 
 ## Artefacts and notes
 
-Reconnaissance evidence (obtained at `c3e6d76`):
+Reconnaissance evidence at `c3e6d76`:
 
 ```plaintext
-$ command -v verus cargo-kani prover-tools
-(verus missing) /home/leynos/.cargo/bin/cargo-kani /home/leynos/.local/bin/prover-tools
 $ git log --oneline -S "Recommended additions for regression suite" -- docs
-5430ebc Initial design (#4)      # paragraph, never a heading
+5430ebc Initial design (#4)        # introduced as a paragraph, never a heading
+$ rg -n "relative_offset_ms" docs/developers-guide.md
+671: `relative_offset_ms` measures from the session start to the interaction start
 ```
 
-GitHub workflow-command reference (2026-11-15):
+The GitHub workflow-command reference, consulted on 2026-11-15, gives the form
 `::error file={name},line={line},endLine={endLine},title={title}::{message}`.
 
-Probe, red/green, seeded-fault, and proof transcripts are appended here during
-implementation.
+Append probe, red/green, seeded-fault, and snapshot-review transcripts here
+during implementation.
 
 ## Interfaces and dependencies
 
-Domain (`src/cassette/verify/`, public under `spycatcher_harness::cassette::verify`):
+Domain (`spycatcher_harness::cassette::verify`; no I/O, no adapter imports):
 
 ```rust
+#[non_exhaustive]
 pub struct VerifyPolicy {
     pub required_redactions: RedactionConfig,
     pub match_mode: MatchMode,
 }
 
-impl From<&HarnessConfig> for VerifyPolicy { /* copies redaction and match_mode */ }
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
-#[serde(rename_all = "snake_case")]
+#[non_exhaustive]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum FindingClass { Io, Schema, Ordering, Hash, Redaction }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub struct Finding {
-    pub class: FindingClass,
-    pub code: FindingCode,              // `#[non_exhaustive]` enum, snake_case serde
-    pub interaction: Option<usize>,
-    pub pointer: String,                // RFC 6901 JSON Pointer into the document
-    pub detail: FindingDetail,          // typed parameters, never header values or bodies
+#[non_exhaustive]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum FindingKind {
+    CassetteNotFound,
+    NotARegularFile,
+    CassetteTooLarge { limit_bytes: u64 },
+    CassetteUnreadable { io_kind: std::io::ErrorKind },
+    MalformedDocument { category: JsonErrorCategory, line: usize, column: usize },
+    FormatVersionMissing,
+    FormatVersionInvalid,
+    UnsupportedFormatVersion { found: u32, supported: u32 },
+    InteractionStartOrder,
+    StreamTimingLengthMismatch { events: usize, offsets: usize },
+    StreamOffsetsNotMonotonic,
+    StreamTtftAfterFirstEvent,
+    StreamTranscriptUnparsable,
+    StreamTranscriptMismatch,
+    StableHashMissing,
+    StableHashMismatch { stored: String, recomputed: String },
+    CanonicalRequestMissing,
+    CanonicalRequestMismatch,
+    ParsedJsonMismatch,
+    RequiredHeaderPresent { header: String },  // lower-cased policy token, never the value
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+impl FindingKind {
+    #[must_use] pub const fn class(&self) -> FindingClass;
+    #[must_use] pub const fn code(&self) -> &'static str;      // qualified, e.g. "hash.stable_hash_mismatch"
+}
+
+#[non_exhaustive]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Finding { pub kind: FindingKind, pub interaction: Option<usize>, pub pointer: JsonPointer }
+
+#[non_exhaustive]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct VerificationReport {
     pub interactions_checked: usize,
-    pub findings: Vec<Finding>,         // sorted per D10
+    pub findings: Vec<Finding>,   // sorted per D10
+    pub skipped: Vec<Skip>,       // code + interaction + pointer
 }
 
-impl VerificationReport {
-    #[must_use] pub fn outcome(&self) -> VerificationOutcome;  // Passed iff findings empty
-}
+impl VerificationReport { #[must_use] pub fn outcome(&self) -> VerificationOutcome; }
 
 #[must_use]
 pub fn verify_document(document: &[u8], policy: &VerifyPolicy) -> VerificationReport;
+
+pub(crate) fn adjacent_violations<T>(items: &[T], violates: impl Fn(&T, &T) -> bool) -> Vec<usize>;
 ```
 
-`pub(crate) fn first_descent(values: &[u64]) -> Option<usize>` in
-`ordering.rs` is the only ordering kernel. Any future monotonicity check, for
-example in task 3.1.1 timing, must reuse it rather than re-implementing a
-scan.
+`JsonPointer` is a small newtype over typed segments, each either
+`Key(&'static str)` or `Index(usize)`. Its `Display` produces RFC 6901 text,
+and its `Ord` follows `D10`. `JsonErrorCategory` mirrors
+`serde_json::error::Category` without re-exporting it.
 
-The application service in `src/verify.rs` is re-exported at the crate root:
+`VerifyPolicy` is built from `HarnessConfig` in `src/verify.rs`, so the domain
+does not depend on the session configuration. The application service:
 
 ```rust
 pub const MAX_VERIFY_DOCUMENT_BYTES: u64 = 256 * 1024 * 1024;
+
+/// # Errors
+/// Returns `HarnessError::InvalidConfig` for an invalid cassette name; cassette
+/// problems are findings, not errors.
 pub fn verify_cassette(config: &HarnessConfig) -> HarnessResult<VerificationReport>;
 ```
 
-Configuration (`src/config.rs`): add `VerifyFormat { Text, Json, Github }` and
-`HarnessConfig.verify_format: VerifyFormat` (default `Text`). The existing
-`HarnessConfig.redaction` and `match_mode` fields are reused. This touches
-`HarnessConfig` struct literals in tests. `..HarnessConfig::default()` is
-already the dominant pattern; update the remaining literals in the same
-commit.
-
-The CLI adapter (`src/cli/verify_output.rs`, `pub` within `spycatcher_harness::cli`)
-provides:
+Configuration (`src/config.rs`):
 
 ```rust
+impl RedactionConfig {
+    /// Returns whether `name` must not be persisted, comparing ASCII case-insensitively.
+    #[must_use] pub fn requires_redaction(&self, name: &str) -> bool;
+}
+```
+
+CLI (`spycatcher_harness::cli`):
+
+```rust
+#[non_exhaustive]
+pub struct LoadedCommand { pub config: HarnessConfig, pub verify_output: Option<VerifyOutputFormat> }
+
+#[non_exhaustive]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, clap::ValueEnum, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum VerifyOutputFormat { #[default] Text, Json, Github }
+
+pub struct RenderContext<'a> {
+    pub format: VerifyOutputFormat,
+    pub cassette_path: &'a Utf8Path,
+    pub loader: &'a FluentLanguageLoader,
+}
+
+/// # Errors
+/// Returns write failures from `writer`.
 pub fn render_report(
     report: &VerificationReport,
-    format: VerifyFormat,
-    cassette_path: &Utf8Path,
-    loader: &FluentLanguageLoader,
+    context: &RenderContext<'_>,
     writer: &mut impl std::io::Write,
 ) -> std::io::Result<()>;
 ```
 
-It also has two `pub(crate)` escaping helpers, `escape_workflow_data` and
-`escape_workflow_property`. These are the only workflow-command escapers;
-2.2.2 mismatch annotations must reuse them.
-
-The JSON report shape (`report_version` 1) is documented in ADR 0003 and the
-users' guide:
+The escapers live in `cli::verify_output::escape`: `escape_workflow_data`,
+`escape_workflow_property`, and `escape_control`, all `pub(crate)`. No other
+code escapes workflow commands. The JSON DTOs (`JsonReportV1`, `JsonFinding`,
+and `JsonSkip`) are private to `cli::verify_output::json`. The envelope looks
+like this:
 
 ```json
 {
   "report_version": 1,
+  "kind": "cassette_verification",
   "cassette": "fixtures/llm/smoke.json",
   "outcome": "failed",
   "interactions_checked": 3,
   "findings": [
     {
+      "code": "hash.stable_hash_mismatch",
       "class": "hash",
-      "code": "stable_hash_mismatch",
       "interaction": 1,
       "pointer": "/interactions/1/request/stable_hash",
-      "message": "stored hash does not match the hash recomputed from the request"
+      "params": { "stored": "00…00", "recomputed": "9f…c1" }
     }
-  ]
+  ],
+  "skipped": []
 }
 ```
 
-The binary (`src/bin/spycatcher_harness/verify_run.rs`) provides
-`fn run_verify(config: &HarnessConfig, loader: &FluentLanguageLoader) ->
-eyre::Result<ExitCode>`. `main` becomes `fn main() -> eyre::Result<ExitCode>`.
+Binary:
+`verify_run::run_verify(command: LoadedCommand, loader:
+&FluentLanguageLoader) -> ExitCode`,
+and `main` becomes `fn main() -> eyre::Result<ExitCode>`.
 
-Reused, not duplicated:
+Reused rather than duplicated:
 
-- `canonicalize` and `stable_hash`, with `canonical_request_value` widened to
-  `pub(crate)`;
-- `http_exchange::parse_json_bytes`;
-- `http_exchange::should_persist_header`, widened to `pub(crate)`;
-- `sse::SseParser`;
-- `cassette::filesystem::open_rooted_parent`;
-- `i18n` Fluent loading;
-- `process_output` writer locking conventions.
+- `canonicalize` and `stable_hash`;
+- `parse_json_body`, after the relocation;
+- the redaction predicate, via `requires_redaction`;
+- `SseParser`;
+- the Fluent loader;
+- the `process_output` writer conventions;
+- in tests, the `record_tests_helpers` record builders.
 
-Dependencies: dev-only `googletest = "0.14"` and `pretty_assertions = "1.4"`,
-with the exact patch versions confirmed in `EP-M0`. There is no new runtime
-dependency. Verus is an external tool pinned in `tools/verus/`, run through
-`prover-tools`, which is pinned by `tools/rust-prover-tools/REF`.
+Dependencies:
+
+- dev-only `googletest` (about `0.14`) and `pretty_assertions` (about `1.4`),
+  with exact versions settled in `EP-M0`;
+- the `time` crate's `parsing` feature, on the existing dependency.
+
+There is no new runtime crate and no prover tooling.
 
 ## Revision note
 
-- 2026-11-15: initial draft from Wyvern reconnaissance; awaiting
-  community-of-experts review.
+- 2026-11-15: initial draft from Wyvern reconnaissance.
+- 2026-11-15: applied the community-of-experts review. The four panels were
+  structure and contracts, failure modes and security, verification and
+  viability, and alternatives and cost.
+  - Verification approach:
+    - Removed Verus in favour of exhaustive order-isomorphic enumeration plus
+      property tests (`D7`). The panel found the textual bridge infeasible,
+      the proof thin, and the tooling cost disproportionate.
+    - Made the non-vacuity mechanisms implementable: generators that reach
+      each class by construction, deterministic class-mix tests, and
+      rejection budgets.
+    - Added the exact-set, locality, and sortedness invariants.
+  - False-positive and safety fixes:
+    - Added the `recorded_at` co-condition to the ordering rule, after the
+      panel found that multi-session cassettes would fail.
+    - Hash recomputation now starts from body bytes and compares values
+      through a persistence round trip, after `null` and float false
+      positives were found.
+    - Schema findings no longer carry `serde_json` text, which can echo
+      secrets.
+    - Specified FIFO and size handling.
+    - Applied injection escaping to every output format.
+    - Made the redaction policy a union over validated tokens.
+    - Made skipped checks visible in the report.
+  - Contract and boundary changes:
+    - Configuration errors now exit `2` (`D2`).
+    - Moved the output format out of `HarnessConfig` into
+      `cli::LoadedCommand`.
+    - Decoupled the domain from `http_exchange` via `requires_redaction` and
+      the relocated `parse_json_body`.
+    - `FindingKind` now derives class and code, and the JSON DTO is separate
+      from the domain types (`D11`).
+    - Added the JSON `kind` discriminator and an evolution rule shared with
+      task 2.2.2.
+  - Recounted the tolerances against historical overruns.
+  - Corrected facts: where `canonical_request_value` lives, that
+    `open_rooted_parent` is private, and an additional
+    `ModeNotYetImplemented` reference at `docs/users-guide.md:334`.
+  - Remaining work: user approval, then `EP-M0`.
