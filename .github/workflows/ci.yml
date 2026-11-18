@@ -36,7 +36,7 @@ jobs:
       - name: Check the minimum supported Rust version
         run: make msrv-check
       - name: Setup uv
-        uses: astral-sh/setup-uv@de938e707d6c238b34e29b5770a011e3155e2a3c
+        uses: astral-sh/setup-uv@b0fdc328c65964c12e997446c1c75b18577b9f1a
         with:
           # A Rust-only repository has no Python dependency manifest for the
           # cache key, so caching would only warn about unmatched inputs.
