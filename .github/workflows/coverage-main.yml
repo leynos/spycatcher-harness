@@ -45,9 +45,9 @@ jobs:
         with:
           persist-credentials: false
       - name: Setup Rust
-        uses: leynos/shared-actions/.github/actions/setup-rust@1123a35f1cc7810f65bfffa5ea4c8b981d6c0090
+        uses: leynos/shared-actions/.github/actions/setup-rust@cfd51f3d5423cb16155b94e020cdd7eaeebd0833
       - name: Generate coverage
-        uses: leynos/shared-actions/.github/actions/generate-coverage@1123a35f1cc7810f65bfffa5ea4c8b981d6c0090
+        uses: leynos/shared-actions/.github/actions/generate-coverage@cfd51f3d5423cb16155b94e020cdd7eaeebd0833
         with:
           output-path: lcov.info
           format: lcov
@@ -67,7 +67,7 @@ jobs:
       # the upload confined there if a dispatch trigger is ever added.
       - name: Upload coverage data to CodeScene
         if: ${{ steps.codescene-token.outputs.available == 'true' && github.ref == 'refs/heads/main' }}
-        uses: leynos/shared-actions/.github/actions/upload-codescene-coverage@1123a35f1cc7810f65bfffa5ea4c8b981d6c0090
+        uses: leynos/shared-actions/.github/actions/upload-codescene-coverage@cfd51f3d5423cb16155b94e020cdd7eaeebd0833
         with:
           path: lcov.info
           format: lcov
