@@ -1679,9 +1679,9 @@ checksum = "04744f49eae99ab78e0d5c0b603ab218f515ea8cfe5a456d7629ad883a3b6e7d"
 
 [[package]]
 name = "ortho_config"
-version = "0.10.0"
+version = "0.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a99e8507095fe15801a01a374e9b981883c98d0a0027c0eaed1f3bd5715590bf"
+checksum = "7f461a88d7d08b164a74d455bf0c9af9c5f282358c3013f132ed02996fdba445"
 dependencies = [
  "camino",
  "cap-std 4.0.3",
@@ -1704,9 +1704,9 @@ dependencies = [
 
 [[package]]
 name = "ortho_config_macros"
-version = "0.10.0"
+version = "0.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "42c7a590f77273774f7e1079a02a53acfe5b1252d5be43402cb5a6f0e57b58a6"
+checksum = "c757603b8a90d461af03fff6717ec84bbd4ef5e5f9582f2688d5dfcd6a587850"
 dependencies = [
  "heck",
  "ortho_l10n",
@@ -1719,9 +1719,9 @@ dependencies = [
 
 [[package]]
 name = "ortho_l10n"
-version = "0.10.0"
+version = "0.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "134e64af4a8dce3de521b273fa87f6cdef8a3b9a07a918a78b4df19b2ab6e3d8"
+checksum = "a62dcd5f05b830dfca629d04878c4cf436fb31e7901c9163dbed556e8d7ad812"
 dependencies = [
  "fluent-bundle",
  "fluent-syntax",
