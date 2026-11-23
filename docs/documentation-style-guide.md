@@ -716,6 +716,9 @@ contents of the manual.
 - Place examples under `# Examples`. Let examples run as documentation tests
   when they can execute correctly, so the compiler verifies that they compile
   and behave as documented.
+- Import the documented item in each example. Rustdoc compiles a doctest as an
+  external crate that depends on the documented crate, so a bare call to the
+  item cannot resolve; use a hidden `# use crate_name::item;` line.
 - Use `no_run` for complete examples that must compile but must not execute,
   such as examples that require external resources, environment-specific setup,
   or a long-running service.
@@ -737,6 +740,7 @@ contents of the manual.
 /// # Examples
 ///
 /// ```rust
+/// # use mycrate::add;
 /// assert_eq!(add(2, 3), 5);
 /// ```
 #[inline]
@@ -744,6 +748,9 @@ pub fn add(a: i32, b: i32) -> i32 {
     a + b
 }
 ```
+
+Only the outer fence needs `no_run`, because the snippet is a fragment; the
+inner doctest compiles and runs.
 
 ## Diagrams and images
 
