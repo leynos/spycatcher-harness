@@ -94,10 +94,16 @@ a narrow scope and a stated reason. Recognized test bodies may extract values
 with `.expect("reason")`; fixtures, BDD step functions, and setup or lookup
 helpers stay fallible even when they live in a test module.
 
-Clippy limits cognitive complexity to 9, arguments to 4, function lines to 70,
-and nesting to 4. The seven `std::env` entries under `disallowed-methods` in
-`clippy.toml` enforce the environment-access policy documented alongside the
-`EnvProvider` seam in this guide.
+Clippy limits arguments to 4, function lines to 70, and nesting to 4. Cognitive
+complexity is not gated by Clippy, which scores after macro expansion and so
+counts branching a macro generated. Whitaker's experimental
+`macro_aware_cognitive_complexity` gates it at `max_complexity = 9`,
+CodeScene's ceiling; `dylint.toml` opts in with
+`[whitaker] experimental = ["macro_aware_cognitive_complexity"]`. Fix a finding
+by extracting named helpers, never by raising the threshold. The seven
+`std::env` entries under `disallowed-methods` in `clippy.toml` enforce the
+environment-access policy documented alongside the `EnvProvider` seam in this
+guide.
 
 `[lints.rust]` forbids `unsafe` and denies `unknown_lints` and
 `renamed_and_removed_lints`, so a misspelt lint name or a lint the pinned
