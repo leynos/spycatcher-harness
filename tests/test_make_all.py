@@ -135,6 +135,10 @@ class MakeAllContract(unittest.TestCase):
                     str(override),
                     "all",
                     "CARGO=/bin/true",
+                    # `lint` also depends on the YAML lint targets, which the
+                    # gate stubs above do not replace.
+                    "YAMLLINT=/bin/true",
+                    "ACTIONLINT=/bin/true",
                 ],
                 cwd=REPOSITORY,
                 env=environment,
