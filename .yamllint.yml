@@ -1,0 +1,2 @@
+---
+extends: .yamllint-estate.yml

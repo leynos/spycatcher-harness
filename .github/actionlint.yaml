@@ -1,0 +1,4 @@
+# Estate actionlint configuration: runner labels that GitHub does not host.
+self-hosted-runner:
+  labels:
+    - ubicloud-*
