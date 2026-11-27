@@ -1,0 +1,38 @@
+---
+# Estate yamllint base. Copied verbatim into each repository as .yamllint-estate.yml;
+# the repository's own .yamllint.yml extends it and may only add `ignore`.
+#
+# yamllint resolves `extends:` against the current directory, not against the
+# configuration file, so every invocation must run from the repository root, as
+# the Makefile's recipes do. An editor that runs yamllint from elsewhere will
+# not find this file.
+#
+# A local `ignore:` replaces this file's `ignore:` rather than adding to it, so
+# a repository that sets one restates the Helm template glob if it needs it.
+extends: default
+ignore: |
+  **/charts/**/templates/
+rules:
+  document-start: disable
+  comments:
+    min-spaces-from-content: 1
+  indentation:
+    spaces: consistent
+    indent-sequences: consistent
+    check-multi-line-strings: false
+  braces:
+    min-spaces-inside: 0
+    max-spaces-inside: 1
+  brackets:
+    min-spaces-inside: 0
+    max-spaces-inside: 1
+  line-length:
+    max: 120
+    allow-non-breakable-words: true
+    allow-non-breakable-inline-mappings: true
+    ignore: |
+      .github/workflows/
+      .github/actions/
+  truthy:
+    allowed-values: ['true', 'false']
+    check-keys: false

@@ -849,3 +849,25 @@ The pinned toolchain is now `nightly-2026-10-30`. No measurement has been taken
 on it: both observations above were made on `nightly-2026-02-26`, and the
 exception stands on them until the 14 May 2027 revisit, when the suite is
 re-measured under both backends.
+
+## YAML lint
+
+`make lint` runs `make yamllint` and `make actionlint` as prerequisites.
+`make yamllint` runs `yamllint --strict` over every tracked `.yml` and `.yaml`
+file, reading `.yamllint.yml`, which extends the estate base
+`.yamllint-estate.yml` (a verbatim copy of the concordat canon; do not edit
+it). The base ignores Helm chart templates (`**/charts/**/templates/`), so a
+tracked file there is passed to yamllint but not checked, and a local `ignore`
+in `.yamllint.yml` replaces that entry rather than adding to it. Run it from
+the repository root, because yamllint resolves `extends` against the current
+directory. `make actionlint` checks the GitHub Actions workflows, accepting the
+runner labels in `.github/actionlint.yaml`, and runs ShellCheck over their Bash
+and `sh` `run:` scripts when it is on `PATH` (it skips PowerShell steps).
+
+Install the tools locally at the versions CI uses:
+`uv tool install yamllint==1.38.0`, and the `actionlint` 1.7.12 and
+`shellcheck` 0.11.0 release binaries (a package manager's builds can differ and
+change what the lint reports). CI installs the same pinned versions with the
+`install-yaml-lint` action of `leynos/shared-actions` before it runs
+`make lint`. The `YAMLLINT` and `ACTIONLINT` variables name the commands when
+they are not on `PATH`.
