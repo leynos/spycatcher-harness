@@ -11,3 +11,4 @@ target/
 *.swp
 *.swo
 *~
+__pycache__/
